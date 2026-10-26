@@ -1,0 +1,21 @@
+## Interface: 16001
+## Title: Noctis Loot Council
+## Author: Kadmai
+## Notes: Loot rolls and loot council for the Noctis guild, and a list of every raid drop seen. /nlc
+## Version: 0.1.0
+## Category: Loot
+## Category-deDE: Beute
+## Category-esES: Botín
+## Category-esMX: Botín
+## Category-frFR: Butin
+## Category-itIT: Bottino
+## Category-koKR: 전리품
+## Category-ptBR: Saque
+## Category-ruRU: Добыча
+## Category-zhCN: 战利品
+## Category-zhTW: 戰利品
+## SavedVariables: NoctisLootCouncilDB
+
+Locales.lua
+Core.lua
+Discovery.lua

@@ -1,0 +1,21 @@
+# Agent instructions, plans and machine-specific notes never go in the repo.
+AGENTS.md
+AGENTS.local.md
+CLAUDE.md
+.claude/
+PLAN*.md
+*.plan.md
+
+# Downloaded API references and build output.
+reference/
+dist/
+
+# Artwork drafts.
+media/drafts/
+
+# Editor and OS clutter.
+__pycache__/
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
