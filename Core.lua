@@ -73,12 +73,13 @@ end)
 --   trialRanks = { "rank name", ... }|nil, -- guild ranks that are trials (nil = any rank with "trial" in its name)
 --   me = "First Last",                  -- who last logged in with this file (for the companion app's uploads)
 --   decisionsAt = time()|nil,           -- the newest decisions from Discord applied (Sync.lua)
+--   scale = 0.5-3|nil,                  -- our windows' size (nil = EllesmereUI's Window Scale, else 1) (UI.lua)
 -- }
 -- The companion app reads this file; its format is in NoctisLootBot's docs/sync-format.md.
 -- Each field's type, so a damaged save is repaired at load instead of breaking things.
 local DB_FIELDS = { v = "number", items = "table", encounters = "table", bossSources = "table",
     instances = "table", minQuality = "number", dungeons = "boolean", log = "table", night = "number",
-    trialRanks = "table", drops = "table", me = "string", decisionsAt = "number" }
+    trialRanks = "table", drops = "table", me = "string", decisionsAt = "number", scale = "number" }
 ns.ITEM_FIELDS = { link = "string", q = "number", first = "number", last = "number", seen = "number",
     from = "table", inst = "number", handling = "string", note = "string" }
 local ENCOUNTER_FIELDS = { name = "string", inst = "number", src = "string" }

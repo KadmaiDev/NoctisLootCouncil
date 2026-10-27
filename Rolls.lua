@@ -41,6 +41,7 @@ local function Tonight()
     if ns.db.night and ns.db.night > since then since = ns.db.night end
     return since
 end
+ns.NightStart = Tonight
 
 -- True if this player (a NameKey) won a main-spec item tonight.
 function ns.WonTonight(key)

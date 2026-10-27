@@ -18,6 +18,8 @@
 
 Locales.lua
 Core.lua
+UI.lua
 Discovery.lua
 Rolls.lua
 Sync.lua
+Export.lua

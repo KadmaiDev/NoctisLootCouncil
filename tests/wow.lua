@@ -38,6 +38,9 @@ function M.load(files, addonName)
     for k in pairs(_G) do
         if type(k) == "string" and k:find("^SLASH_") then _G[k] = nil end
     end
+    for _, f in ipairs(M.frames or {}) do -- the last load's named frames
+        if f.name then _G[f.name] = nil end
+    end
     M.frames, M.printed, M.now, M.clock = {}, {}, 0, 1790000000
     M.instance = { "Molten Core", "raid", 9, "40 Player", 40, 0, false, 409 }
     M.loot = {}      -- the open loot window: { { link, quality, guid } or { money = true } }
@@ -126,7 +129,16 @@ function M.load(files, addonName)
             if c then return c[1], M.link(id, c[1], c[2]), c[2] end
         end,
         RequestLoadItemDataByID = function(id) M.requested[#M.requested + 1] = id end,
+        -- itemID, type, subtype, equip location (from M.equip), as the client answers for any
+        -- item ID even when it isn't cached.
+        GetItemInfoInstant = function(item)
+            local id = tonumber(tostring(item):match("item:(%d+)") or item)
+            local e = id and M.equip[id]
+            if e then return id, e[1], e[2], e[3], 134400, 4, 1 end
+            return id
+        end,
     }
+    M.equip = {}     -- [itemID] = { type, subtype, equipLoc }
 
     local frameMethods = {}
     local function ignored(self) return self end
@@ -145,7 +157,64 @@ function M.load(files, addonName)
         self.events[event] = true
     end
     function frameMethods:SetScript(script, fn) self.scripts[script] = fn end
-    CreateFrame = function(kind, name) return newObject(kind, name) end
+    function frameMethods:GetScript(script) return self.scripts[script] end
+    function frameMethods:HookScript(script, fn)
+        self.hooks = self.hooks or {}
+        self.hooks[script] = self.hooks[script] or {}
+        table.insert(self.hooks[script], fn)
+    end
+    -- Runs a script and its hooks, as the client does.
+    function frameMethods:Run(script, ...)
+        if self.scripts[script] then self.scripts[script](self, ...) end
+        for _, fn in ipairs(self.hooks and self.hooks[script] or {}) do fn(self, ...) end
+    end
+    function frameMethods:Show()
+        if self.shown then return end
+        self.shown = true
+        self:Run("OnShow")
+    end
+    function frameMethods:Hide()
+        if not self.shown then return end
+        self.shown = false
+        self:Run("OnHide")
+    end
+    function frameMethods:SetShown(on) if on then self:Show() else self:Hide() end end
+    function frameMethods:IsShown() return self.shown end
+    function frameMethods:IsVisible() return self.shown and (not self.parent or self.parent:IsVisible()) end
+    function frameMethods:SetText(text) self.text = text end
+    function frameMethods:GetText() return self.text end
+    function frameMethods:SetFormattedText(fmt, ...) self.text = fmt:format(...) end
+    function frameMethods:SetScale(s) self.scale = s end
+    function frameMethods:GetScale() return self.scale or 1 end
+    function frameMethods:GetParent() return self.parent end
+    function frameMethods:Enable() self.disabled = nil end
+    function frameMethods:Disable() self.disabled = true end
+    function frameMethods:SetEnabled(on) self.disabled = not on or nil end
+    function frameMethods:IsEnabled() return not self.disabled end
+    function frameMethods:SetChecked(on) self.checked = on and true or false end
+    function frameMethods:GetChecked() return self.checked end
+    function frameMethods:GetRegions() end
+    function frameMethods:GetCenter() end
+    function frameMethods:GetPoint() end
+    function frameMethods:GetFont() end
+    function frameMethods:Click(...) if not self.disabled then self:Run("OnClick", ...) end end
+    function frameMethods:CreateFontString() local o = newObject("FontString") o.parent = self return o end
+    function frameMethods:CreateTexture() local o = newObject("Texture") o.parent = self return o end
+    CreateFrame = function(kind, name, parent, template)
+        local f = newObject(kind, name)
+        f.parent = parent
+        if template == "BasicFrameTemplateWithInset" then
+            f.TitleText = f:CreateFontString()
+            f.CloseButton = newObject("Button")
+            f.CloseButton.parent = f
+            f.Inset = newObject("Frame")
+        end
+        -- Frames start shown, as in the game; a window hides itself after it's built.
+        return f
+    end
+    UIParent = newObject("Frame", "UIParent")
+    UISpecialFrames = {}
+    hooksecurefunc = function() end
 
     local ns = {}
     for _, file in ipairs(files) do assert(loadfile(file))(addonName or "NoctisLootCouncil", ns) end
