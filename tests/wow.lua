@@ -7,7 +7,7 @@ local M = {}
 local KNOWN_EVENTS = {
     ADDON_LOADED = true, PLAYER_LOGIN = true, ENCOUNTER_END = true, BOSS_KILL = true,
     LOOT_READY = true, LOOT_OPENED = true, CHAT_MSG_LOOT = true, START_LOOT_ROLL = true,
-    ENCOUNTER_LOOT_RECEIVED = true, CHAT_MSG_SYSTEM = true,
+    ENCOUNTER_LOOT_RECEIVED = true, CHAT_MSG_SYSTEM = true, GET_ITEM_INFO_RECEIVED = true,
 }
 
 -- A secret value: issecretvalue says so, and using it the ways the game forbids throws.
@@ -43,6 +43,8 @@ function M.load(files, addonName)
     M.loot = {}      -- the open loot window: { { link, quality, guid } or { money = true } }
     M.rolls = {}     -- [rollID] = { link, quality }
     M.qualities = {} -- [itemID] = quality the item cache knows (nil = not cached)
+    M.cache = {}     -- [itemID] = { name, quality }: items the client has loaded (GetItemInfo answers)
+    M.requested = {} -- item IDs the addon asked the client to load
     M.player = { "Kadmai", "Moonwhisper", guild = "Noctis", rank = "Officer" }
     M.group = {}     -- the group, the player first (raid1 / player, then raid2 / party1, ...); empty = solo
     M.inRaid = false
@@ -111,7 +113,14 @@ function M.load(files, addonName)
         local r = M.rolls[id]
         if r then return 134400, "item", 1, r[2] or 4, false end
     end
-    C_Item = { GetItemQualityByID = function(id) return M.qualities[id] end }
+    C_Item = {
+        GetItemQualityByID = function(id) return M.qualities[id] end,
+        GetItemInfo = function(id)
+            local c = M.cache[id]
+            if c then return c[1], M.link(id, c[1], c[2]), c[2] end
+        end,
+        RequestLoadItemDataByID = function(id) M.requested[#M.requested + 1] = id end,
+    }
 
     local frameMethods = {}
     local function ignored(self) return self end
@@ -174,6 +183,12 @@ function M.raid(members)
         if m.guild == nil then m.guild = "Noctis" elseif m.guild == false then m.guild = nil end
         M.group[#M.group + 1] = m
     end
+end
+
+-- The client finishes loading an item (as after RequestLoadItemDataByID).
+function M.itemLoads(id, name, quality)
+    M.cache[id] = { name, quality or 4 }
+    M.fire("GET_ITEM_INFO_RECEIVED", id, true)
 end
 
 -- Someone's roll, as the system line everyone in the group sees.

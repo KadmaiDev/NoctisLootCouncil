@@ -26,6 +26,8 @@ Forever hides its raid loot from data miners at launch, so nobody knows the drop
 
 `<item>` can be a shift-clicked item link, an item ID, or the item's name.
 
+**Items can be decided before they drop for us.** Most loot will be known from other guilds' kills and the community's lists first, so `/nlc council`, `/nlc roll` and `/nlc note` also take a link or item ID of an item not in the list yet. It's added as "not seen in our raids yet", and when it first drops, the loot master is told the decision.
+
 ## Rolls
 
 The loot master starts a roll with `/nlc start <item>`. The raid is told in raid chat: `/roll` for main spec, `/roll 99` for off spec, 30 seconds. Raiders don't need the addon. When time is up, the winner is announced and logged.

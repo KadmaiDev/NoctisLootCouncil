@@ -75,8 +75,8 @@ end
 local function Record(itemID, link, q, inst, src, killKey, kind, n)
     local db = ns.db
     local item = db.items[itemID]
-    local new = not item
-    if new then
+    local new = not item or item.seen == 0 -- an item added unseen (/nlc council <link>) is new to our raids
+    if not item then
         item = { first = time(), seen = 0 }
         db.items[itemID] = item
     end
@@ -110,18 +110,19 @@ local function BossName(src)
     return e and e.name
 end
 
--- Tells the loot master about a drop, once per kill: new to the list, or how it's handled.
+-- Tells the loot master about a drop, once per kill: how it's handled if that's decided
+-- (perhaps before it ever dropped for us), else that it's new to our raids.
 local function Tell(killKey, itemID, item, new, src)
     local key = killKey .. ":" .. itemID
     if told[key] then return end
     told[key] = true
-    local from = BossName(src) or L["trash"]
-    if new then
-        ns.Say(L["First time seen: %s from %s. New items are rolled; /nlc council makes it a council item from its next drop."]:format(item.link, from))
-    elseif item.handling then
+    if item.handling then
         local how = item.handling == "council" and L["council item"] or L["roll item"]
         if item.note then how = how .. " · " .. item.note end
         ns.Say(("%s: %s"):format(item.link, how))
+    elseif new then
+        local from = BossName(src) or L["trash"]
+        ns.Say(L["First time seen: %s from %s. New items are rolled; /nlc council makes it a council item from its next drop."]:format(item.link, from))
     end
 end
 
@@ -311,9 +312,46 @@ function ns.FindItem(text)
     if best then return best, items[best], (text:sub(bestLen + 1):gsub("^%s+", "")) end
 end
 
+-- Most loot will be known from other guilds' kills and the community's lists before it drops
+-- for us, so it can be decided in advance: a link or an item ID adds an item we haven't seen
+-- (seen = 0). Given an ID the game hasn't loaded yet, the link fills in when it arrives.
+local waiting = {} -- [itemID] = true while the game loads an added item
+
+local function LoadLink(id)
+    local item = ns.db.items[id]
+    if not item or item.link:find("|H", 1, true) then return true end
+    local GetInfo = C_Item and C_Item.GetItemInfo or GetItemInfo
+    if not GetInfo then return true end
+    local _, link, q = GetInfo(id)
+    if not Plain(link) or type(link) ~= "string" then return false end
+    item.link = link
+    if Plain(q) and type(q) == "number" then item.q = q end
+    return true
+end
+
+ns.On("GET_ITEM_INFO_RECEIVED", function(id)
+    if Plain(id) and waiting[id] and ns.db and LoadLink(id) then waiting[id] = nil end
+end)
+
+-- Like ns.FindItem, but a link or an item ID not in the list is added to it.
+local function FindOrAdd(text)
+    local id, item, rest = ns.FindItem(text)
+    if item or not id then return id, item, rest end
+    local link = text:match("^|c.-|h|r")
+    item = { first = time(), seen = 0, link = link or ("item:" .. id) }
+    if link then item.q = Quality(id, link) end
+    ns.db.items[id] = item
+    if not link and not LoadLink(id) then
+        waiting[id] = true
+        if C_Item and C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(id) end
+    end
+    ns.Say(L["Added %s to the list (not seen in our raids yet)."]:format(item.link))
+    return id, item, rest
+end
+
 local function Decide(handling)
     return function(text)
-        local id, item, rest = ns.FindItem(text)
+        local id, item, rest = FindOrAdd(text)
         if not item then
             ns.Say(L["Not in the list: %s. Shift-click the item, or use its ID or name."]:format(text))
             return
@@ -331,7 +369,8 @@ local function Decide(handling)
 end
 
 -- The list as lines, grouped by where items come from: bosses by instance and name, then
--- items with no known boss. filter keeps items whose name contains it.
+-- items with no known boss, then items decided before we've seen them drop. filter keeps
+-- items whose name contains it.
 function ns.LootLines(filter)
     local db = ns.db
     filter = filter and filter ~= "" and filter:lower() or nil
@@ -342,7 +381,7 @@ function ns.LootLines(filter)
             for src, n in pairs(item.from or {}) do
                 if src:find("^e") and n > bestN then best, bestN = src, n end
             end
-            local key = best or "trash"
+            local key = best or (item.seen == 0 and "unseen") or "trash"
             if not groups[key] then
                 groups[key] = {}
                 order[#order + 1] = key
@@ -353,12 +392,14 @@ function ns.LootLines(filter)
     end
     local function Label(key)
         if key == "trash" then return L["No known boss"] end
+        if key == "unseen" then return L["Not seen in our raids yet"] end
         local e = db.encounters[tonumber(key:sub(2))] or {}
         local inst = e.inst and db.instances[e.inst]
         return (inst and inst .. " · " or "") .. (e.name or key)
     end
+    local LAST = { trash = 1, unseen = 2 } -- bosses first, by name
     sort(order, function(a, b)
-        if a == "trash" or b == "trash" then return b == "trash" and a ~= "trash" end
+        if LAST[a] or LAST[b] then return (LAST[a] or 0) < (LAST[b] or 0) end
         return Label(a) < Label(b)
     end)
     local lines = {}
@@ -395,7 +436,7 @@ ns.Command("roll", Decide("roll"), L["<item> [note]: make it a roll item"])
 ns.Command("undecided", Decide(nil), L["<item>: neither"])
 
 ns.Command("note", function(text)
-    local _, item, rest = ns.FindItem(text)
+    local _, item, rest = FindOrAdd(text)
     if not item then
         ns.Say(L["Not in the list: %s. Shift-click the item, or use its ID or name."]:format(text))
         return
