@@ -74,12 +74,16 @@ end)
 --   me = "First Last",                  -- who last logged in with this file (for the companion app's uploads)
 --   decisionsAt = time()|nil,           -- the newest decisions from Discord applied (Sync.lua)
 --   scale = 0.5-3|nil,                  -- our windows' size (nil = EllesmereUI's Window Scale, else 1) (UI.lua)
+--   council = { "First Last", ... }|nil, -- who votes on council items (Council.lua; the loot master's matters)
+--   roles = { ["First Last"] = role }|nil, -- a character's chosen role for the upgrade % (Upgrades.lua)
+--   popupOff = true|nil,                -- no Main spec / Off spec / Pass pop-up (Popup.lua)
 -- }
 -- The companion app reads this file; its format is in NoctisLootBot's docs/sync-format.md.
 -- Each field's type, so a damaged save is repaired at load instead of breaking things.
 local DB_FIELDS = { v = "number", items = "table", encounters = "table", bossSources = "table",
     instances = "table", minQuality = "number", dungeons = "boolean", log = "table", night = "number",
-    trialRanks = "table", drops = "table", me = "string", decisionsAt = "number", scale = "number" }
+    trialRanks = "table", drops = "table", me = "string", decisionsAt = "number", scale = "number",
+    council = "table", roles = "table", popupOff = "boolean" }
 ns.ITEM_FIELDS = { link = "string", q = "number", first = "number", last = "number", seen = "number",
     from = "table", inst = "number", handling = "string", note = "string" }
 local ENCOUNTER_FIELDS = { name = "string", inst = "number", src = "string" }
@@ -144,6 +148,10 @@ function ns.Repair(db)
     if db.trialRanks then
         db.trialRanks = Compact(db.trialRanks, function(r) return type(r) == "string" end)
     end
+    if db.council then
+        db.council = Compact(db.council, function(r) return type(r) == "string" end)
+    end
+    if db.roles then KeepMap(db.roles, "string", "string") end
     return db
 end
 

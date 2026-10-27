@@ -19,7 +19,11 @@
 Locales.lua
 Core.lua
 UI.lua
+Comms.lua
 Discovery.lua
+Upgrades.lua
 Rolls.lua
+Council.lua
+Popup.lua
 Sync.lua
 Export.lua

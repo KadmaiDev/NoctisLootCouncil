@@ -8,6 +8,7 @@ local KNOWN_EVENTS = {
     ADDON_LOADED = true, PLAYER_LOGIN = true, ENCOUNTER_END = true, BOSS_KILL = true,
     LOOT_READY = true, LOOT_OPENED = true, CHAT_MSG_LOOT = true, START_LOOT_ROLL = true,
     ENCOUNTER_LOOT_RECEIVED = true, CHAT_MSG_SYSTEM = true, GET_ITEM_INFO_RECEIVED = true,
+    CHAT_MSG_ADDON = true, PLAYER_ENTERING_WORLD = true, TRAIT_CONFIG_UPDATED = true,
 }
 
 -- A secret value: issecretvalue says so, and using it the ways the game forbids throws.
@@ -92,7 +93,32 @@ function M.load(files, addonName)
             assert(#text <= 255, "chat line over 255 characters")
             M.sent[#M.sent + 1] = { text, chatType }
         end,
+        RegisterAddonMessagePrefix = function(prefix) assert(#prefix <= 16) return 0 end,
+        -- Recorded; raid and party messages come back to the sender, as in the game.
+        -- M.addonResult (else 0, success) is what the game answers; M.whisperFails makes
+        -- whispers fail (the name format a whisper wants on Forever isn't known).
+        SendAddonMessage = function(prefix, text, channel, target)
+            assert(#text <= 255, "addon message over 255 bytes")
+            if M.addonResult and M.addonResult ~= 0 then return M.addonResult end
+            if channel == "WHISPER" and M.whisperFails then return 9 end
+            M.addon[#M.addon + 1] = { prefix = prefix, text = text, channel = channel, target = target }
+            if channel == "RAID" or channel == "PARTY" then
+                M.fire("CHAT_MSG_ADDON", prefix, text, channel, M.player[1] .. " " .. M.player[2], "", 0, 0, "", 0)
+            end
+            return 0
+        end,
     }
+    M.addon = {}       -- addon messages sent: { prefix, text, channel, target }
+    M.addonResult, M.whisperFails = nil, nil
+    M.nextRoll = 50    -- what RandomRoll rolls
+    M.rolled = nil     -- the last RandomRoll's { low, high }
+    RandomRoll = function(low, high)
+        M.rolled = { low, high }
+        M.fire("CHAT_MSG_SYSTEM", RANDOM_ROLL_RESULT:format(M.player[1] .. " " .. M.player[2], M.nextRoll, low, high))
+    end
+    M.gear = {}        -- [slot] = item link the player wears
+    M.stats = {}       -- [itemID] = { ITEM_MOD_..._SHORT = value }
+    GetInventoryItemLink = function(unit, slot) if unit == "player" then return M.gear[slot] end end
     RANDOM_ROLL_RESULT = "%s rolls %d (%d-%d)"
     SlashCmdList = {}
     Enum = { LootSlotType = { None = 0, Item = 1, Money = 2, Currency = 3 } }
@@ -134,11 +160,20 @@ function M.load(files, addonName)
         GetItemInfoInstant = function(item)
             local id = tonumber(tostring(item):match("item:(%d+)") or item)
             local e = id and M.equip[id]
-            if e then return id, e[1], e[2], e[3], 134400, 4, 1 end
+            if e then return id, e[1], e[2], e[3], 134400, e.class or 4, e.sub or 1 end
             return id
         end,
+        GetItemStats = function(link)
+            local id = tonumber(tostring(link):match("item:(%d+)"))
+            local s = id and M.stats[id]
+            if not s then return nil end
+            local copy = {}
+            for k, v in pairs(s) do copy[k] = v end
+            return copy
+        end,
     }
-    M.equip = {}     -- [itemID] = { type, subtype, equipLoc }
+    M.equip = {}     -- [itemID] = { type, subtype, equipLoc, class = classID, sub = subclassID }
+    Enum.SendAddonMessageResult = { Success = 0, GeneralError = 9 }
 
     local frameMethods = {}
     local function ignored(self) return self end
@@ -269,6 +304,24 @@ end
 -- Someone's roll, as the system line everyone in the group sees.
 function M.roll(who, roll, max, min)
     M.fire("CHAT_MSG_SYSTEM", RANDOM_ROLL_RESULT:format(who, roll, min or 1, max or 100), "", "", "", "", "", 0, 0, "", 0, 1, nil, 0)
+end
+
+-- An addon message from another player's copy of the addon (fields as the addon encodes them).
+function M.message(who, channel, kind, ...)
+    M.fire("CHAT_MSG_ADDON", "NoctisLC", M.ns.Encode(kind, ...), channel, who, "", 0, 0, "", 0)
+end
+
+-- The addon messages sent, decoded: { kind, fields..., channel = , target = }.
+function M.messages(kind)
+    local out = {}
+    for _, a in ipairs(M.addon) do
+        local f = M.ns.Decode(a.text)
+        if not kind or f[1] == kind then
+            f.channel, f.target = a.channel, a.target
+            out[#out + 1] = f
+        end
+    end
+    return out
 end
 
 -- Every chat line sent so far, joined.

@@ -29,8 +29,19 @@ local function TierName(tier)
     return tier == 1 and L["main spec"] or tier == 2 and L["second main spec"] or L["off spec"]
 end
 
-local current -- the roll running now: { link, id, round, tied = { [key] = true }|nil, rolls = { [key] = entry } }
+local WARN = 10          -- seconds left when raid chat is reminded
+
+-- The roll running now: { link, id, sid, round, tied = { [key] = true }|nil, rolls = { [key] = entry },
+-- only = { [key] = true }|nil (a roll-off: only these count, all as equals), onAward = fn|nil }
+local current
 local token = 0  -- each round's timer checks it's still the round it was started for
+local sessions = 0
+
+-- A number for each roll or council session, so raiders' addons can tell them apart.
+function ns.NewSession()
+    sessions = sessions + 1
+    return time() % 1000000 * 100 + sessions % 100
+end
 
 ---------------------------------------------------------------------------
 -- Tonight's wins and trials
@@ -108,10 +119,22 @@ local function Schedule(r)
     token = token + 1
     local mine = token
     if C_Timer and C_Timer.After then
+        if r.round == 1 then
+            C_Timer.After(DURATION - WARN, function()
+                if current == r and token == mine then
+                    ns.Announce(L["%d seconds left to roll for %s."]:format(WARN, r.link))
+                end
+            end)
+        end
         C_Timer.After(DURATION, function()
             if current == r and token == mine then Finish() end
         end)
     end
+end
+
+local function Done(r)
+    if current == r then current = nil end
+    if r.sid then ns.Broadcast("E", r.sid) end
 end
 
 -- Adds an award to the loot log, with what the export and the bot want to know: the
@@ -140,6 +163,7 @@ local function Wanted(r)
 end
 
 local function Award(r, e)
+    if r.onAward then return r.onAward(e, e.r[#e.r]) end
     local ms, os = Wanted(r)
     ns.LogAward({ id = r.id, link = r.link, who = e.name, how = HOW[e.tier], roll = e.r[#e.r], nms = ms, nos = os }, e.unit)
     ns.Announce(L["%s wins %s (%s, %d)."]:format(e.name, r.link, Describe(e), e.r[#e.r]))
@@ -157,8 +181,9 @@ Finish = function()
         print(("  %d. %s %s · %s"):format(i, e.name, concat(rolls, " / "), Describe(e)))
     end
     if #list == 0 then
-        current = nil
+        Done(r)
         ns.Announce(L["Nobody rolled for %s."]:format(r.link))
+        if r.onNobody then r.onNobody() end
         return
     end
     local top, tied = list[1], { list[1] }
@@ -167,12 +192,12 @@ Finish = function()
         tied[#tied + 1] = list[i]
     end
     if #tied == 1 then
-        current = nil
+        Done(r)
         Award(r, top)
         return
     end
     if r.round > 1 and not top.r[r.round] then
-        current = nil -- a tie, and none of those tied rolled again
+        Done(r) -- a tie, and none of those tied rolled again
         ns.Announce(L["Nobody re-rolled for %s; the loot master decides."]:format(r.link))
         return
     end
@@ -186,12 +211,10 @@ Finish = function()
     Schedule(r)
 end
 
-local function OnRoll(who, roll, low, high)
+local function OnRoll(m, roll, low, high)
     local r = current
-    roll, low, high = tonumber(roll), tonumber(low), tonumber(high)
-    if not r or not roll then return end
-    local m = ns.GroupMember(who)
-    if not m then return end
+    if not r then return end
+    if r.only and not r.only[m.key] then return end
     if low ~= 1 or (high ~= MS and high ~= OS) then
         ns.Say(L["Ignored %s's roll of %d (%d-%d): only /roll (main spec) and /roll 99 (off spec) count."]:format(m.name, roll, low or 0, high or 0))
         return
@@ -207,21 +230,51 @@ local function OnRoll(who, roll, low, high)
         return
     end
     if e then return end -- the first roll counts
+    if r.only then -- a roll-off: everyone in it rolls as an equal
+        r.rolls[m.key] = { name = m.name, key = m.key, unit = m.unit, tier = 1, trial = false, r = { roll } }
+        return
+    end
     local tier = high == OS and 3 or (ns.WonTonight(m.key) and 2 or 1)
     r.rolls[m.key] = { name = m.name, key = m.key, unit = m.unit, tier = tier, trial = ns.IsTrial(m.unit), r = { roll } }
 end
 
--- "%s rolls %d (%d-%d)" as a pattern, from the client's own text.
+-- A roll line from chat, "%s rolls %d (%d-%d)" in the client's own words, as the group
+-- member who rolled, the roll and its range; nil for anything else.
 local ROLL
-ns.On("CHAT_MSG_SYSTEM", function(text)
-    if not current or not Plain(text) or type(text) ~= "string" then return end
+function ns.ParseRoll(text)
+    if not Plain(text) or type(text) ~= "string" then return nil end
     ROLL = ROLL or ns.ChatPattern(RANDOM_ROLL_RESULT)
-    if not ROLL then return end
+    if not ROLL then return nil end
     local who, roll, low, high = text:match(ROLL)
-    if who then OnRoll(who, roll, low, high) end
+    roll, low, high = tonumber(roll), tonumber(low), tonumber(high)
+    local m = who and roll and ns.GroupMember(who)
+    if m then return m, roll, low, high end
+end
+
+ns.On("CHAT_MSG_SYSTEM", function(text)
+    if not current then return end
+    local m, roll, low, high = ns.ParseRoll(text)
+    if m then OnRoll(m, roll, low, high) end
 end)
 
 function ns.CurrentRoll() return current end
+
+-- Starts a roll. opts: only = { key = true } and onAward = fn(entry, roll) for a council
+-- roll-off; onNobody = fn. Returns false if a roll is already running.
+function ns.StartRoll(id, link, opts)
+    if current then return false end
+    opts = opts or {}
+    current = { id = id, link = link, round = 1, rolls = {}, sid = ns.NewSession(), only = opts.only,
+        onAward = opts.onAward, onNobody = opts.onNobody }
+    if opts.only then
+        ns.Announce(L["Roll-off for %s between %s: /roll. %d seconds."]:format(link, opts.names, DURATION))
+    else
+        ns.Announce(L["Roll for %s: /roll for main spec, /roll 99 for off spec. %d seconds."]:format(link, DURATION))
+        ns.Broadcast("S", current.sid, link, "roll", DURATION)
+    end
+    Schedule(current)
+    return true
+end
 
 ---------------------------------------------------------------------------
 -- Commands
@@ -234,32 +287,47 @@ local function ItemFrom(text)
     if item then return id, item.link end
 end
 
-ns.Command("start", function(text)
+-- Starts the item's lane: the council for a council item (unless `how` is "roll"), else a
+-- roll. Returns false if something is already running.
+function ns.StartItem(id, link, how)
     if current then
         ns.Say(L["Already rolling for %s. /nlc stop ends it now, /nlc cancel calls it off."]:format(current.link))
-        return
+        return false
     end
-    local id, link = ItemFrom(text)
+    local item = id and ns.db.items[id]
+    if how ~= "roll" and (how == "council" or (item and item.handling == "council")) and ns.StartCouncil then
+        return ns.StartCouncil(id, link)
+    end
+    return ns.StartRoll(id, link)
+end
+
+ns.Command("start", function(text)
+    local how = text:match("%s(%a+)$")
+    if how ~= "roll" and how ~= "council" then how = nil end
+    local id, link = ItemFrom(how and text:sub(1, -#how - 2) or text)
     if not link then
         ns.Say(L["Roll for what? Shift-click the item, or use a listed item's ID or name."])
         return
     end
-    current = { id = id, link = link, round = 1, rolls = {} }
-    ns.Announce(L["Roll for %s: /roll for main spec, /roll 99 for off spec. %d seconds."]:format(link, DURATION))
-    Schedule(current)
-end, L["<item>: start a roll for it (main spec /roll, off spec /roll 99)"])
+    ns.StartItem(id, link, how)
+end, L["<item> [roll|council]: start its roll, or the council for a council item"])
 
 ns.Command("stop", function()
-    if not current then ns.Say(L["No roll running."]) return end
-    Finish()
-end, L["end the roll now and announce the winner"])
+    if current then return Finish() end
+    if ns.StopCouncil and ns.StopCouncil() then return end
+    ns.Say(L["No roll running."])
+end, L["end the roll (or the council's bids or vote) now"])
 
 ns.Command("cancel", function()
-    if not current then ns.Say(L["No roll running."]) return end
-    local link = current.link
-    current = nil
-    ns.Announce(L["Roll for %s called off."]:format(link))
-end, L["call off the roll"])
+    if not current then
+        if ns.CancelCouncil and ns.CancelCouncil() then return end
+        ns.Say(L["No roll running."])
+        return
+    end
+    local r = current
+    Done(r)
+    ns.Announce(L["Roll for %s called off."]:format(r.link))
+end, L["call off the roll or the council"])
 
 ns.Command("wins", function()
     local since, lines = Tonight(), {}
