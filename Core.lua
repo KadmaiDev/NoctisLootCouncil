@@ -64,18 +64,27 @@ end)
 --   instances = { [instanceID] = name },
 --   minQuality = number|nil,            -- lowest quality recorded (nil = 3, rare)
 --   dungeons = true|nil,                -- record dungeon drops too (for trying it out)
---   log = { { id = itemID, link, who = "First Last", at = time(), how = "ms"|"ms2"|"os", roll } }, -- awards, oldest first (Rolls.lua)
+--   log = { award }, oldest first (Rolls.lua, Council.lua): { id = itemID, link, who = "First Last",
+--         class = "WARLOCK"|nil, at = time(), how = "ms"|"ms2"|"os"|"council", roll|nil,
+--         note = council reason or the winner's bid|nil, inst = raid name|nil, boss = boss name|nil,
+--         nms, nos = how many wanted it main spec / off spec|nil }
+--   drops = { { id = itemID, at = time(), src|nil, inst|nil, n = copies } }, -- each sighting that added to an item's count, for the bot to merge officers' uploads
 --   night = time()|nil,                 -- /nlc newnight: wins before this don't count as tonight's
 --   trialRanks = { "rank name", ... }|nil, -- guild ranks that are trials (nil = any rank with "trial" in its name)
+--   me = "First Last",                  -- who last logged in with this file (for the companion app's uploads)
+--   decisionsAt = time()|nil,           -- the newest decisions from Discord applied (Sync.lua)
 -- }
+-- The companion app reads this file; its format is in NoctisLootBot's docs/sync-format.md.
 -- Each field's type, so a damaged save is repaired at load instead of breaking things.
 local DB_FIELDS = { v = "number", items = "table", encounters = "table", bossSources = "table",
     instances = "table", minQuality = "number", dungeons = "boolean", log = "table", night = "number",
-    trialRanks = "table" }
+    trialRanks = "table", drops = "table", me = "string", decisionsAt = "number" }
 ns.ITEM_FIELDS = { link = "string", q = "number", first = "number", last = "number", seen = "number",
     from = "table", inst = "number", handling = "string", note = "string" }
 local ENCOUNTER_FIELDS = { name = "string", inst = "number", src = "string" }
-local LOG_FIELDS = { id = "number", link = "string", who = "string", at = "number", how = "string", roll = "number" }
+local LOG_FIELDS = { id = "number", link = "string", who = "string", class = "string", at = "number",
+    how = "string", roll = "number", note = "string", inst = "string", boss = "string", nms = "number", nos = "number" }
+local DROP_FIELDS = { id = "number", at = "number", src = "string", inst = "number", n = "number" }
 
 local function KeepTyped(t, fields)
     for k, v in pairs(t) do
@@ -126,6 +135,11 @@ function ns.Repair(db)
         KeepTyped(e, LOG_FIELDS)
         return e.who ~= nil and e.at ~= nil and e.how ~= nil
     end)
+    db.drops = Compact(db.drops or {}, function(d)
+        if type(d) ~= "table" then return false end
+        KeepTyped(d, DROP_FIELDS)
+        return d.id ~= nil and d.at ~= nil and d.n ~= nil
+    end)
     if db.trialRanks then
         db.trialRanks = Compact(db.trialRanks, function(r) return type(r) == "string" end)
     end
@@ -136,6 +150,10 @@ ns.On("ADDON_LOADED", function(name)
     if name ~= ADDON then return end
     if type(NoctisLootCouncilDB) ~= "table" then NoctisLootCouncilDB = {} end
     ns.db = ns.Repair(NoctisLootCouncilDB)
+end)
+
+ns.On("PLAYER_LOGIN", function()
+    if ns.db then ns.db.me = ns.PlayerName() or ns.db.me end
 end)
 
 ---------------------------------------------------------------------------

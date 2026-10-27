@@ -20,3 +20,4 @@ Locales.lua
 Core.lua
 Discovery.lua
 Rolls.lua
+Sync.lua

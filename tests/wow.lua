@@ -45,7 +45,7 @@ function M.load(files, addonName)
     M.qualities = {} -- [itemID] = quality the item cache knows (nil = not cached)
     M.cache = {}     -- [itemID] = { name, quality }: items the client has loaded (GetItemInfo answers)
     M.requested = {} -- item IDs the addon asked the client to load
-    M.player = { "Kadmai", "Moonwhisper", guild = "Noctis", rank = "Officer" }
+    M.player = { "Kadmai", "Moonwhisper", guild = "Noctis", rank = "Officer", class = "HUNTER" }
     M.group = {}     -- the group, the player first (raid1 / player, then raid2 / party1, ...); empty = solo
     M.inRaid = false
     M.timers = {}    -- { at, fn }, run by M.wait
@@ -69,6 +69,12 @@ function M.load(files, addonName)
         local u = Unit(unit)
         if u then return u[1], u[2] end
     end
+    UnitClass = function(unit)
+        local u = Unit(unit)
+        if u and u.class then return u.class:sub(1, 1) .. u.class:sub(2):lower(), u.class, 1 end
+    end
+    date = os.date
+    NoctisLootDecisions = nil
     GetGuildInfo = function(unit)
         local u = Unit(unit)
         if u and u.guild then return u.guild, u.rank, 1 end

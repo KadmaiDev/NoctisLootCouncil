@@ -113,9 +113,34 @@ local function Schedule(r)
     end
 end
 
-local function Award(r, e)
+-- Adds an award to the loot log, with what the export and the bot want to know: the
+-- winner's class, the raid and the boss.
+function ns.LogAward(award, unit)
+    if unit and UnitClass then
+        local _, class = UnitClass(unit)
+        if Plain(class) and type(class) == "string" then award.class = class end
+    end
+    local name, instanceType = GetInstanceInfo()
+    if Plain(name) and Plain(instanceType) and instanceType ~= "none" and type(name) == "string" then award.inst = name end
+    award.boss = ns.RecentBoss()
+    award.at = time()
     local log = ns.db.log
-    log[#log + 1] = { id = r.id, link = r.link, who = e.name, at = time(), how = HOW[e.tier], roll = e.r[#e.r] }
+    log[#log + 1] = award
+    return award
+end
+
+-- How many rolled main spec and off spec (first rolls only).
+local function Wanted(r)
+    local ms, os = 0, 0
+    for _, e in pairs(r.rolls) do
+        if e.tier == 3 then os = os + 1 else ms = ms + 1 end
+    end
+    return ms, os
+end
+
+local function Award(r, e)
+    local ms, os = Wanted(r)
+    ns.LogAward({ id = r.id, link = r.link, who = e.name, how = HOW[e.tier], roll = e.r[#e.r], nms = ms, nos = os }, e.unit)
     ns.Announce(L["%s wins %s (%s, %d)."]:format(e.name, r.link, Describe(e), e.r[#e.r]))
 end
 
@@ -182,7 +207,7 @@ local function OnRoll(who, roll, low, high)
     end
     if e then return end -- the first roll counts
     local tier = high == OS and 3 or (ns.WonTonight(m.key) and 2 or 1)
-    r.rolls[m.key] = { name = m.name, key = m.key, tier = tier, trial = ns.IsTrial(m.unit), r = { roll } }
+    r.rolls[m.key] = { name = m.name, key = m.key, unit = m.unit, tier = tier, trial = ns.IsTrial(m.unit), r = { roll } }
 end
 
 -- "%s rolls %d (%d-%d)" as a pattern, from the client's own text.

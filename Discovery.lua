@@ -95,6 +95,7 @@ local function Record(itemID, link, q, inst, src, killKey, kind, n)
             local add = most - c.counted
             c.counted = most
             item.seen = item.seen + add
+            db.drops[#db.drops + 1] = { id = itemID, at = time(), src = src, inst = inst, n = add }
             if src then
                 item.from = item.from or {}
                 item.from[src] = (item.from[src] or 0) + add
@@ -148,6 +149,13 @@ ns.On("BOSS_KILL", Killed)
 
 local function RecentKill()
     if kill and GetTime() - kill.at < RECENT then return kill end
+end
+
+-- The name of the boss killed in the last RECENT seconds, for the loot log.
+function ns.RecentBoss()
+    local k = RecentKill()
+    local e = k and ns.db.encounters[k.id]
+    return e and e.name
 end
 
 ---------------------------------------------------------------------------
@@ -317,6 +325,8 @@ end
 -- (seen = 0). Given an ID the game hasn't loaded yet, the link fills in when it arrives.
 local waiting = {} -- [itemID] = true while the game loads an added item
 
+-- Placeholder links ("item:18000", or "item:18000 [Name]" when the name is known from
+-- Discord) have no "|H"; the real link replaces them once the game has the item.
 local function LoadLink(id)
     local item = ns.db.items[id]
     if not item or item.link:find("|H", 1, true) then return true end
@@ -333,18 +343,24 @@ ns.On("GET_ITEM_INFO_RECEIVED", function(id)
     if Plain(id) and waiting[id] and ns.db and LoadLink(id) then waiting[id] = nil end
 end)
 
--- Like ns.FindItem, but a link or an item ID not in the list is added to it.
-local function FindOrAdd(text)
-    local id, item, rest = ns.FindItem(text)
-    if item or not id then return id, item, rest end
-    local link = text:match("^|c.-|h|r")
-    item = { first = time(), seen = 0, link = link or ("item:" .. id) }
+-- Adds an item we haven't seen drop (seen = 0) and returns it. name, if known, shows until
+-- the game loads the item.
+function ns.AddUnseen(id, link, name)
+    local item = { first = time(), seen = 0, link = link or ("item:" .. id .. (name and " [" .. name .. "]" or "")) }
     if link then item.q = Quality(id, link) end
     ns.db.items[id] = item
     if not link and not LoadLink(id) then
         waiting[id] = true
         if C_Item and C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(id) end
     end
+    return item
+end
+
+-- Like ns.FindItem, but a link or an item ID not in the list is added to it.
+local function FindOrAdd(text)
+    local id, item, rest = ns.FindItem(text)
+    if item or not id then return id, item, rest end
+    item = ns.AddUnseen(id, text:match("^|c.-|h|r"))
     ns.Say(L["Added %s to the list (not seen in our raids yet)."]:format(item.link))
     return id, item, rest
 end
