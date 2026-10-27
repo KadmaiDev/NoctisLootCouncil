@@ -2,7 +2,7 @@ r"""Copies the working files into Interface\AddOns\NoctisLootCouncilDev, a secon
 the addon for testing in game next to an installed release, with its own saved file
 (NoctisLootCouncilDev.lua).
 
-    python tools/install_dev.py "<WoW>\_forever_"
+    python addon/tools/install_dev.py "<WoW>\_forever_"
 
 The .toc files are renamed to match the folder and titled "Noctis Loot Council (dev)".
 Enable only one copy at a time: a second copy stays off and says so.
@@ -12,9 +12,11 @@ import os
 import shutil
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # the addon folder
+REPO = os.path.dirname(ROOT)
 TOCS = ["NoctisLootCouncil.toc", "NoctisLootCouncil_Camelot.toc"]
-EXTRA = ["LICENSE"]  # add media/icon.tga etc. once there is artwork
+# Files shipped that the .toc doesn't list: name in the addon -> source.
+EXTRA = {"LICENSE": os.path.join(REPO, "LICENSE")}  # add media/icon.tga etc. once there is artwork
 
 
 def toc_files(text):
@@ -40,12 +42,12 @@ def main():
         with open(target, "w", encoding="utf-8", newline="\n") as f:
             f.write(toc.replace("## Title: Noctis Loot Council", "## Title: Noctis Loot Council (dev)", 1)
                     .replace("AddOns\\NoctisLootCouncil\\", "AddOns\\NoctisLootCouncilDev\\"))
-    files = toc_files(toc) + EXTRA
-    for name in files:
+    sources = [(name, os.path.join(ROOT, name)) for name in toc_files(toc)] + list(EXTRA.items())
+    for name, source in sources:
         target = os.path.join(dev, name)
         os.makedirs(os.path.dirname(target), exist_ok=True)
-        shutil.copy2(os.path.join(ROOT, name), target)
-    print("copied %d files to %s" % (len(files) + len(TOCS), dev))
+        shutil.copy2(source, target)
+    print("copied %d files to %s" % (len(sources) + len(TOCS), dev))
 
 
 if __name__ == "__main__":
