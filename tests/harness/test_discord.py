@@ -19,7 +19,8 @@ async def test_loot_add_posts_to_both_channels_with_a_thread(guild, running):
     officer, items = await add_sash(guild)
     assert officer.thread is not None and officer.thread.name == "Sash of the Unseen"
     assert officer.button_labels == ["Council", "Roll", "Set priority"]
-    assert "Waist · Cloth" in officer.text
+    assert "### Sash of the Unseen\n-# Epic · Waist · Cloth · Molten Core, Lucifron" in officer.text
+    assert officer.components[0]["accent_color"] == 0xA335EE  # /loot add assumes epic
     assert items.thread is None
     assert items.button_labels == ["Suggest for council · 0"]
     # Using it again updates the posts instead of adding new ones.

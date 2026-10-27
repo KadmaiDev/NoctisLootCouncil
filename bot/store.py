@@ -52,20 +52,22 @@ class Store:
         return self.conn.execute("SELECT 1 FROM items WHERE id = ?", (item_id,)).fetchone() is not None
 
     def add_item(self, item_id: int, name: str, *, slot: str | None = None, source: str | None = None,
-                 by: str | None = None) -> bool:
-        """/loot add. Returns True if the item is new; an existing item gets the given details updated."""
+                 quality: int | None = None, by: str | None = None) -> bool:
+        """/loot add. Returns True if the item is new; an existing item gets the given details updated.
+        The quality is the officer's choice until an upload from the game sets the real one."""
         name = name.strip()
         with self.conn:
             if self.item_exists(item_id):
                 self.conn.execute(
-                    "UPDATE items SET name = ?, slot = COALESCE(?, slot), source = COALESCE(?, source) WHERE id = ?",
-                    (name, slot or None, source or None, item_id))
+                    "UPDATE items SET name = ?, slot = COALESCE(?, slot), source = COALESCE(?, source), "
+                    "quality = CASE WHEN link IS NULL THEN COALESCE(?, quality) ELSE quality END WHERE id = ?",
+                    (name, slot or None, source or None, quality, item_id))
                 self._mark_dirty(item_id)
                 self._refresh_decisions_at()
                 return False
             self.conn.execute(
-                "INSERT INTO items(id, name, slot, source, added_by, created_at) VALUES(?, ?, ?, ?, ?, ?)",
-                (item_id, name, slot or None, source or None, by, self.now()))
+                "INSERT INTO items(id, name, slot, source, quality, added_by, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)",
+                (item_id, name, slot or None, source or None, quality, by, self.now()))
             return True
 
     def find_items(self, text: str, limit: int = 25) -> list[tuple[int, str]]:

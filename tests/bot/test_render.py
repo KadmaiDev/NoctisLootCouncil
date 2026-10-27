@@ -24,15 +24,17 @@ def test_officer_card_matches_mockup():
               suggestions=6)
     card = render.officer_card(s, TZ)
     assert card.title == "Sash of the Unseen"
-    assert card.description == "Waist · Cloth · Molten Core, Gehennas · not dropped for us yet"
+    assert card.subtitle == "Epic · Waist · Cloth · Molten Core, Gehennas"
     assert card.colour == 0xA335EE
-    fields = {f.name: f.value for f in card.fields}
-    assert fields["Votes"] == "**Council 3** · Roll 1\nSeren, Doran, Kadmai · Lyra"
-    assert fields["Priority"] == "Warlock priority\nset by Seren"
-    assert fields["Raiders suggesting council"] == "6, from #loot-items"
-    assert fields["In our raids"] == "No drops yet"
-    assert fields["Decision"] == ("✅ Decided: **council item**, 3 of 4. "
-                                  "Shown in #loot-items; in the addon after the next /reload.")
+    assert card.kicker == ""
+    assert card.body.splitlines() == [
+        "✅ **Council item**, decided 3 of 4. In game after the next /reload.",
+        "**Votes:** Council 3 · Roll 1",
+        "-# Council: Seren, Doran, Kadmai · Roll: Lyra",
+        "**Priority:** Warlock priority",
+        "-# Set by Seren",
+    ]
+    assert card.footer == "No drops yet · 6 raiders suggest council in #loot-items"
     assert [b.label for b in card.buttons] == ["Council", "Roll", "Set priority"]
 
 
@@ -43,32 +45,39 @@ def test_officer_card_new_in_raid():
               new_in_raid=True, drops=1, first_drop_at=RAID + 900, last_drop_at=RAID + 900, first_award=award,
               suggestions=2)
     card = render.officer_card(s, TZ)
-    assert card.author == "NEW IN OUR RAID LAST NIGHT"
-    assert card.description == ("Hands · Cloth · Molten Core, Lucifron · rolled, won by Corvin Dusk (main spec, 77)\n"
-                                "Wanted it: **4** main spec, **1** off spec")
-    fields = {f.name: f.value for f in card.fields}
-    assert fields["Votes"] == "None yet"
-    assert fields["In our raids"] == "Dropped once, last Mon 26 Oct"
-    assert "Decision" not in fields
+    assert card.kicker == "NEW IN OUR RAID LAST NIGHT"
+    assert card.body.splitlines() == [
+        "Rolled, won by Corvin Dusk (main spec, 77)",
+        "-# Wanted it: 4 main spec, 1 off spec",
+        "**Votes:** none yet",
+    ]
+    assert card.footer == "Dropped once, last Mon 26 Oct · 2 raiders suggest council in #loot-items"
 
 
 def test_new_in_raid_posted_days_later_names_the_day():
     s = state(new_in_raid=True, drops=1, first_drop_at=RAID, last_drop_at=RAID, created_at=RAID + 3 * 86400)
-    assert render.officer_card(s, TZ).author == "NEW IN OUR RAID ON MONDAY 26 OCT"
+    assert render.officer_card(s, TZ).kicker == "NEW IN OUR RAID ON MONDAY 26 OCT"
 
 
 def test_officer_card_in_game_decision():
     s = state(game_handling=ROLL, game_note="tanks first", game_by="Kadmai Moonwhisper")
-    fields = {f.name: f.value for f in render.officer_card(s, TZ).fields}
-    assert fields["Decision"] == "Set in game by Kadmai Moonwhisper: **roll item**. A vote here replaces it."
-    assert fields["Priority"] == "tanks first\nset in game by Kadmai Moonwhisper"
+    body = render.officer_card(s, TZ).body.splitlines()
+    assert body[0] == "Set in game by Kadmai Moonwhisper: **roll item**. A vote here replaces it."
+    assert body[-2:] == ["**Priority:** tanks first", "-# Set in game by Kadmai Moonwhisper"]
+
+
+def test_officer_card_without_details_stays_short():
+    card = render.officer_card(state(quality=None, slot=None, source_text=None), TZ)
+    assert (card.subtitle, card.body, card.footer) == ("", "**Votes:** none yet", "No drops yet")
+    assert card.colour == render.DEFAULT_COLOUR
 
 
 def test_items_card_council():
     s = state(tally=tally(MOCKUP_VOTES, 3), decision=COUNCIL, priority="Warlock priority")
     card = render.items_card(s, TZ)
-    assert card.description == ("Waist · Cloth · Molten Core, Gehennas\n**Council item**\n"
-                                "Priority: **Warlock priority**\n*Decided by the officers, 3 of 4.*")
+    assert card.subtitle == "Epic · Waist · Cloth · Molten Core, Gehennas"
+    assert card.body == "**Council item**\nPriority: **Warlock priority**"
+    assert card.footer == "Decided by the officers, 3 of 4."
     assert card.buttons == []  # council items show no button
 
 
@@ -76,8 +85,8 @@ def test_items_card_undecided_new_item():
     s = state(id=16805, name="Felheart Gloves", slot="Hands · Cloth", source_text="Molten Core, Lucifron",
               new_in_raid=True, drops=1, first_drop_at=RAID + 900, suggestions=2)
     card = render.items_card(s, TZ)
-    assert card.description == ("Hands · Cloth · Molten Core, Lucifron · first seen last night\n"
-                                "**Undecided · rolled**\nRolled until the officers decide.")
+    assert card.body == "**Undecided**"
+    assert card.footer == "First seen last night.\nRolled until the officers decide."
     assert [b.label for b in card.buttons] == ["Suggest for council · 2"]
 
 
@@ -85,10 +94,18 @@ def test_items_card_roll_item():
     s = state(name="Robe of Volatile Power", quality=3, tally=tally(votes(("A", ROLL), ("B", ROLL), ("C", ROLL)), 3),
               decision=ROLL)
     card = render.items_card(s, TZ)
-    assert "**Roll item**" in card.description
-    assert card.description.endswith("Main spec, then second main spec, then off spec.")
+    assert card.body == "**Roll item**"
+    assert card.footer == "Main spec, then second main spec, then off spec.\nDecided by the officers, 3 of 3."
+    assert card.subtitle.startswith("Rare · ")
     assert card.colour == 0x0070DD
     assert [b.label for b in card.buttons] == ["Suggest for council · 0"]
+
+
+def test_card_text_puts_small_lines_around_the_heading():
+    card = render.Card(title="Felheart Gloves", colour=0, kicker="NEW IN OUR RAID LAST NIGHT", subtitle="Epic",
+                       body="**Votes:** none yet", footer="one\ntwo")
+    assert card.text().splitlines() == ["-# NEW IN OUR RAID LAST NIGHT", "### Felheart Gloves", "-# Epic",
+                                        "**Votes:** none yet", "-# one", "-# two"]
 
 
 def test_card_digest_changes_with_content():
@@ -117,9 +134,9 @@ def test_log_post_matches_mockup():
         aw("Robe of Volatile Power", "Bran Holloway", "os", 64),
         aw("Onslaught Girdle", "Doran Pike", "ms2", 58, nms=1, nos=0),
     ])
-    [msg] = render.log_messages(group)
-    assert msg.splitlines() == [
-        "**Molten Core · Monday 26 Oct · 6 items**",
+    [card] = render.log_cards(group)
+    assert (card.title, card.subtitle, card.footer) == ("Molten Core · Monday 26 Oct", "6 items", render.LOG_FOOTER)
+    assert card.body.splitlines() == [
         "Choker of Enlightenment → **Vespera Ashward** · main-spec roll, 91",
         "Sash of the Unseen → **Ilsa Marrow** · council",
         '> "Warlock priority; biggest upgrade over raid gear; one item in two weeks"',
@@ -127,19 +144,19 @@ def test_log_post_matches_mockup():
         "Helm of Might → **Tarnia Moonwhisper** · main-spec roll, 90",
         "Robe of Volatile Power → **Bran Holloway** · off-spec roll, 64",
         "Onslaught Girdle → **Doran Pike** · second main-spec roll, 58 (nobody else wanted it)",
-        "-# " + render.LOG_FOOTER,
     ]
 
 
 def test_long_log_is_split_without_breaking_lines():
     group = LogGroup("Molten Core", "2026-10-26", [aw(f"Item number {i:03}", "Somebody Longname", "ms", 50)
-                                                   for i in range(80)])
-    parts = render.log_messages(group)
+                                                   for i in range(200)])
+    parts = render.log_cards(group)
     assert len(parts) > 1
-    assert all(len(p) <= 2000 for p in parts)
-    assert parts[0].startswith("**Molten Core · Monday 26 Oct · 80 items**")
-    assert parts[-1].endswith(render.LOG_FOOTER)
-    assert sum(p.count(" → ") for p in parts) == 80
+    assert all(len(p.text()) <= 4000 for p in parts)
+    assert (parts[0].title, parts[0].subtitle) == ("Molten Core · Monday 26 Oct", "200 items")
+    assert parts[1].title == "Molten Core · Monday 26 Oct (continued)" and parts[1].subtitle == ""
+    assert [bool(p.footer) for p in parts] == [False] * (len(parts) - 1) + [True]
+    assert sum(p.body.count(" → ") for p in parts) == 200
 
 
 def test_markdown_in_player_text_is_escaped():
@@ -154,25 +171,25 @@ def test_priorities_post_for_one_raid():
         state(id=3, name="Robe of Volatile Power", decision=ROLL),
         state(id=4, name="Head of Onyxia", decision=COUNCIL, raid="Onyxia's Lair"),
     ]
-    [msg] = render.priorities_messages(states, "Thursday 29 Oct", "Molten Core")
-    assert msg.splitlines() == [
-        "**Molten Core · Thursday 29 Oct · council items**",
-        "Onslaught Girdle · tanks first",
-        "Sash of the Unseen · Warlock priority",
+    [card] = render.priorities_cards(states, "Thursday 29 Oct", "Molten Core")
+    assert (card.title, card.subtitle) == ("Molten Core · Thursday 29 Oct", "Council items")
+    assert card.body.splitlines() == [
+        "- **Onslaught Girdle** · tanks first",
+        "- **Sash of the Unseen** · Warlock priority",
         "",
         render.EVERYTHING_ELSE,
-        "-# Think something should be a council item? Press Suggest for council on its post in #loot-items.",
     ]
+    assert card.footer == "Think something should be a council item? Press Suggest for council on its post in #loot-items."
 
 
 def test_priorities_post_all_raids_grouped():
     states = [state(name="Sash", decision=COUNCIL), state(id=4, name="Head of Onyxia", game_handling=COUNCIL,
                                                           raid="Onyxia's Lair"),
               state(id=5, name="Mystery", decision=COUNCIL, raid=None)]
-    [msg] = render.priorities_messages(states, "Thursday 29 Oct")
-    lines = msg.splitlines()
-    assert lines[:7] == ["**Thursday 29 Oct · council items**", "__Molten Core__", "Sash", "__Onyxia's Lair__",
-                         "Head of Onyxia", "__Other__", "Mystery"]
+    [card] = render.priorities_cards(states, "Thursday 29 Oct")
+    assert card.title == "Thursday 29 Oct"
+    assert card.body.splitlines()[:6] == ["__Molten Core__", "- **Sash**", "__Onyxia's Lair__", "- **Head of Onyxia**",
+                                          "__Other__", "- **Mystery**"]
 
 
 def test_status_text():

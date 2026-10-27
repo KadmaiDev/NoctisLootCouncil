@@ -49,9 +49,24 @@ class FakeChannel:
             async def edit(self, **kwargs):
                 if mid not in channel.messages:
                     raise discord.NotFound(SimpleNamespace(status=404, reason="Not Found"), "Unknown Message")
+                if channel.messages[mid].get("embed"):  # an old-style post Discord won't turn into a layout
+                    raise discord.HTTPException(SimpleNamespace(status=400, reason="Bad Request"), "Invalid Form Body")
                 channel.edits += 1
                 channel.messages[mid].update(kwargs)
+
+            async def delete(self):
+                channel.messages.pop(mid, None)
         return Partial()
+
+
+def text(msg: dict) -> str:
+    """What a sent layout message says."""
+    return "\n".join(c.content for c in msg["view"].walk_children() if isinstance(c, discord.ui.TextDisplay))
+
+
+def buttons(msg: dict) -> list[str]:
+    items = (getattr(c, "item", c) for c in msg["view"].walk_children())  # the buttons are DynamicItems
+    return [b.label for b in items if isinstance(b, discord.ui.Button)]
 
 
 def make_bot(tmp_path, channels) -> LootBot:
@@ -75,8 +90,8 @@ async def test_upload_posts_once_and_survives_restart(tmp_path, channels):
     assert channels[OFFICERS].sends == 3 and channels[ITEMS].sends == 3
     assert channels[LOG].sends == 1
     assert sorted(channels[OFFICERS].threads) == ["Felheart Gloves", "Item 17069", "Sash of the Unseen"]
-    log_text = next(iter(channels[LOG].messages.values()))["content"]
-    assert log_text.startswith("**Molten Core · Monday 26 Oct · 2 items**")
+    log_text = text(next(iter(channels[LOG].messages.values())))
+    assert log_text.startswith("### Molten Core · Monday 26 Oct\n-# 2 items")
 
     # Restart: a new client on the same database posts nothing new.
     bot2 = make_bot(tmp_path, channels)
@@ -96,13 +111,26 @@ async def test_votes_edit_posts_and_remove_suggest_button(tmp_path, channels):
     bot.store.add_item(16805, "Felheart Gloves")
     await bot.sync_pending()
     items_msg = next(iter(channels[ITEMS].messages.values()))
-    assert items_msg["view"] is not None
+    assert buttons(items_msg) == ["Suggest for council · 0"]
     for uid in (1, 2, 3):
         bot.store.cast_vote(16805, uid, f"O{uid}", COUNCIL)
     await bot.sync_item(16805)
     assert channels[OFFICERS].sends == 1 and channels[OFFICERS].edits == 1
-    assert items_msg["view"] is None  # council items have no Suggest button
-    assert "**Council item**" in items_msg["embed"].description
+    assert buttons(items_msg) == []  # council items have no Suggest button
+    assert "**Council item**" in text(items_msg)
+
+
+async def test_old_style_posts_are_replaced_by_layout_posts(tmp_path, channels):
+    bot = make_bot(tmp_path, channels)
+    bot.store.add_item(16805, "Felheart Gloves")
+    await bot.sync_pending()
+    for ch in (channels[OFFICERS], channels[ITEMS]):
+        next(iter(ch.messages.values()))["embed"] = object()  # as the bot posted before the redesign
+    bot.store.toggle_suggestion(16805, 5)
+    await bot.sync_pending()
+    assert channels[ITEMS].sends == 2 and len(channels[ITEMS].messages) == 1
+    assert "Suggest for council · 1" in buttons(next(iter(channels[ITEMS].messages.values())))
+    assert not bot.store.dirty_items()
 
 
 async def test_more_awards_edit_the_nights_log_post(tmp_path, channels):
@@ -115,8 +143,8 @@ async def test_more_awards_edit_the_nights_log_post(tmp_path, channels):
     bot.store.apply_upload(parse_upload(body), "discord:1", "Kadmai")
     await bot.sync_pending()
     assert channels[LOG].sends == 1 and channels[LOG].edits == 1
-    text = next(iter(channels[LOG].messages.values()))["content"]
-    assert "3 items" in text and "Doran Pike" in text
+    log_text = text(next(iter(channels[LOG].messages.values())))
+    assert "3 items" in log_text and "Doran Pike" in log_text
 
 
 async def test_deleted_post_is_posted_again(tmp_path, channels):
@@ -144,9 +172,9 @@ async def test_priorities_post(tmp_path, channels):
         bot.store.cast_vote(18000, uid, f"O{uid}", COUNCIL)
     bot.store.set_priority(18000, "Warlock priority", "Seren")
     assert await bot.post_priorities("Thursday 29 Oct", "Molten Core") == 1
-    text = next(iter(channels[PRIORITIES].messages.values()))["content"]
-    assert text.splitlines()[:2] == ["**Molten Core · Thursday 29 Oct · council items**",
-                                     "Sash of the Unseen · Warlock priority"]
+    post = text(next(iter(channels[PRIORITIES].messages.values())))
+    assert post.splitlines()[:3] == ["### Molten Core · Thursday 29 Oct", "-# Council items",
+                                     "- **Sash of the Unseen** · Warlock priority"]
 
 
 def test_button_custom_ids_round_trip():

@@ -25,7 +25,7 @@ from .config import Config
 from .db import connect
 from .model import Post
 from .store import Store
-from .views import DYNAMIC_ITEMS, card_embed, card_view
+from .views import DYNAMIC_ITEMS, card_layout
 
 log = logging.getLogger("noctis")
 
@@ -138,7 +138,7 @@ class LootBot(commands.Bot):
                                           render.items_card(state, self.tz), item_id)
             return ok
 
-    async def _upsert_card(self, kind: str, key: str, channel_id: int, card: render.Card, item_id: int,
+    async def _upsert_card(self, kind: str, key: str, channel_id: int, card: render.Card, item_id: int | None = None,
                            thread_name: str | None = None) -> bool:
         digest = card.digest()
         post = self.store.get_post(kind, key)
@@ -147,22 +147,27 @@ class LootBot(commands.Bot):
         channel = self._text_channel(channel_id)
         if channel is None:
             return False
-        embed, view = card_embed(card), card_view(card, item_id)
+        view = card_layout(card, item_id)
         if post and post.channel_id == channel_id:
+            message = channel.get_partial_message(post.message_id)
             try:
-                await channel.get_partial_message(post.message_id).edit(embed=embed, view=view)
+                await message.edit(content=None, embed=None, view=view, allowed_mentions=NO_MENTIONS)
                 self.store.save_post(dataclasses.replace(post, digest=digest))
                 return True
             except discord.NotFound:
                 log.info("The %s post for %s was deleted; posting it again", kind, key)
             except discord.HTTPException as exc:
-                log.warning("Could not edit the %s post for %s: %s", kind, key, exc)
-                return False
+                if exc.status != 400:
+                    log.warning("Could not edit the %s post for %s: %s", kind, key, exc)
+                    return False
+                # A post from before the layout redesign that Discord won't convert: replace it.
+                log.info("Replacing the %s post for %s (old format): %s", kind, key, exc)
+                try:
+                    await message.delete()
+                except discord.HTTPException:
+                    pass
         try:
-            kwargs = {"embed": embed, "allowed_mentions": NO_MENTIONS}
-            if view is not None:
-                kwargs["view"] = view
-            msg = await channel.send(**kwargs)
+            msg = await channel.send(view=view, allowed_mentions=NO_MENTIONS)
         except discord.HTTPException as exc:
             log.warning("Could not post %s %s: %s", kind, key, exc)
             return False
@@ -179,48 +184,22 @@ class LootBot(commands.Bot):
     async def sync_log_group(self, inst: str, night: str) -> bool:
         """One #loot-log post per raid and night, edited as more awards arrive (split if it gets long)."""
         async with self._locks[f"log:{inst}|{night}"]:
-            parts = render.log_messages(self.store.log_group(inst, night))
+            parts = render.log_cards(self.store.log_group(inst, night))
             ok = True
-            for i, text in enumerate(parts):
-                ok &= await self._upsert_text("log", f"{inst}|{night}|{i}", self.config.ch_log, text)
+            for i, card in enumerate(parts):
+                ok &= await self._upsert_card("log", f"{inst}|{night}|{i}", self.config.ch_log, card)
                 if not ok:
                     break
             return ok
-
-    async def _upsert_text(self, kind: str, key: str, channel_id: int, text: str) -> bool:
-        digest = render.text_digest(text)
-        post = self.store.get_post(kind, key)
-        if post and post.channel_id == channel_id and post.digest == digest:
-            return True
-        channel = self._text_channel(channel_id)
-        if channel is None:
-            return False
-        if post and post.channel_id == channel_id:
-            try:
-                await channel.get_partial_message(post.message_id).edit(content=text, allowed_mentions=NO_MENTIONS)
-                self.store.save_post(dataclasses.replace(post, digest=digest))
-                return True
-            except discord.NotFound:
-                log.info("The %s post %s was deleted; posting it again", kind, key)
-            except discord.HTTPException as exc:
-                log.warning("Could not edit the %s post %s: %s", kind, key, exc)
-                return False
-        try:
-            msg = await channel.send(text, allowed_mentions=NO_MENTIONS)
-        except discord.HTTPException as exc:
-            log.warning("Could not post %s %s: %s", kind, key, exc)
-            return False
-        self.store.save_post(Post(kind, key, channel.id, msg.id, None, digest))
-        return True
 
     async def post_priorities(self, day: str, raid: str | None) -> int:
         channel = self._text_channel(self.config.ch_priorities)
         if channel is None:
             raise UserError("I can't find the #loot-priorities channel: check CHANNEL_LOOT_PRIORITIES in .env.")
-        parts = render.priorities_messages(self.store.item_states(), day, raid,
-                                           self.channel_mention(self.config.ch_items))
-        for text in parts:
-            await channel.send(text, allowed_mentions=NO_MENTIONS)
+        parts = render.priorities_cards(self.store.item_states(), day, raid,
+                                        self.channel_mention(self.config.ch_items))
+        for card in parts:
+            await channel.send(view=card_layout(card), allowed_mentions=NO_MENTIONS)
         return len(parts)
 
     # ---- errors ------------------------------------------------------------

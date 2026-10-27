@@ -129,24 +129,25 @@ class SuggestButton(discord.ui.DynamicItem[discord.ui.Button], template=r"nlc:su
 DYNAMIC_ITEMS = (VoteButton, PriorityButton, SuggestButton)
 
 
-def card_view(card: render.Card, item_id: int) -> discord.ui.View | None:
-    if not card.buttons:
-        return None
-    view = discord.ui.View(timeout=None)
-    for b in card.buttons:
-        if b.action in ("council", "roll"):
-            view.add_item(VoteButton(item_id, b.action, b.label, b.style))
-        elif b.action == "priority":
-            view.add_item(PriorityButton(item_id, b.label, b.style))
-        elif b.action == "suggest":
-            view.add_item(SuggestButton(item_id, b.label, b.style))
+def card_button(b: render.Button, item_id: int) -> discord.ui.Item:
+    if b.action in ("council", "roll"):
+        return VoteButton(item_id, b.action, b.label, b.style)
+    if b.action == "priority":
+        return PriorityButton(item_id, b.label, b.style)
+    return SuggestButton(item_id, b.label, b.style)
+
+
+def card_layout(card: render.Card, item_id: int | None = None) -> discord.ui.LayoutView:
+    """The card as a Discord layout message: a container in the card's colour holding the heading
+    and, below a divider, the body; the buttons in a row under the container, as in the mockups."""
+    view = discord.ui.LayoutView(timeout=None)
+    head = "\n".join(p for p in (render.small(card.kicker), f"### {card.title}", render.small(card.subtitle)) if p)
+    box = discord.ui.Container(discord.ui.TextDisplay(head), accent_colour=card.colour)
+    tail = "\n".join(p for p in (card.body, render.small(card.footer)) if p)
+    if tail:
+        box.add_item(discord.ui.Separator())
+        box.add_item(discord.ui.TextDisplay(tail[: 4000 - len(head)]))
+    view.add_item(box)
+    if card.buttons and item_id is not None:
+        view.add_item(discord.ui.ActionRow(*(card_button(b, item_id) for b in card.buttons)))
     return view
-
-
-def card_embed(card: render.Card) -> discord.Embed:
-    embed = discord.Embed(title=card.title[:256], description=card.description[:4096] or None, colour=card.colour)
-    if card.author:
-        embed.set_author(name=card.author[:256])
-    for f in card.fields:
-        embed.add_field(name=f.name[:256], value=f.value[:1024] or "​", inline=f.inline)
-    return embed

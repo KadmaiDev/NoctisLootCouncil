@@ -1,8 +1,10 @@
 """What every Discord post says, as plain data (no discord import), so wording can be tested.
 
-The wording follows the mockups (DiscordVote, DiscordItems, DiscordPosts). Output must depend
-only on the state passed in, never on the current time: the poster compares a digest of the
-rendered card with what it last sent, and a clock in here would make it edit posts forever.
+The wording follows the mockups (DiscordVote, DiscordItems, DiscordPosts). Every post is a Card:
+views.py draws it as a Discord layout (a container in the item's quality colour with the title
+as a heading, grey lines under it, a divider, the body, and the buttons under the card). Output
+must depend only on the state passed in, never on the current time: the poster compares a digest
+of the rendered card with what it last sent, and a clock in here would make it edit posts forever.
 """
 from __future__ import annotations
 
@@ -17,10 +19,12 @@ from . import rules
 from .model import AwardInfo, ItemState, LogGroup
 from .rules import COUNCIL, ROLL
 
-MESSAGE_LIMIT = 2000
+# A layout message holds at most 4000 characters of text; the rest is for the title and footer.
+MESSAGE_LIMIT = 3500
 
 # The game's item quality colours, so posts match the item's colour in game.
 QUALITY_COLOURS = {0: 0x9D9D9D, 1: 0xFFFFFF, 2: 0x1EFF00, 3: 0x0070DD, 4: 0xA335EE, 5: 0xFF8000}
+QUALITY_NAMES = {0: "Poor", 1: "Common", 2: "Uncommon", 3: "Rare", 4: "Epic", 5: "Legendary"}
 DEFAULT_COLOUR = 0x4A55C9
 
 ROLL_ORDER_TEXT = "Main spec, then second main spec, then off spec."
@@ -28,13 +32,6 @@ EVERYTHING_ELSE = ("Everything else is rolled: main spec, then second main spec 
                    "then off spec. Items we haven't seen before are rolled.")
 LOG_FOOTER = ("Questions about a decision: message the raid leader. "
               "Decisions on the night stand unless there was a clear mistake.")
-
-
-@dataclass(frozen=True)
-class Field:
-    name: str
-    value: str
-    inline: bool = True
 
 
 @dataclass(frozen=True)
@@ -46,19 +43,28 @@ class Button:
 
 @dataclass(frozen=True)
 class Card:
+    """One post: kicker (small capitals above the title), title (a heading), subtitle (grey, under
+    it), then below a divider the body (markdown) and footer (grey), then the buttons."""
     title: str
-    description: str
     colour: int
-    fields: list[Field] = field(default_factory=list)
+    subtitle: str = ""
+    body: str = ""
+    footer: str = ""
+    kicker: str = ""
     buttons: list[Button] = field(default_factory=list)
-    author: str | None = None
 
     def digest(self) -> str:
         return hashlib.sha256(json.dumps(asdict(self), sort_keys=True).encode()).hexdigest()
 
+    def text(self) -> str:
+        """Everything the post says, as Discord markdown (views.py splits it into its parts)."""
+        head = [small(self.kicker), f"### {self.title}", small(self.subtitle)]
+        return "\n".join(p for p in (*head, self.body, small(self.footer)) if p)
 
-def text_digest(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()
+
+def small(text: str) -> str:
+    """Discord's small grey text, line by line."""
+    return "\n".join(f"-# {line}" for line in text.splitlines() if line.strip())
 
 
 _MD = re.compile(r"([\\*_~`|>])")
@@ -78,8 +84,8 @@ def colour(state: ItemState) -> int:
 
 
 def subtitle(state: ItemState) -> str:
-    """'Waist · Cloth · Molten Core, Gehennas'."""
-    return " · ".join(p for p in (state.slot, state.source_text) if p)
+    """'Epic · Waist · Cloth · Molten Core, Gehennas'."""
+    return " · ".join(p for p in (QUALITY_NAMES.get(state.quality), state.slot, state.source_text) if p)
 
 
 def _night(ts: int, tz: ZoneInfo) -> dt.date:
@@ -114,33 +120,30 @@ def award_summary(a: AwardInfo) -> str:
 
 
 def wanted_text(a: AwardInfo) -> str | None:
-    """'Wanted it: **4** main spec, **1** off spec'."""
+    """'Wanted it: 4 main spec, 1 off spec'."""
     if a.nms is None and a.nos is None:
         return None
-    return f"Wanted it: **{a.nms or 0}** main spec, **{a.nos or 0}** off spec"
+    return f"Wanted it: {a.nms or 0} main spec, {a.nos or 0} off spec"
 
 
-def votes_text(t: rules.Tally) -> str:
+def votes_lines(t: rules.Tally) -> list[str]:
+    """'**Votes:** Council 3 · Roll 1', then who voted which way in small text."""
     if t.total == 0:
-        return "None yet"
-    council, roll = f"Council {len(t.council)}", f"Roll {len(t.roll)}"
-    if t.decided == COUNCIL or (t.decided is None and len(t.council) > len(t.roll)):
-        council = f"**{council}**"
-    elif t.decided == ROLL or len(t.roll) > len(t.council):
-        roll = f"**{roll}**"
-    names = " · ".join(", ".join(md(n) for n in group) or "nobody" for group in (t.council, t.roll))
-    return f"{council} · {roll}\n{names}"
+        return ["**Votes:** none yet"]
+    names = " · ".join(f"{label}: {', '.join(md(n) for n in group)}"
+                       for label, group in (("Council", t.council), ("Roll", t.roll)) if group)
+    return [f"**Votes:** Council {len(t.council)} · Roll {len(t.roll)}", small(names)]
 
 
 def handling_name(h: str) -> str:
     return "council item" if h == COUNCIL else "roll item"
 
 
-def decision_line(state: ItemState, items_channel: str) -> str | None:
+def decision_line(state: ItemState) -> str | None:
     t = state.tally
     if state.decision:
-        return (f"✅ Decided: **{handling_name(state.decision)}**, {t.count(state.decision)} of {t.total}. "
-                f"Shown in {items_channel}; in the addon after the next /reload.")
+        return (f"✅ **{handling_name(state.decision).capitalize()}**, decided {t.count(state.decision)} of "
+                f"{t.total}. In game after the next /reload.")
     if state.game_handling:
         return (f"Set in game by {md(state.game_by or 'an officer')}: **{handling_name(state.game_handling)}**. "
                 f"A vote here replaces it.")
@@ -150,41 +153,31 @@ def decision_line(state: ItemState, items_channel: str) -> str | None:
 
 
 def officer_card(state: ItemState, tz: ZoneInfo, items_channel: str = "#loot-items") -> Card:
-    """The private #loot-officers post: votes, priority, suggestions, drops, and the vote buttons."""
-    head = subtitle(state)
-    extra: list[str] = []
-    author = None
-    if state.new_in_raid and state.first_drop_at is not None:
-        phrase = seen_phrase(state.first_drop_at, state.created_at, tz)
-        author = f"NEW IN OUR RAID {phrase.upper()}"
-        if state.first_award:
-            head = " · ".join(p for p in (head, award_summary(state.first_award)) if p)
-            wanted = wanted_text(state.first_award)
-            if wanted:
-                extra.append(wanted)
-    elif state.drops == 0:
-        head = " · ".join(p for p in (head, "not dropped for us yet") if p)
-    description = "\n".join(p for p in (head, *extra) if p) or "​"
-
-    if state.priority:
-        prio = f"{md(state.priority)}\nset by {md(state.priority_by or 'an officer')}"
-    elif state.decided_in_game and state.game_note:
-        prio = f"{md(state.game_note)}\nset in game by {md(state.game_by or 'an officer')}"
-    else:
-        prio = "None"
-    fields = [
-        Field("Votes", votes_text(state.tally)),
-        Field("Priority", prio),
-        Field("Raiders suggesting council", f"{state.suggestions}, from {items_channel}"),
-        Field("In our raids", drops_text(state, tz)),
-    ]
-    line = decision_line(state, items_channel)
+    """The private #loot-officers post: decision, votes, priority, and the vote buttons."""
+    kicker = ""
+    lines: list[str] = []
+    line = decision_line(state)
     if line:
-        fields.append(Field("Decision", line, inline=False))
+        lines.append(line)
+    if state.new_in_raid and state.first_drop_at is not None:
+        kicker = f"NEW IN OUR RAID {seen_phrase(state.first_drop_at, state.created_at, tz).upper()}"
+        if state.first_award:
+            summary = award_summary(state.first_award)
+            lines.append(summary[:1].upper() + summary[1:])
+            lines.append(small(wanted_text(state.first_award) or ""))
+    lines += votes_lines(state.tally)
+    if state.priority:
+        lines += [f"**Priority:** {md(state.priority)}", small(f"Set by {md(state.priority_by or 'an officer')}")]
+    elif state.decided_in_game and state.game_note:
+        lines += [f"**Priority:** {md(state.game_note)}",
+                  small(f"Set in game by {md(state.game_by or 'an officer')}")]
+    footer = [drops_text(state, tz)]
+    if state.suggestions:
+        footer.append(f"{plural(state.suggestions, 'raider suggests', 'raiders suggest')} council in {items_channel}")
     buttons = [Button("council", "Council", "success"), Button("roll", "Roll", "secondary"),
                Button("priority", "Set priority", "secondary")]
-    return Card(title=state.name, description=description, colour=colour(state), fields=fields,
-                buttons=buttons, author=author)
+    return Card(title=state.name, colour=colour(state), subtitle=subtitle(state), kicker=kicker,
+                body="\n".join(p for p in lines if p), footer=" · ".join(footer), buttons=buttons)
 
 
 def status_badge(state: ItemState) -> str:
@@ -192,30 +185,30 @@ def status_badge(state: ItemState) -> str:
         return "Council item"
     if state.handling == ROLL:
         return "Roll item"
-    return "Undecided · rolled"
+    return "Undecided"
 
 
 def items_card(state: ItemState, tz: ZoneInfo) -> Card:
     """The public #loot-items post: status, priority, and Suggest for council (not on council items)."""
-    head = subtitle(state)
-    if state.new_in_raid and state.first_drop_at is not None:
-        head = " · ".join(p for p in (head, f"first seen {seen_phrase(state.first_drop_at, state.created_at, tz)}") if p)
-    lines = [head] if head else []
-    lines.append(f"**{status_badge(state)}**")
+    lines = [f"**{status_badge(state)}**"]
     if state.note:
         lines.append(f"Priority: **{md(state.note)}**")
+    footer: list[str] = []
+    if state.new_in_raid and state.first_drop_at is not None:
+        footer.append(f"First seen {seen_phrase(state.first_drop_at, state.created_at, tz)}.")
+    if state.handling == ROLL:
+        footer.append(ROLL_ORDER_TEXT)
+    elif state.handling is None:
+        footer.append("Rolled until the officers decide.")
     if state.decision:
         t = state.tally
-        lines.append(f"*Decided by the officers, {t.count(state.decision)} of {t.total}.*")
+        footer.append(f"Decided by the officers, {t.count(state.decision)} of {t.total}.")
     elif state.game_handling:
-        lines.append(f"*Set in game by {md(state.game_by or 'an officer')}.*")
-    if state.handling == ROLL:
-        lines.append(ROLL_ORDER_TEXT)
-    elif state.handling is None:
-        lines.append("Rolled until the officers decide.")
+        footer.append(f"Set in game by {md(state.game_by or 'an officer')}.")
     buttons = [] if state.handling == COUNCIL else [
         Button("suggest", f"Suggest for council · {state.suggestions}", "primary")]
-    return Card(title=state.name, description="\n".join(lines), colour=colour(state), buttons=buttons)
+    return Card(title=state.name, colour=colour(state), subtitle=subtitle(state), body="\n".join(lines),
+                footer="\n".join(footer), buttons=buttons)
 
 
 def suggestion_reply(on: bool, count: int) -> str:
@@ -261,29 +254,33 @@ def chunk(lines: list[str], limit: int = MESSAGE_LIMIT) -> list[str]:
     return out
 
 
-def log_messages(group: LogGroup) -> list[str]:
-    """One raid night in one instance: 'Molten Core · Monday 27 Oct · 6 items', then a line per award."""
+def split_cards(title: str, subtitle: str, lines: list[str], footer: str, colour: int = DEFAULT_COLOUR) -> list[Card]:
+    """As many cards as the lines need: the subtitle on the first, the footer on the last."""
+    parts = chunk(lines) or [""]
+    return [Card(title=title if i == 0 else f"{title} (continued)", colour=colour,
+                 subtitle=subtitle if i == 0 else "", body=part, footer=footer if i == len(parts) - 1 else "")
+            for i, part in enumerate(parts)]
+
+
+def log_cards(group: LogGroup) -> list[Card]:
+    """One raid night in one instance: 'Molten Core · Monday 27 Oct', '6 items', then a line per award."""
     day = rules.day_label(dt.date.fromisoformat(group.night))
-    head = f"**{md(group.inst or 'Raid')} · {day} · {plural(len(group.awards), 'item')}**"
-    lines = [head, *(award_line(a) for a in group.awards), f"-# {LOG_FOOTER}"]
-    return chunk(lines)
+    return split_cards(f"{md(group.inst or 'Raid')} · {day}", plural(len(group.awards), "item"),
+                       [award_line(a) for a in group.awards], LOG_FOOTER)
 
 
 # ---- #loot-priorities -------------------------------------------------------
 
-def priorities_messages(states: list[ItemState], day: str, raid: str | None = None,
-                        items_channel: str = "#loot-items") -> list[str]:
+def priorities_cards(states: list[ItemState], day: str, raid: str | None = None,
+                     items_channel: str = "#loot-items") -> list[Card]:
     """Council items and their priorities, then the fixed paragraph about everything else."""
     council = [s for s in states if s.handling == COUNCIL]
     if raid:
         council = [s for s in council if (s.raid or "").lower() == raid.lower()]
-        head = f"**{md(raid)} · {day} · council items**"
-    else:
-        head = f"**{day} · council items**"
-    lines = [head]
+    lines: list[str] = []
 
     def item_line(s: ItemState) -> str:
-        return f"{md(s.name)} · {md(s.note)}" if s.note else md(s.name)
+        return f"- **{md(s.name)}** · {md(s.note)}" if s.note else f"- **{md(s.name)}**"
 
     if not council:
         lines.append("No council items yet.")
@@ -296,10 +293,11 @@ def priorities_messages(states: list[ItemState], day: str, raid: str | None = No
         for name in sorted(by_raid, key=lambda n: (n == "Other", n.lower())):
             lines.append(f"__{md(name)}__")
             lines.extend(item_line(s) for s in sorted(by_raid[name], key=lambda s: s.name.lower()))
-    lines.append("")
-    lines.append(EVERYTHING_ELSE)
-    lines.append(f"-# Think something should be a council item? Press Suggest for council on its post in {items_channel}.")
-    return chunk(lines)
+    lines += ["", EVERYTHING_ELSE]
+    title = f"{md(raid)} · {day}" if raid else day
+    return split_cards(title, "Council items", lines,
+                       f"Think something should be a council item? Press Suggest for council on its post in "
+                       f"{items_channel}.")
 
 
 # ---- /loot status -----------------------------------------------------------

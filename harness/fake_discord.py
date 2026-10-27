@@ -85,22 +85,30 @@ class Message:
         return self.payload.get("embeds") or []
 
     @property
+    def components(self) -> list[dict]:
+        """Every component, nested ones too (layout messages put rows and text inside containers)."""
+        out, todo = [], list(self.payload.get("components") or [])
+        while todo:
+            c = todo.pop(0)
+            out.append(c)
+            todo[:0] = c.get("components") or []
+        return out
+
+    @property
     def text(self) -> str:
-        """Content and embed text in one string, for asserting on wording."""
+        """Content, embed and layout text in one string, for asserting on wording."""
         parts = [self.content]
         for e in self.embeds:
             parts += [(e.get("author") or {}).get("name") or "", e.get("title") or "", e.get("description") or ""]
             parts += [f"{f.get('name')}: {f.get('value')}" for f in e.get("fields") or []]
             if e.get("footer"):
                 parts.append(e["footer"].get("text") or "")
+        parts += [c.get("content") or "" for c in self.components if c.get("type") == 10]
         return "\n".join(p for p in parts if p)
 
     @property
     def buttons(self) -> list[dict]:
-        out = []
-        for row in self.payload.get("components") or []:
-            out += [c for c in row.get("components") or [] if c.get("type") == 2]
-        return out
+        return [c for c in self.components if c.get("type") == 2]
 
     @property
     def button_labels(self) -> list[str]:

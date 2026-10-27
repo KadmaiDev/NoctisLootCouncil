@@ -33,13 +33,18 @@ class LootCog(commands.Cog):
     @loot.command(name="add", description="Put an item up for the officers to decide (posts to #loot-officers and #loot-items)")
     @app_commands.describe(item_id="The item's ID (from its link or a database site)",
                            name="The item's name as in game (Discord can't look it up)",
-                           slot="Optional, e.g. Waist · Cloth", source="Optional, e.g. Molten Core, Gehennas")
+                           slot="Optional, e.g. Waist · Cloth", source="Optional, e.g. Molten Core, Gehennas",
+                           quality="Its colour in game (Epic if left out); the game corrects it once it drops")
+    @app_commands.choices(quality=[app_commands.Choice(name=n, value=q) for q, n in ((4, "Epic"), (3, "Rare"),
+                                                                                       (5, "Legendary"))])
     @officer_only()
     async def add(self, interaction: discord.Interaction, item_id: app_commands.Range[int, 1, 10_000_000],
                   name: app_commands.Range[str, 1, 100], slot: app_commands.Range[str, 1, 60] | None = None,
-                  source: app_commands.Range[str, 1, 100] | None = None) -> None:
+                  source: app_commands.Range[str, 1, 100] | None = None,
+                  quality: app_commands.Choice[int] | None = None) -> None:
         await interaction.response.defer(ephemeral=True, thinking=True)
-        created = self.bot.store.add_item(item_id, name, slot=slot, source=source, by=interaction.user.display_name)
+        created = self.bot.store.add_item(item_id, name, slot=slot, source=source,
+                                          quality=quality.value if quality else 4, by=interaction.user.display_name)
         ok = await self.bot.sync_item(item_id)
         self.bot.notify()  # in case a post failed: the poster retries it
         links = " · ".join(u for u in (self.bot.jump_url("officer", str(item_id)), self.bot.jump_url("items", str(item_id))) if u)
