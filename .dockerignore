@@ -1,0 +1,11 @@
+.git
+.env
+data/
+*.db*
+*.log
+companion/
+companion.ini
+tests/
+packaging/
+__pycache__/
+.pytest_cache/

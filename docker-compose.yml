@@ -1,0 +1,19 @@
+services:
+  bot:
+    build: .
+    container_name: noctis-loot-bot
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Inside the container these are fixed; the host side is the ports line below.
+      DB_PATH: /data/noctis-loot.db
+      API_HOST: 0.0.0.0
+      API_PORT: "8080"
+    volumes:
+      - loot-data:/data
+    ports:
+      # Only reachable from the host itself: the reverse proxy forwards to it.
+      - "127.0.0.1:8080:8080"
+
+volumes:
+  loot-data:
