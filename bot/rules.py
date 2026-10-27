@@ -12,9 +12,9 @@ COUNCIL = "council"
 ROLL = "roll"
 HANDLINGS = (COUNCIL, ROLL)
 
-# Drops seen by several officers are the same sighting if they fall in the same half hour
-# (sync-format.md, section 2).
-DROP_BUCKET_SECONDS = 1800
+# Drops seen by several officers are the same sighting if they are within 15 minutes of each
+# other (sync-format.md, section 2). A boss drops once per kill, so this can't merge two kills.
+DROP_WINDOW_SECONDS = 900
 
 # A raid night runs past midnight: anything before 06:00 local time belongs to the evening before.
 NIGHT_CUTOFF_HOURS = 6
@@ -67,9 +67,34 @@ def tally(votes: list[Vote], needed: int) -> Tally:
     return Tally(council=council, roll=roll, needed=needed, decided=decided)
 
 
-def drop_key(item_id: int, src: str | None, at: int) -> tuple[int, str, int]:
-    """The de-duplication key of a drop: (item, source or "", half-hour bucket)."""
-    return item_id, src or "", at // DROP_BUCKET_SECONDS
+def same_drop(at: int, other_at: int) -> bool:
+    """Two reports of a drop with the same item and source are one drop if close enough in time."""
+    return abs(at - other_at) <= DROP_WINDOW_SECONDS
+
+
+# The game's equip slots, as the posts name them.
+SLOT_NAMES = {
+    "INVTYPE_HEAD": "Head", "INVTYPE_NECK": "Neck", "INVTYPE_SHOULDER": "Shoulder", "INVTYPE_BODY": "Shirt",
+    "INVTYPE_CHEST": "Chest", "INVTYPE_ROBE": "Chest", "INVTYPE_WAIST": "Waist", "INVTYPE_LEGS": "Legs",
+    "INVTYPE_FEET": "Feet", "INVTYPE_WRIST": "Wrist", "INVTYPE_HAND": "Hands", "INVTYPE_FINGER": "Finger",
+    "INVTYPE_TRINKET": "Trinket", "INVTYPE_CLOAK": "Back", "INVTYPE_WEAPON": "One-hand",
+    "INVTYPE_SHIELD": "Shield", "INVTYPE_2HWEAPON": "Two-hand", "INVTYPE_WEAPONMAINHAND": "Main hand",
+    "INVTYPE_WEAPONOFFHAND": "Off hand", "INVTYPE_HOLDABLE": "Held in off hand", "INVTYPE_RANGED": "Ranged",
+    "INVTYPE_RANGEDRIGHT": "Ranged", "INVTYPE_THROWN": "Thrown", "INVTYPE_RELIC": "Relic",
+    "INVTYPE_TABARD": "Tabard", "INVTYPE_BAG": "Bag",
+}
+
+# Armour and weapon types that add nothing after the slot name.
+_PLAIN_SUBTYPES = {"Miscellaneous", "Junk", "Other"}
+
+
+def slot_text(slot: str | None, sub: str | None) -> str | None:
+    """'Waist · Cloth' from the addon's slot and armour type; None if it knows neither."""
+    name = SLOT_NAMES.get(slot or "")
+    if name is None and slot and slot.startswith("INVTYPE_"):
+        name = slot[len("INVTYPE_"):].replace("_", " ").title()
+    sub = sub if sub and sub not in _PLAIN_SUBTYPES and sub != name else None
+    return " · ".join(p for p in (name, sub) if p) or None
 
 
 def award_key(who: str, item_id: int, at: int) -> tuple[str, int, int]:

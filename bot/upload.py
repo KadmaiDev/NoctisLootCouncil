@@ -32,6 +32,8 @@ class UploadItem:
     inst: int | None = None
     handling: str | None = None
     note: str | None = None
+    slot: str | None = None  # the game's equip slot, INVTYPE_WAIST
+    sub: str | None = None   # armour or weapon type, Cloth
 
 
 @dataclass
@@ -57,6 +59,7 @@ class UploadAward:
     boss: str | None = None
     nms: int | None = None
     nos: int | None = None
+    tags: str | None = None
 
 
 @dataclass
@@ -67,6 +70,7 @@ class Upload:
     instances: dict[int, str]
     drops: list[UploadDrop]
     awards: list[UploadAward]
+    decisions_at: int | None = None  # the newest decisions the uploader's game had applied
     skipped: int = 0  # malformed entries left out
 
 
@@ -137,6 +141,8 @@ def parse_upload(body: Any) -> Upload:
             inst=_int(raw.get("inst")),
             handling=handling if handling in HANDLINGS else None,
             note=_str(raw.get("note")),
+            slot=_str(raw.get("slot")),
+            sub=_str(raw.get("sub")),
         ))
 
     encounters: dict[int, tuple[str, int | None]] = {}
@@ -180,7 +186,9 @@ def parse_upload(body: Any) -> Upload:
             id=iid, who=who, at=at, how=how, link=_str(raw.get("link")), cls=_str(raw.get("class")),
             roll=_int(raw.get("roll")), note=_str(raw.get("note")), inst=_str(raw.get("inst")),
             boss=_str(raw.get("boss")), nms=_int(raw.get("nms")), nos=_int(raw.get("nos")),
+            tags=_str(raw.get("tags")),
         ))
 
     return Upload(uploader=_str(body.get("uploader")), items=items, encounters=encounters,
-                  instances=instances, drops=drops, awards=awards, skipped=skipped)
+                  instances=instances, drops=drops, awards=awards, decisions_at=_int(body.get("decisions_at")),
+                  skipped=skipped)

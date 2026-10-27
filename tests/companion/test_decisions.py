@@ -27,6 +27,7 @@ def test_render_round_trips_through_the_parser():
     tricky = {"at": 5, "items": {
         "18000": {"handling": "council", "note": 'Say "hi"\\now\nnext line\ttab\x01', "name": "Mireíle's Ring"},
         "16866": {"handling": "roll", "name": "Plain"},
+        "17109": {"handling": "none", "name": "Taken back"},
         "x": {"handling": "roll"},          # not an item ID: left out
         "3": {"handling": "disenchant"},    # not a handling the addon knows: left out
     }}
@@ -34,6 +35,7 @@ def test_render_round_trips_through_the_parser():
     assert parsed == {"at": 5, "items": {
         18000: {"h": "council", "note": 'Say "hi"\\now\nnext line\ttab\x01', "name": "Mireíle's Ring"},
         16866: {"h": "roll", "name": "Plain"},
+        17109: {"h": "none", "name": "Taken back"},
     }}
 
 

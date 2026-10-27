@@ -52,7 +52,7 @@ def render(decisions: dict) -> str:
     lines = [HEADER, f"{ADDON} = {{", f"  at = {at},", "  items = {"]
     entries: list[tuple[int, str]] = []
     for key, d in (decisions.get("items") or {}).items():
-        if not str(key).isdigit() or not isinstance(d, dict) or d.get("handling") not in ("council", "roll"):
+        if not str(key).isdigit() or not isinstance(d, dict) or d.get("handling") not in ("council", "roll", "none"):
             continue
         fields = [f"h = {lua_string(d['handling'])}"]
         for name in ("note", "name"):

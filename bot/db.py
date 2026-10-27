@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS items (
     new_in_raid   INTEGER NOT NULL DEFAULT 0,    -- first reached the bot through an upload, already dropped
     decision      TEXT,                          -- 'council' / 'roll' from the officers' votes
     decided_at    INTEGER,
+    cleared_at    INTEGER,                       -- when a decision was taken back (votes changed); NULL once decided again
     priority      TEXT,
     priority_by   TEXT,
     game_handling TEXT,                          -- decision set in game, used only without a Discord one
@@ -70,16 +71,17 @@ CREATE TABLE IF NOT EXISTS instances (
     name TEXT NOT NULL
 );
 
--- One row per sighting, de-duplicated across officers: (item, source, half-hour bucket).
+-- One row per sighting, de-duplicated across officers: reports of the same item and source
+-- within 15 minutes of each other are one row (rules.same_drop).
 CREATE TABLE IF NOT EXISTS drops (
+    id      INTEGER PRIMARY KEY,
     item_id INTEGER NOT NULL,
     src     TEXT NOT NULL,
-    bucket  INTEGER NOT NULL,
     at      INTEGER NOT NULL,
     inst    INTEGER,
-    n       INTEGER NOT NULL,
-    PRIMARY KEY (item_id, src, bucket)
+    n       INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS drops_item ON drops(item_id, src, at);
 
 CREATE TABLE IF NOT EXISTS awards (
     who_key     TEXT NOT NULL,
@@ -94,6 +96,7 @@ CREATE TABLE IF NOT EXISTS awards (
     boss        TEXT,
     nms         INTEGER,
     nos         INTEGER,
+    tags        TEXT,                            -- council awards: the winner's bid tags
     link        TEXT,
     night       TEXT NOT NULL,                   -- raid night, ISO date in the guild's time zone
     uploader    TEXT,

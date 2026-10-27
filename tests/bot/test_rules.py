@@ -38,11 +38,19 @@ def test_tally_tie_above_threshold_is_undecided():
     assert t.tied_at_threshold
 
 
-def test_drop_key_buckets_half_hours():
-    base = 1793046600 - 1793046600 % 1800
-    assert rules.drop_key(1, "e663", base) == rules.drop_key(1, "e663", base + 1799)
-    assert rules.drop_key(1, "e663", base) != rules.drop_key(1, "e663", base + 1800)
-    assert rules.drop_key(1, None, base) == (1, "", base // 1800)
+def test_same_drop_within_fifteen_minutes_either_way():
+    base = 1793046600 - 1793046600 % 1800  # on a half-hour boundary: no longer splits a drop
+    assert rules.same_drop(base - 60, base + 60)
+    assert rules.same_drop(base + 900, base)
+    assert not rules.same_drop(base, base + 901)
+
+
+def test_slot_text():
+    assert rules.slot_text("INVTYPE_WAIST", "Cloth") == "Waist · Cloth"
+    assert rules.slot_text("INVTYPE_FINGER", "Miscellaneous") == "Finger"
+    assert rules.slot_text("INVTYPE_2HWEAPON", "Two-Handed Swords") == "Two-hand · Two-Handed Swords"
+    assert rules.slot_text("INVTYPE_SOMETHING_NEW", None) == "Something New"
+    assert rules.slot_text(None, None) is None
 
 
 def test_award_key_ignores_case():

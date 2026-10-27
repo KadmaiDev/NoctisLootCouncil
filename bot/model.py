@@ -19,6 +19,7 @@ class AwardInfo:
     boss: str | None = None
     nms: int | None = None
     nos: int | None = None
+    tags: str | None = None
     new_item: bool = False  # the item's first night in our raids
 
 

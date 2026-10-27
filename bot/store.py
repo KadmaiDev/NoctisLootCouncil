@@ -124,7 +124,7 @@ class Store:
     def _award_info(self, r: sqlite3.Row, item_name: str, new_item: bool = False) -> AwardInfo:
         return AwardInfo(item_id=r["item_id"], item_name=item_name, who=r["who"], how=r["how"], at=r["at"],
                          roll=r["roll"], note=r["note"], inst=r["inst"], boss=r["boss"], nms=r["nms"],
-                         nos=r["nos"], new_item=new_item)
+                         nos=r["nos"], tags=r["tags"], new_item=new_item)
 
     def item_state(self, item_id: int) -> ItemState | None:
         row = self.conn.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
@@ -169,9 +169,15 @@ class Store:
                 (item_id, user_id, user_name, choice, self.now()))
             result = rules.tally(self._votes(item_id), self.votes_to_decide)
             current = self.conn.execute("SELECT decision FROM items WHERE id = ?", (item_id,)).fetchone()["decision"]
-            if result.decided != current:
-                self.conn.execute("UPDATE items SET decision = ?, decided_at = ? WHERE id = ?",
-                                  (result.decided, self.now() if result.decided else None, item_id))
+            if result.decided is None and current is not None:
+                # Taken back: the game is told "none", and an older in-game decision doesn't
+                # come back in its place.
+                self.conn.execute("UPDATE items SET decision = NULL, decided_at = NULL, cleared_at = ?, "
+                                  "game_handling = NULL, game_note = NULL, game_by = NULL WHERE id = ?",
+                                  (self.now(), item_id))
+            elif result.decided != current:
+                self.conn.execute("UPDATE items SET decision = ?, decided_at = ?, cleared_at = NULL WHERE id = ?",
+                                  (result.decided, self.now(), item_id))
             self._mark_dirty(item_id)
             self._refresh_decisions_at()
         return result
@@ -201,8 +207,9 @@ class Store:
     def _decision_items(self) -> dict[str, dict[str, str]]:
         out: dict[str, dict[str, str]] = {}
         for row in self.conn.execute("SELECT id, name, decision, priority, game_handling, game_note FROM items "
-                                     "WHERE decision IS NOT NULL OR game_handling IS NOT NULL ORDER BY id"):
-            handling = row["decision"] or row["game_handling"]
+                                     "WHERE decision IS NOT NULL OR game_handling IS NOT NULL OR cleared_at IS NOT NULL "
+                                     "ORDER BY id"):
+            handling = row["decision"] or row["game_handling"] or "none"
             note = row["priority"] or (row["game_note"] if row["decision"] is None else None)
             entry = {"handling": handling, "name": row["name"]}
             if note:
@@ -229,7 +236,7 @@ class Store:
 
     # ---- uploads -----------------------------------------------------------
 
-    def _merge_item(self, it: UploadItem, uploader: str) -> bool:
+    def _merge_item(self, it: UploadItem, uploader: str, decisions_at: int | None = None) -> bool:
         """Merge one uploaded item; returns True if the bot had never seen it."""
         row = self.conn.execute("SELECT * FROM items WHERE id = ?", (it.id,)).fetchone()
         created = row is None
@@ -248,6 +255,10 @@ class Store:
                 "first_at = ?, last_at = ?, seen = MAX(seen, ?) WHERE id = ?",
                 (it.name or row["name"], rules.better_link(row["link"], it.link), it.quality, it.inst,
                  min(firsts) if firsts else None, max(lasts) if lasts else None, it.seen, it.id))
+        # /loot add's free text wins; otherwise the slot and type the game reported.
+        slot = rules.slot_text(it.slot, it.sub)
+        if slot and not row["slot"]:
+            self.conn.execute("UPDATE items SET slot = ? WHERE id = ?", (slot, it.id))
         old = {r["src"]: r["count"] for r in
                self.conn.execute("SELECT src, count FROM item_sources WHERE item_id = ?", (it.id,))}
         for src, n in rules.merge_sources(old, it.sources).items():
@@ -255,8 +266,10 @@ class Store:
                               "ON CONFLICT(item_id, src) DO UPDATE SET count = excluded.count", (it.id, src, n))
         # An in-game decision counts only while Discord has none. Recording it only then also keeps
         # the addon's echo of a Discord decision (written back by the companion) from being taken
-        # for a decision made in game.
-        if row["decision"] is None and it.handling is not None and (
+        # for a decision made in game. After a decision is taken back, the game still has it until
+        # its decisions are newer than that, so until then what it reports is the old echo.
+        stale = row["cleared_at"] is not None and (decisions_at or 0) < row["cleared_at"]
+        if row["decision"] is None and not stale and it.handling is not None and (
                 it.handling != row["game_handling"] or it.note != row["game_note"]):
             self.conn.execute("UPDATE items SET game_handling = ?, game_note = ?, game_by = ? WHERE id = ?",
                               (it.handling, it.note, uploader, it.id))
@@ -276,29 +289,44 @@ class Store:
                                   (eid, name, inst))
             listed = {it.id for it in up.items}
             for it in up.items:
-                new_items += self._merge_item(it, uploader)
+                new_items += self._merge_item(it, uploader, up.decisions_at)
             # An award for an item missing from the list still means it dropped for us.
             for aw in up.awards:
                 if aw.id not in listed and not self.item_exists(aw.id):
                     new_items += self._merge_item(UploadItem(id=aw.id, name=name_from_link(aw.link), link=aw.link,
                                                              seen=1, first=aw.at, last=aw.at), uploader)
                     listed.add(aw.id)
+            # A drop matches another officer's report of it; two drops in one upload are two
+            # drops (the addon already counts each once), so a row matches at most once per upload.
+            matched: set[int] = set()
             for d in up.drops:
-                item_id, src, bucket = rules.drop_key(d.id, d.src, d.at)
-                cur = self.conn.execute(
-                    "INSERT INTO drops(item_id, src, bucket, at, inst, n) VALUES(?, ?, ?, ?, ?, ?) "
-                    "ON CONFLICT(item_id, src, bucket) DO UPDATE SET n = MAX(n, excluded.n) WHERE excluded.n > n",
-                    (item_id, src, bucket, d.at, d.inst, d.n))
-                if cur.rowcount and self.item_exists(item_id):
-                    self._mark_dirty(item_id)
+                src = d.src or ""
+                window = rules.DROP_WINDOW_SECONDS
+                rows = self.conn.execute(
+                    "SELECT id, at, n FROM drops WHERE item_id = ? AND src = ? AND at BETWEEN ? AND ? "
+                    "ORDER BY ABS(at - ?)", (d.id, src, d.at - window, d.at + window, d.at)).fetchall()
+                row = next((r for r in rows if r["id"] not in matched and rules.same_drop(d.at, r["at"])), None)
+                if row is None:
+                    cur = self.conn.execute("INSERT INTO drops(item_id, src, at, inst, n) VALUES(?, ?, ?, ?, ?)",
+                                            (d.id, src, d.at, d.inst, d.n))
+                    matched.add(cur.lastrowid)
+                    changed = True
+                else:
+                    matched.add(row["id"])
+                    changed = d.n > row["n"]
+                    if changed:
+                        self.conn.execute("UPDATE drops SET n = ? WHERE id = ?", (d.n, row["id"]))
+                if changed and self.item_exists(d.id):
+                    self._mark_dirty(d.id)
             for aw in up.awards:
                 who_key, item_id, at = rules.award_key(aw.who, aw.id, aw.at)
                 night = rules.night_of(at, self.tz).isoformat()
                 cur = self.conn.execute(
                     "INSERT OR IGNORE INTO awards(who_key, item_id, at, who, class, how, roll, note, inst, boss, "
-                    "nms, nos, link, night, uploader, received_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "nms, nos, tags, link, night, uploader, received_at) "
+                    "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (who_key, item_id, at, aw.who, aw.cls, aw.how, aw.roll, aw.note, aw.inst, aw.boss, aw.nms,
-                     aw.nos, aw.link, night, uploader, self.now()))
+                     aw.nos, aw.tags, aw.link, night, uploader, self.now()))
                 if cur.rowcount:
                     new_awards += 1
                     self.conn.execute("INSERT INTO log_groups(inst, night) VALUES(?, ?) "

@@ -91,7 +91,12 @@ def test_two_officers_same_drop_counted_once_keeping_largest_n(store):
     other["drops"] = [{"id": 16805, "at": RAID + 905, "src": "e663", "inst": 409, "n": 2}]
     upload(store, other, ("discord:2", "Seren"))
     assert store.item_state(16805).drops == 2
-    # A drop in another half hour is a separate sighting.
+    # Either side of a half-hour boundary is still the same drop.
+    across = sample_body("Doran Pike")
+    across["drops"] = [{"id": 16805, "at": RAID + 900 - 600, "src": "e663", "inst": 409, "n": 1}]
+    upload(store, across, ("discord:3", "Doran"))
+    assert store.item_state(16805).drops == 2
+    # Hours later it's a separate sighting.
     later = sample_body()
     later["drops"] = [{"id": 16805, "at": RAID + 3 * 3600, "src": "e663", "inst": 409, "n": 1}]
     upload(store, later)
@@ -152,8 +157,12 @@ def test_votes_decide_and_can_be_undone(store, clock):
     # Same second, another change: `at` still moves on so the companion notices.
     store.cast_vote(18000, 3, "Kadmai", ROLL)
     assert store.item_state(18000).decision is None
-    assert store.decisions()["items"] == {}
+    # Listed as "none" so the game forgets it too.
+    assert store.decisions()["items"] == {"18000": {"handling": "none", "name": "Sash of the Unseen"}}
     assert store.decisions()["at"] > at1
+    store.cast_vote(18000, 2, "Doran", ROLL)
+    store.cast_vote(18000, 1, "Seren", ROLL)
+    assert store.decisions()["items"] == {"18000": {"handling": "roll", "name": "Sash of the Unseen"}}
 
 
 def test_priority_is_the_note_and_moves_at(store, clock):
@@ -206,6 +215,35 @@ def test_echo_of_discord_decision_is_not_recorded_as_in_game(store):
     upload(store, sample_body())  # the addon applied our decision and uploads it back
     store.cast_vote(18000, 3, "O3", ROLL)  # the officers undo it
     assert store.item_state(18000).handling is None
+
+
+def test_taken_back_decision_isnt_relearnt_from_the_game_until_it_has_heard(store, clock):
+    store.add_item(18000, "Sash of the Unseen")
+    for uid in (1, 2, 3):
+        store.cast_vote(18000, uid, f"O{uid}", COUNCIL)
+    clock.t += 3600
+    store.cast_vote(18000, 3, "O3", ROLL)  # taken back
+    cleared = store.decisions()["at"]
+    body = sample_body()  # the game still has "council" from before
+    body["decisions_at"] = cleared - 3600
+    upload(store, body)
+    assert store.decisions()["items"]["18000"]["handling"] == "none"
+    # Once its decisions include the "none", what it reports is a real in-game decision.
+    clock.t += 600
+    body["decisions_at"] = cleared
+    upload(store, body)
+    assert store.decisions()["items"]["18000"]["handling"] == "council"
+    assert store.item_state(18000).decided_in_game
+
+
+def test_slot_and_type_from_the_game_and_award_tags(store):
+    body = sample_body()
+    body["items"]["18000"].update(slot="INVTYPE_WAIST", sub="Cloth")
+    body["awards"][0]["tags"] = "BIS, Big upgrade"
+    upload(store, body)
+    assert store.item_state(18000).slot == "Waist · Cloth"
+    award = store.item_state(body["awards"][0]["id"]).first_award
+    assert award.tags == "BIS, Big upgrade"
 
 
 def test_suggestions_toggle(store):
