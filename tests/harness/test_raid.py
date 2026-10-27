@@ -21,7 +21,7 @@ COUNCIL = "Seren Vale, Doran Pike, Kadmai Moonwhisper"
 
 @pytest.fixture
 def realm(tmp_path):
-    r = Realm(tmp_path / "wow")
+    r = Realm(tmp_path / "pcs")
     r.lm = r.add_player("Kadmai", "Moonwhisper", "HUNTER", rank="Officer", leader=True)
     r.seren = r.add_player("Seren", "Vale", "PRIEST", rank="Officer")
     r.doran = r.add_player("Doran", "Pike", "WARRIOR", rank="Officer")

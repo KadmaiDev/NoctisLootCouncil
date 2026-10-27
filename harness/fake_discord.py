@@ -89,7 +89,7 @@ class Message:
         """Content and embed text in one string, for asserting on wording."""
         parts = [self.content]
         for e in self.embeds:
-            parts += [e.get("title") or "", e.get("description") or ""]
+            parts += [(e.get("author") or {}).get("name") or "", e.get("title") or "", e.get("description") or ""]
             parts += [f"{f.get('name')}: {f.get('value')}" for f in e.get("fields") or []]
             if e.get("footer"):
                 parts.append(e["footer"].get("text") or "")

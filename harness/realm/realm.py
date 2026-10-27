@@ -6,7 +6,7 @@ The realm does what the game's servers do for a raid: it delivers raid chat, add
 the whole raid, fires boss kills, opens the loot window for whoever loots, and keeps every
 player's clock in step. Players without the addon are simulated here: they only /roll.
 
-    realm = Realm(wow_dir)
+    realm = Realm(root)
     lm = realm.add_player("Kadmai", "Moonwhisper", "HUNTER", rank="Officer", leader=True)
     ilsa = realm.add_player("Ilsa", "Marrow", "WARLOCK")
     bran = realm.add_player("Bran", "Holloway", "MAGE", addon=False)
@@ -17,8 +17,9 @@ player's clock in step. Players without the addon are simulated here: they only 
     realm.wait(30)
     realm.logout()                        # saved files written, ready for the companion app
 
-Each player's saved file is `<wow_dir>/WTF/Account/<ACCOUNT>/SavedVariables/NoctisLootCouncil.lua`,
-and they all read the decisions addon in `<wow_dir>/Interface/AddOns/NoctisLootDecisions`.
+Each player plays on their own PC: a WoW folder `<root>/<ACCOUNT>` (`player.wow_dir`), with their
+saved file in `WTF/Account/<ACCOUNT>/SavedVariables/NoctisLootCouncil.lua` and, if a companion app
+runs on that PC, the decisions addon in `Interface/AddOns/NoctisLootDecisions`.
 """
 from __future__ import annotations
 
@@ -104,9 +105,18 @@ class Player:
         return self.name.lower()
 
     @property
-    def saved_file(self) -> Path:
+    def wow_dir(self) -> Path:
+        """This player's WoW folder (their own PC), where a companion app would look."""
         assert self.realm is not None
-        return self.realm.wow_dir / "WTF" / "Account" / self.account / "SavedVariables" / "NoctisLootCouncil.lua"
+        return self.realm.root / self.account
+
+    @property
+    def saved_file(self) -> Path:
+        return self.wow_dir / "WTF" / "Account" / self.account / "SavedVariables" / "NoctisLootCouncil.lua"
+
+    @property
+    def decisions_file(self) -> Path:
+        return self.wow_dir / "Interface" / "AddOns" / "NoctisLootDecisions" / "Decisions.lua"
 
     # ---- what the player does (players with the addon) -----------------------
 
@@ -153,8 +163,8 @@ class Player:
 
 
 class Realm:
-    def __init__(self, wow_dir: Path, luajit: str | None = None, seed: int = 1):
-        self.wow_dir = Path(wow_dir)
+    def __init__(self, root: Path, luajit: str | None = None, seed: int = 1):
+        self.root = Path(root)
         self.luajit = luajit or find_luajit()
         if not self.luajit:
             raise RuntimeError("LuaJIT not found: set LUAJIT to luajit's path")
@@ -185,9 +195,6 @@ class Realm:
     def clients(self) -> list[Player]:
         return [p for p in self.players if p.addon and p.proc is not None]
 
-    def decisions_file(self) -> Path:
-        return self.wow_dir / "Interface" / "AddOns" / "NoctisLootDecisions" / "Decisions.lua"
-
     def login(self) -> None:
         """Everyone with the addon starts their game (reading their saved file and the decisions
         addon), and the raid forms."""
@@ -197,7 +204,7 @@ class Realm:
                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                           encoding="utf-8", bufsize=1)
                 saved = p.saved_file if p.saved_file.exists() else ""
-                decisions = self.decisions_file() if self.decisions_file().exists() else ""
+                decisions = p.decisions_file if p.decisions_file.exists() else ""
                 p.call("load", p.first, p.last, p.cls, p.rank, p.guild or "", self.clock, saved, decisions)
         for p in self.clients:
             others = [f"{o.first},{o.last},{o.cls},{o.rank},{o.guild or ''}" for o in self.players if o is not p]
