@@ -83,6 +83,8 @@ function M.load(files, addonName)
         local u = Unit(unit)
         if u and u.guild then return u.guild, u.rank, 1 end
     end
+    M.leader = false
+    UnitIsGroupLeader = function(unit) return unit == "player" and M.leader end
     IsInRaid = function() return M.inRaid end
     IsInGroup = function() return #M.group > 0 end
     GetNumGroupMembers = function() return #M.group end

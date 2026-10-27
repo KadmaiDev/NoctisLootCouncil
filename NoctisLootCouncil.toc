@@ -28,3 +28,4 @@ CouncilWindow.lua
 Popup.lua
 Sync.lua
 Export.lua
+LootWindow.lua

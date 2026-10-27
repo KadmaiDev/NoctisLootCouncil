@@ -115,9 +115,16 @@ end
 
 local Finish
 
+-- Tells the loot window something changed.
+local function Changed()
+    if ns.RollChanged then ns.RollChanged() end
+end
+
 local function Schedule(r)
     token = token + 1
     local mine = token
+    r.ends = time() + DURATION
+    Changed()
     if C_Timer and C_Timer.After then
         if r.round == 1 then
             C_Timer.After(DURATION - WARN, function()
@@ -135,6 +142,7 @@ end
 local function Done(r)
     if current == r then current = nil end
     if r.sid then ns.Broadcast("E", r.sid) end
+    Changed()
 end
 
 -- Adds an award to the loot log, with what the export and the bot want to know: the
@@ -217,6 +225,8 @@ local function OnRoll(m, roll, low, high)
     if r.only and not r.only[m.key] then return end
     if low ~= 1 or (high ~= MS and high ~= OS) then
         ns.Say(L["Ignored %s's roll of %d (%d-%d): only /roll (main spec) and /roll 99 (off spec) count."]:format(m.name, roll, low or 0, high or 0))
+        r.ignored = r.ignored or {}
+        r.ignored[#r.ignored + 1] = { name = m.name, roll = roll, low = low, high = high }
         return
     end
     local e = r.rolls[m.key]
@@ -254,10 +264,30 @@ end
 ns.On("CHAT_MSG_SYSTEM", function(text)
     if not current then return end
     local m, roll, low, high = ns.ParseRoll(text)
-    if m then OnRoll(m, roll, low, high) end
+    if m then
+        OnRoll(m, roll, low, high)
+        Changed()
+    end
 end)
 
 function ns.CurrentRoll() return current end
+
+-- The running roll's standings, best first, each with its kind of roll and why it's placed
+-- there: { name, roll, kind, why }.
+function ns.RollStandings()
+    local r = current
+    if not r then return {} end
+    local out = {}
+    for i, e in ipairs(Standings(r)) do
+        local why
+        if i == 1 then why = L["leading"]
+        elseif e.trial then why = L["trial: after members"]
+        elseif e.tier == 2 then why = L["won a main-spec item tonight"]
+        elseif e.tier == 3 then why = L["/roll 99"] end
+        out[#out + 1] = { name = e.name, roll = e.r[#e.r], kind = r.only and L["roll-off"] or TierName(e.tier), why = why or "" }
+    end
+    return out
+end
 
 -- Starts a roll. opts: only = { key = true } and onAward = fn(entry, roll) for a council
 -- roll-off; onNobody = fn. Returns false if a roll is already running.

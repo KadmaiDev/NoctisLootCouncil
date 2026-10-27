@@ -77,13 +77,14 @@ end)
 --   council = { "First Last", ... }|nil, -- who votes on council items (Council.lua; the loot master's matters)
 --   roles = { ["First Last"] = role }|nil, -- a character's chosen role for the upgrade % (Upgrades.lua)
 --   popupOff = true|nil,                -- no Main spec / Off spec / Pass pop-up (Popup.lua)
+--   autoOpenOff = true|nil,             -- the loot master's window doesn't open by itself (LootWindow.lua)
 -- }
 -- The companion app reads this file; its format is in NoctisLootBot's docs/sync-format.md.
 -- Each field's type, so a damaged save is repaired at load instead of breaking things.
 local DB_FIELDS = { v = "number", items = "table", encounters = "table", bossSources = "table",
     instances = "table", minQuality = "number", dungeons = "boolean", log = "table", night = "number",
     trialRanks = "table", drops = "table", me = "string", decisionsAt = "number", scale = "number",
-    council = "table", roles = "table", popupOff = "boolean" }
+    council = "table", roles = "table", popupOff = "boolean", autoOpenOff = "boolean" }
 ns.ITEM_FIELDS = { link = "string", q = "number", first = "number", last = "number", seen = "number",
     from = "table", inst = "number", handling = "string", note = "string" }
 local ENCOUNTER_FIELDS = { name = "string", inst = "number", src = "string" }

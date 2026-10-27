@@ -111,12 +111,18 @@ local function BossName(src)
     return e and e.name
 end
 
+-- The drops the loot master has looted this session, for the loot window:
+-- { id, link, boss, n = copies, at = time(), new = true if first seen }.
+ns.tonight = {}
+
 -- Tells the loot master about a drop, once per kill: how it's handled if that's decided
 -- (perhaps before it ever dropped for us), else that it's new to our raids.
-local function Tell(killKey, itemID, item, new, src)
+local function Tell(killKey, itemID, item, new, src, n)
     local key = killKey .. ":" .. itemID
     if told[key] then return end
     told[key] = true
+    ns.tonight[#ns.tonight + 1] = { id = itemID, link = item.link, boss = BossName(src), n = n or 1, at = time(), new = new or nil }
+    if ns.DropsChanged then ns.DropsChanged() end
     if item.handling then
         local how = item.handling == "council" and L["council item"] or L["roll item"]
         if item.note then how = how .. " · " .. item.note end
@@ -220,7 +226,7 @@ local function ReadLootWindow()
         killKey = killKey or ("window@" .. GetTime())
         for itemID, seen in pairs(list) do
             local item, new = Record(itemID, seen.link, seen.q, inst, src, killKey, "window", seen.n)
-            Tell(killKey, itemID, item, new, src)
+            Tell(killKey, itemID, item, new, src, seen.n)
         end
     end
 end
