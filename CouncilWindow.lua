@@ -13,7 +13,7 @@ local L = ns.L
 
 local ipairs, pairs, time, floor, concat, type, tostring = ipairs, pairs, time, math.floor, table.concat, type, tostring
 
-local WIDTH, HEIGHT = 780, 520
+local WIDTH, HEIGHT = 780, 560
 local ROWS = 8
 local ROW_H = 40
 local COLS = { name = 16, wears = 190, upgrade = 380, earlier = 450, votes = 600, button = 640 }
