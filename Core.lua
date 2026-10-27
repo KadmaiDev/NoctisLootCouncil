@@ -64,13 +64,18 @@ end)
 --   instances = { [instanceID] = name },
 --   minQuality = number|nil,            -- lowest quality recorded (nil = 3, rare)
 --   dungeons = true|nil,                -- record dungeon drops too (for trying it out)
+--   log = { { id = itemID, link, who = "First Last", at = time(), how = "ms"|"ms2"|"os", roll } }, -- awards, oldest first (Rolls.lua)
+--   night = time()|nil,                 -- /nlc newnight: wins before this don't count as tonight's
+--   trialRanks = { "rank name", ... }|nil, -- guild ranks that are trials (nil = any rank with "trial" in its name)
 -- }
 -- Each field's type, so a damaged save is repaired at load instead of breaking things.
 local DB_FIELDS = { v = "number", items = "table", encounters = "table", bossSources = "table",
-    instances = "table", minQuality = "number", dungeons = "boolean" }
+    instances = "table", minQuality = "number", dungeons = "boolean", log = "table", night = "number",
+    trialRanks = "table" }
 ns.ITEM_FIELDS = { link = "string", q = "number", first = "number", last = "number", seen = "number",
     from = "table", inst = "number", handling = "string", note = "string" }
 local ENCOUNTER_FIELDS = { name = "string", inst = "number", src = "string" }
+local LOG_FIELDS = { id = "number", link = "string", who = "string", at = "number", how = "string", roll = "number" }
 
 local function KeepTyped(t, fields)
     for k, v in pairs(t) do
@@ -90,6 +95,18 @@ local function KeepMap(t, keyType, valueType, fields)
     end
 end
 
+-- A list with only the entries `keep` accepts, in order and without gaps.
+local function Compact(list, keep)
+    local out, n = {}, 0
+    for i = 1, table.maxn(list) do
+        if list[i] ~= nil and keep(list[i]) then
+            n = n + 1
+            out[n] = list[i]
+        end
+    end
+    return out
+end
+
 function ns.Repair(db)
     KeepTyped(db, DB_FIELDS)
     db.v = 1
@@ -104,6 +121,14 @@ function ns.Repair(db)
     KeepMap(db.encounters, "number", "table", ENCOUNTER_FIELDS)
     KeepMap(db.bossSources, "string", "number")
     KeepMap(db.instances, "number", "string")
+    db.log = Compact(db.log or {}, function(e)
+        if type(e) ~= "table" then return false end
+        KeepTyped(e, LOG_FIELDS)
+        return e.who ~= nil and e.at ~= nil and e.how ~= nil
+    end)
+    if db.trialRanks then
+        db.trialRanks = Compact(db.trialRanks, function(r) return type(r) == "string" end)
+    end
     return db
 end
 
@@ -133,6 +158,59 @@ function ns.NameKey(name)
     name = name:gsub("%-.*$", ""):gsub("^%s+", ""):gsub("%s+$", "")
     if name == "" then return nil end
     return name:lower()
+end
+
+---------------------------------------------------------------------------
+-- The group
+---------------------------------------------------------------------------
+-- The group's units: raid1..raidN in a raid, else the player and party1..4.
+local function Units()
+    local units = {}
+    local n = GetNumGroupMembers and GetNumGroupMembers()
+    if not ns.Plain(n) or type(n) ~= "number" then n = 0 end
+    if IsInRaid and IsInRaid() then
+        for i = 1, n do units[#units + 1] = "raid" .. i end
+    else
+        units[1] = "player"
+        if IsInGroup and IsInGroup() then
+            for i = 1, n - 1 do units[#units + 1] = "party" .. i end
+        end
+    end
+    return units
+end
+
+-- The group member a name means: { name = "First Last", key, unit }, or nil if nobody in the
+-- group has it. A first name alone (should some API give only that) matches when exactly one
+-- member has that first name.
+function ns.GroupMember(name)
+    local key = ns.NameKey(name)
+    if not key then return nil end
+    local firstOnly = not key:find(" ", 1, true)
+    local byFirst, firsts = nil, 0
+    for _, unit in ipairs(Units()) do
+        local full = ns.PlayerName(unit)
+        local k = ns.NameKey(full)
+        if k == key then return { name = full, key = k, unit = unit } end
+        if k and firstOnly and k:match("^%S+") == key then
+            byFirst, firsts = { name = full, key = k, unit = unit }, firsts + 1
+        end
+    end
+    if firsts == 1 then return byFirst end
+end
+
+-- Posts a line in raid (or party) chat. Solo, or when the game won't let addons send chat,
+-- it's shown to the player instead, so they can pass it on.
+function ns.Announce(text)
+    local chatType = (IsInRaid and IsInRaid() and "RAID") or (IsInGroup and IsInGroup() and "PARTY") or nil
+    if not chatType then
+        ns.Say(text)
+        return true
+    end
+    local locked = C_ChatInfo and C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown()
+    local send = C_ChatInfo and C_ChatInfo.SendChatMessage or SendChatMessage
+    if not locked and send and pcall(send, text, chatType) then return true end
+    ns.Say(L["Couldn't post this in group chat; please pass it on: %s"]:format(text))
+    return false
 end
 
 ---------------------------------------------------------------------------

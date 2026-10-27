@@ -159,7 +159,7 @@ end)
 
 test("chat: the receipt pattern comes from the client's own text, including %1$s forms", function()
     local ns = start()
-    local p = ns.ReceiptPattern("%1$s erhält Beute: %2$s.")
+    local p = ns.ChatPattern("%1$s erhält Beute: %2$s.")
     assert(("Tarnia erhält Beute: " .. BOOTS .. "."):find(p), p)
     assert(not ("Tarnia würfelt: " .. BOOTS):find(p))
 end)

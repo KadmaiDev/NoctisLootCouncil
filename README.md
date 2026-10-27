@@ -26,6 +26,28 @@ Forever hides its raid loot from data miners at launch, so nobody knows the drop
 
 `<item>` can be a shift-clicked item link, an item ID, or the item's name.
 
+## Rolls
+
+The loot master starts a roll with `/nlc start <item>`. The raid is told in raid chat: `/roll` for main spec, `/roll 99` for off spec, 30 seconds. Raiders don't need the addon. When time is up, the winner is announced and logged.
+
+Who wins, by the guild's rules:
+
+1. **Main spec** beats **second main spec** (a main-spec win already tonight), which beats **off spec**.
+2. Within those, **members beat trials**: a trial wins only if no member rolled the same kind of roll. Socials count as members.
+3. Then the **highest roll**. A tie for first is rolled again by those tied.
+
+Only each player's first roll counts. Main-spec wins count as "tonight's" for 12 hours, or until `/nlc newnight`.
+
+| Command | |
+|---|---|
+| `/nlc start <item>` | start a roll |
+| `/nlc stop` | end it now and announce the winner |
+| `/nlc cancel` | call it off |
+| `/nlc wins` | tonight's main-spec wins |
+| `/nlc newnight` | start a new raid night |
+| `/nlc undo` | remove the last award |
+| `/nlc trials [rank, rank]` | the guild ranks that are trials (default: any rank with "trial" in its name) |
+
 ## Still to come
 
-The rolls (main spec, second main spec, off spec), the council vote, the loot log, sharing the list between officers, and windows for all of it.
+A roll pop-up for raiders with the addon, the council vote, the loot log export, sharing the list between officers, and windows for all of it.

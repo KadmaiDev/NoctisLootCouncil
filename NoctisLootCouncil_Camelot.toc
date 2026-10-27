@@ -19,3 +19,4 @@
 Locales.lua
 Core.lua
 Discovery.lua
+Rolls.lua

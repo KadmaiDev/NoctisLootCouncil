@@ -7,7 +7,7 @@ local M = {}
 local KNOWN_EVENTS = {
     ADDON_LOADED = true, PLAYER_LOGIN = true, ENCOUNTER_END = true, BOSS_KILL = true,
     LOOT_READY = true, LOOT_OPENED = true, CHAT_MSG_LOOT = true, START_LOOT_ROLL = true,
-    ENCOUNTER_LOOT_RECEIVED = true,
+    ENCOUNTER_LOOT_RECEIVED = true, CHAT_MSG_SYSTEM = true,
 }
 
 -- A secret value: issecretvalue says so, and using it the ways the game forbids throws.
@@ -43,7 +43,12 @@ function M.load(files, addonName)
     M.loot = {}      -- the open loot window: { { link, quality, guid } or { money = true } }
     M.rolls = {}     -- [rollID] = { link, quality }
     M.qualities = {} -- [itemID] = quality the item cache knows (nil = not cached)
-    M.player = { "Kadmai", "Moonwhisper" }
+    M.player = { "Kadmai", "Moonwhisper", guild = "Noctis", rank = "Officer" }
+    M.group = {}     -- the group, the player first (raid1 / player, then raid2 / party1, ...); empty = solo
+    M.inRaid = false
+    M.timers = {}    -- { at, fn }, run by M.wait
+    M.sent = {}      -- chat lines the addon sent: { text, chatType }
+    M.lockdown = false
 
     wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
     print = function(msg) M.printed[#M.printed + 1] = msg end
@@ -51,7 +56,33 @@ function M.load(files, addonName)
     issecretvalue = function(x) return x == nil and false or rawequal(x, M.SECRET) end
     GetTime = function() return M.now end
     time = function() return M.clock + math.floor(M.now) end
-    UnitName = function() return M.player[1], M.player[2] end
+    local function Unit(unit)
+        if unit == "player" then return M.player end
+        local kind, i = unit:match("^(%a+)(%d+)$")
+        i = tonumber(i)
+        if kind == "raid" and M.inRaid then return M.group[i] end
+        if kind == "party" and not M.inRaid then return M.group[i + 1] end
+    end
+    UnitName = function(unit)
+        local u = Unit(unit)
+        if u then return u[1], u[2] end
+    end
+    GetGuildInfo = function(unit)
+        local u = Unit(unit)
+        if u and u.guild then return u.guild, u.rank, 1 end
+    end
+    IsInRaid = function() return M.inRaid end
+    IsInGroup = function() return #M.group > 0 end
+    GetNumGroupMembers = function() return #M.group end
+    C_Timer = { After = function(seconds, fn) M.timers[#M.timers + 1] = { at = M.now + seconds, fn = fn } end }
+    C_ChatInfo = {
+        InChatMessagingLockdown = function() return M.lockdown end,
+        SendChatMessage = function(text, chatType)
+            assert(#text <= 255, "chat line over 255 characters")
+            M.sent[#M.sent + 1] = { text, chatType }
+        end,
+    }
+    RANDOM_ROLL_RESULT = "%s rolls %d (%d-%d)"
     SlashCmdList = {}
     Enum = { LootSlotType = { None = 0, Item = 1, Money = 2, Currency = 3 } }
     ITEM_QUALITY3_DESC, ITEM_QUALITY4_DESC = "Rare", "Epic"
@@ -118,8 +149,44 @@ function M.login()
     M.fire("PLAYER_LOGIN")
 end
 
--- Moves the clock on.
-function M.wait(seconds) M.now = M.now + seconds end
+-- Moves the clock on, running timers that come due on the way, in order.
+function M.wait(seconds)
+    local stop = M.now + seconds
+    while true do
+        local next, at
+        for i, t in ipairs(M.timers) do
+            if t.at <= stop and (not at or t.at < at) then next, at = i, t.at end
+        end
+        if not next then break end
+        local t = table.remove(M.timers, next)
+        M.now = t.at
+        t.fn()
+    end
+    M.now = stop
+end
+
+-- Puts the player in a raid with these members ({ "First", "Last", rank = "Member" }; guild
+-- Noctis unless guild is given, or guild = false for someone outside it).
+function M.raid(members)
+    M.inRaid = true
+    M.group = { M.player }
+    for _, m in ipairs(members) do
+        if m.guild == nil then m.guild = "Noctis" elseif m.guild == false then m.guild = nil end
+        M.group[#M.group + 1] = m
+    end
+end
+
+-- Someone's roll, as the system line everyone in the group sees.
+function M.roll(who, roll, max, min)
+    M.fire("CHAT_MSG_SYSTEM", RANDOM_ROLL_RESULT:format(who, roll, min or 1, max or 100), "", "", "", "", "", 0, 0, "", 0, 1, nil, 0)
+end
+
+-- Every chat line sent so far, joined.
+function M.said()
+    local out = {}
+    for _, s in ipairs(M.sent) do out[#out + 1] = s[1] end
+    return table.concat(out, "\n")
+end
 
 -- A boss dies.
 function M.kill(encounterID, name)

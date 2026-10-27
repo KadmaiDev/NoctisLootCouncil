@@ -240,7 +240,7 @@ local function Receipts()
     end
     return RECEIPTS
 end
-ns.ReceiptPattern = Pattern
+ns.ChatPattern = Pattern
 
 -- A drop seen without its corpse: the recent kill's, if the item is new or known to come
 -- from that boss; otherwise just noted.
