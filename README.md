@@ -166,17 +166,29 @@ python -m companion --setup          # bot address http://127.0.0.1:8080, the to
 
 ```
 python -m pip install -r requirements-dev.txt
-python -m pytest                          # the bot and the companion
+python -m pytest                          # the bot, the companion and the harness (below)
 cd addon && luajit tests/run.lua          # the addon, against a fake WoW: Forever client
+python tools/package.py                   # dist/: the addon zip and NoctisLootCompanion.exe
 python addon/tools/install_dev.py "<WoW>\_forever_"   # a dev copy of the addon in game
 ```
 
 The rules (vote tally, upload merge and de-duplication, post wording) are plain modules with no Discord import (`bot/rules.py`, `bot/upload.py`, `bot/store.py`, `bot/render.py`) and are tested directly; the API is tested with aiohttp's test client against a temporary database; the poster against fake channels; the companion end to end against the real API.
 
+### The test harness
+
+`python -m pytest` also runs the three programs together, with Discord and the game faked (`harness/`, `tests/harness/`):
+
+- **A fake Discord** (`harness/fake_discord.py`): a local server that speaks enough of Discord's REST API and gateway for the real bot to connect to it unchanged. Tests type slash commands, press buttons and fill in forms as officers and raiders, then read what the bot posted.
+- **A raid realm** (`harness/realm/`): several players, each running the real addon in its own LuaJIT process on the fake WoW: Forever client from the addon's tests. The realm passes addon messages between them, rolls their `/roll`s and keeps their clocks together. Each player has their own PC folder, so the real companion app reads their saved files and writes their decisions just as it would on an officer's PC.
+- **Scenarios**: a whole week (officers decide in Discord, the companion brings it into the game, a raid night with council votes and rolls, two officers upload, the bot posts the night and the new items, next week's game knows), plus checks of each part. With `dist/NoctisLootCompanion.exe` built, one scenario runs the built app.
+- **Forever's API**: `harness/forever_api.json` lists the functions and events the Forever client has (from [forever-addon-kit](https://github.com/Thunderz96/forever-addon-kit) and [forever-addon-dev](https://github.com/imperial64/forever-addon-dev), MIT). A test fails if the fake client offers, or the addon uses, one the game doesn't have. Regenerate it with `python tools/forever_api.py <forever-addon-kit> <forever-addon-dev>`.
+
+The realm needs LuaJIT on the PATH (or in `LUAJIT`); without it those tests are skipped. The fakes are only as right as our guesses about Discord and the game: the harness proves the parts agree with each other, not that Forever behaves as the fake client does.
+
 ## Not done yet
 
-- Nothing has run against Discord or the real game: no bot token yet. The addon, companion and bot API have been run together against the addon's fake game client.
+- Nothing has run against Discord or the real game: no bot token yet. The three programs run together in the test harness, against a fake Discord and the fake game client.
 - No way to remove an item from the list or revoke a token other than issuing a new one (`/loot token` replaces the old one; deleting a row from the `tokens` table revokes it).
 - Only the winner's bid tags (BIS, Sidegrade...) reach the bot, with the award; the other bidders' tags stay in game. "NEW IN OUR RAID" posts show how many wanted an item, not what they tagged.
 - The CSV export for oxm.gg from the bot (the system map's "later") isn't built.
-- No .exe has been built (the spec is there).
+- No release yet: the addon zip and the companion .exe build (`python tools/package.py`) but haven't been published.
