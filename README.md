@@ -8,7 +8,7 @@ Work in progress. What it does so far:
 
 Forever hides its raid loot from data miners at launch, so nobody knows the drops in advance. Noctis Loot Council keeps a list of every drop seen in a raid (rare quality and up), with the boss it came from and how many times it has dropped, and fills it in as you raid.
 
-- **When an item drops for the first time**, whoever opens the loot window is told, so the raid can decide on the spot whether it's a council or roll item.
+- **When an item drops for the first time**, whoever opens the loot window is told. New items are rolled; once the guild knows how big an upgrade it is, `/nlc council` makes it a council item from its next drop.
 - **When it drops again**, they're told what was decided last time, with any note ("Priest priority").
 - Drops are seen in the loot window, in "receives loot" chat lines and in group loot roll windows, so raiders without the loot window still fill in the list. A drop seen several ways counts once.
 - The boss is learned from the first corpse or chest opened after a kill, so later kills are recognised from the corpse alone.

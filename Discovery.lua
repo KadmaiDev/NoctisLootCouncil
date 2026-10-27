@@ -117,7 +117,7 @@ local function Tell(killKey, itemID, item, new, src)
     told[key] = true
     local from = BossName(src) or L["trash"]
     if new then
-        ns.Say(L["First time seen: %s from %s. Decide council or roll on the spot; /nlc council or /nlc roll saves it for next time."]:format(item.link, from))
+        ns.Say(L["First time seen: %s from %s. New items are rolled; /nlc council makes it a council item from its next drop."]:format(item.link, from))
     elseif item.handling then
         local how = item.handling == "council" and L["council item"] or L["roll item"]
         if item.note then how = how .. " · " .. item.note end
