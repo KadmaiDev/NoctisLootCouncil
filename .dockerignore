@@ -6,6 +6,7 @@ data/
 companion/
 companion.ini
 tests/
+harness/
 packaging/
 __pycache__/
 .pytest_cache/
