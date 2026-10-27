@@ -166,9 +166,8 @@ The rules (vote tally, upload merge and de-duplication, post wording) are plain 
 
 ## Not done yet
 
-- Nothing has run against Discord or the real game: no bot token yet, and the addon side is being built in parallel.
+- Nothing has run against Discord or the real game: no bot token yet. The addon, companion and bot API have been run together against the addon's fake game client.
 - No way to remove an item from the list or revoke a token other than issuing a new one (`/loot token` replaces the old one; deleting a row from the `tokens` table revokes it).
-- The bid tags raiders pick (BIS, Sidegrade...) aren't in the saved-file contract, so "NEW IN OUR RAID" posts show how many wanted an item but not their tags.
-- Upload-created items have no slot ("Waist · Cloth") because the saved file doesn't carry it; `/loot add` with the same ID adds it.
+- Only the winner's bid tags (BIS, Sidegrade...) reach the bot, with the award; the other bidders' tags stay in game. "NEW IN OUR RAID" posts show how many wanted an item, not what they tagged.
 - The CSV export for oxm.gg from the bot (the system map's "later") isn't built.
 - No .exe has been built (the spec is there).
