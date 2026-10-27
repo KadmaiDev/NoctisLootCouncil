@@ -30,7 +30,7 @@ Forever hides its raid loot from data miners at launch, so nobody knows the drop
 
 ## Rolls
 
-The loot master starts a roll with `/nlc start <item>`. The raid is told in raid chat: `/roll` for main spec, `/roll 99` for off spec, 30 seconds. Raiders don't need the addon. When time is up, the winner is announced and logged.
+The loot master starts a roll with `/nlc start <item>` (or a button in the loot window). The raid is told in raid chat: `/roll` for main spec, `/roll 99` for off spec, 30 seconds, with a reminder 10 seconds before the end. Raiders don't need the addon; those who have it get a pop-up whose **Main spec** and **Off spec** buttons roll for them. When time is up, the winner is announced and logged.
 
 Who wins, by the guild's rules:
 
@@ -42,14 +42,37 @@ Only each player's first roll counts. Main-spec wins count as "tonight's" for 12
 
 | Command | |
 |---|---|
-| `/nlc start <item>` | start a roll |
-| `/nlc stop` | end it now and announce the winner |
+| `/nlc start <item> [roll\|council]` | start its roll, or the council for a council item |
+| `/nlc stop` | end it now (or close the council's bids, or count its votes) |
 | `/nlc cancel` | call it off |
 | `/nlc wins` | tonight's main-spec wins |
 | `/nlc newnight` | start a new raid night |
 | `/nlc undo` | remove the last award |
 | `/nlc trials [rank, rank]` | the guild ranks that are trials (default: any rank with "trial" in its name) |
+| `/nlc popup on\|off` | the Main spec / Off spec / Pass pop-up |
 
-## Still to come
+## The council
 
-A roll pop-up for raiders with the addon, the council vote, the loot log export, sharing the list between officers, and windows for all of it.
+Council items go to the loot council instead of a roll.
+
+1. **Bids, 30 seconds.** The pop-up asks Main spec / Off spec / Pass, with optional tags (BIS, Big upgrade, Sidegrade, Situational) and a short note. The bid goes to the loot master and the council only, with your **upgrade %** (the item's stats for your role against what you wear, as a share of all your gear) and what you wear in that slot. Raiders without the addon bid by rolling.
+2. **The council votes**, up to 5 minutes, one vote each. A council member who bid on the item sits it out.
+3. **The most votes wins.** A split vote goes to a roll-off between the tied. One main-spec bid wins without a vote; only off-spec bids roll off; no bids, and the loot master disenchants or banks it. The loot master can also award it with a reason.
+
+The council window shows each candidate's gear, upgrade, earlier loot, tags, note and votes.
+
+| Command | |
+|---|---|
+| `/nlc councillors First Last, First Last` | who votes (on the loot master's addon) |
+| `/nlc award First Last, reason` | award the council item to a candidate |
+| `/nlc councilwindow` | open the council window again |
+| `/nlc role [melee\|ranged\|caster\|healer\|tank\|feral\|auto]` | the role your upgrade % is worked out for |
+
+The upgrade % only counts plain stats: trinkets with use or proc effects, set bonuses and resistance gear score low, so the council goes by tags and notes for those.
+
+## Windows, export and Discord
+
+- **`/nlc show`** opens the loot master's window: tonight's drops with their decision and a button to start each, the running roll with everyone's standing, the item list and the loot log. It opens by itself when the loot master loots a boss (`/nlc autoopen off` stops that).
+- **`/nlc export [all]`** puts tonight's awards (or all of them) in a box to copy, in RCLootCouncil's CSV format, for oxm.gg's RCLootCouncil import.
+- **Decisions from Discord**: officers vote council or roll in Discord; the Noctis Loot companion app writes them into a small `NoctisLootDecisions` addon that this one reads at login, and uploads the saved loot log back.
+- **`/nlc scale [50-300]`** sets the size of the windows. They take EllesmereUI's or ElvUI's look if you use one, and work with the Gamepad UI.
