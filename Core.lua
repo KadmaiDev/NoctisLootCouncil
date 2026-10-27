@@ -86,10 +86,12 @@ local DB_FIELDS = { v = "number", items = "table", encounters = "table", bossSou
     trialRanks = "table", drops = "table", me = "string", decisionsAt = "number", scale = "number",
     council = "table", roles = "table", popupOff = "boolean", autoOpenOff = "boolean" }
 ns.ITEM_FIELDS = { link = "string", q = "number", first = "number", last = "number", seen = "number",
-    from = "table", inst = "number", handling = "string", note = "string" }
+    from = "table", inst = "number", handling = "string", note = "string",
+    slot = "string", sub = "string" }
 local ENCOUNTER_FIELDS = { name = "string", inst = "number", src = "string" }
 local LOG_FIELDS = { id = "number", link = "string", who = "string", class = "string", at = "number",
-    how = "string", roll = "number", note = "string", inst = "string", boss = "string", nms = "number", nos = "number" }
+    how = "string", roll = "number", note = "string", inst = "string", boss = "string", nms = "number", nos = "number",
+    tags = "string" }
 local DROP_FIELDS = { id = "number", at = "number", src = "string", inst = "number", n = "number" }
 
 local function KeepTyped(t, fields)

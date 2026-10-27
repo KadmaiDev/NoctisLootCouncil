@@ -78,6 +78,7 @@ test("bids from the pop-up and from rolls; a pass takes a bid back; a clear vote
     eq(e.who, "Ilsa Marrow")
     eq(e.class, "WARLOCK")
     eq(e.note, 'council vote, 2 of 3; bid: BIS "first upgrade in weeks"')
+    eq(e.tags, "BIS")
     eq(e.nms, 3)
     eq(e.nos, 1)
     eq(s.phase, "done")

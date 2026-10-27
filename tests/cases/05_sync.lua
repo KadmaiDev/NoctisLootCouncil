@@ -103,6 +103,31 @@ test("the same decisions aren't applied twice, so a change made in game since su
     eq(ns.db.items[18000].handling, "council")
 end)
 
+test("\"none\" from Discord undoes a decision and its note, and adds nothing new", function()
+    local ns = withDecisions({ items = { [16866] = { link = HELM, seen = 3, first = 1, last = 2, handling = "council", note = "old" } } },
+        { at = 1793078967, items = { [16866] = { h = "none" }, [17109] = { h = "none" } } })
+    eq(ns.db.items[16866].handling, nil)
+    eq(ns.db.items[16866].note, nil)
+    eq(ns.db.items[16866].seen, 3)
+    eq(ns.db.items[17109], nil)
+    eq(ns.db.decisionsAt, 1793078967)
+end)
+
+test("items record their slot and armour type, for the Discord posts", function()
+    local ns = start()
+    wow.equip[18000] = { "Armor", "Cloth", "INVTYPE_WAIST" }
+    wow.equip[16866] = { "Armor", "Plate", "INVTYPE_HEAD" }
+    wow.kill(663, "Lucifron")
+    wow.open({ { SASH, 4, wow.npc(12118) } })
+    eq(ns.db.items[18000].slot, "INVTYPE_WAIST")
+    eq(ns.db.items[18000].sub, "Cloth")
+    wow.type("/nlc council 16866")
+    eq(ns.db.items[16866].slot, "INVTYPE_HEAD")
+    eq(ns.db.items[16866].sub, "Plate")
+    wow.type("/nlc council 17109") -- the client knows nothing about it
+    eq(ns.db.items[17109].slot, nil)
+end)
+
 test("the game loads an item decided in Discord: its real link replaces the placeholder", function()
     local ns = withDecisions(nil, DECISIONS)
     eq(ns.db.items[18000].link, "item:18000 [Sash of the Unseen]")

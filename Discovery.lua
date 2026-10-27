@@ -70,6 +70,15 @@ local function Quality(itemID, link, known)
     return hex and COLOURS[hex:lower()]
 end
 
+-- The item's slot ("INVTYPE_HEAD") and armour or weapon type ("Plate"), for the companion's
+-- posts. The client answers these for any item ID, loaded or not.
+local function Kind(item, itemID)
+    if not (C_Item and C_Item.GetItemInfoInstant) then return end
+    local _, _, sub, loc = C_Item.GetItemInfoInstant(itemID)
+    if Plain(loc) and type(loc) == "string" and loc ~= "" then item.slot = loc end
+    if Plain(sub) and type(sub) == "string" and sub ~= "" then item.sub = sub end
+end
+
 -- Adds a sighting to the list. kind is "window" (n = copies in the window at once), "chat",
 -- "roll" or "encounter" (one copy each). Returns the item and whether it was new.
 local function Record(itemID, link, q, inst, src, killKey, kind, n)
@@ -82,6 +91,7 @@ local function Record(itemID, link, q, inst, src, killKey, kind, n)
     end
     item.link = link -- the newest link: a name missing at first fills in once the item loads
     item.q = q or item.q
+    if not item.slot then Kind(item, itemID) end
     item.last = time()
     item.inst = inst or item.inst
     if killKey then
@@ -354,6 +364,7 @@ end)
 function ns.AddUnseen(id, link, name)
     local item = { first = time(), seen = 0, link = link or ("item:" .. id .. (name and " [" .. name .. "]" or "")) }
     if link then item.q = Quality(id, link) end
+    Kind(item, id)
     ns.db.items[id] = item
     if not link and not LoadLink(id) then
         waiting[id] = true

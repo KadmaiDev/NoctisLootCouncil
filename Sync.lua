@@ -4,7 +4,9 @@
 -- login the newest decisions are applied to the list, once: an item decided in game since
 -- keeps that decision until Discord changes something again.
 --
---   NoctisLootDecisions = { at = time(), items = { [itemID] = { h = "council"|"roll", note, name } } }
+--   NoctisLootDecisions = { at = time(), items = { [itemID] = { h = "council"|"roll"|"none", note, name } } }
+--
+-- "none" undoes an earlier decision (the item stays in the list, undecided and without a note).
 --
 -- The other direction needs nothing here: the companion app reads the saved file.
 local ADDON, ns = ...
@@ -23,7 +25,10 @@ function ns.ApplyDecisions(d)
     if db.decisionsAt and d.at <= db.decisionsAt then return nil end
     local council, roll = 0, 0
     for id, dec in pairs(d.items) do
-        if type(id) == "number" and type(dec) == "table" and HANDLING[dec.h] then
+        if type(id) == "number" and type(dec) == "table" and dec.h == "none" then
+            local item = db.items[id]
+            if item then item.handling, item.note = nil, nil end
+        elseif type(id) == "number" and type(dec) == "table" and HANDLING[dec.h] then
             local name = type(dec.name) == "string" and dec.name or nil
             local item = db.items[id] or ns.AddUnseen(id, nil, name)
             item.handling = dec.h

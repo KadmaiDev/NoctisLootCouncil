@@ -222,7 +222,7 @@ function ns.CouncilAward(candKey, reason)
     local note = #bid > 0 and reason .. "; " .. L["bid: %s"]:format(concat(bid, " ")) or reason
     local ms, os = Wanted(s)
     ns.LogAward({ id = s.id, link = s.link, who = b.name, how = b.resp == "os" and "os" or "council",
-        note = note, nms = ms, nos = os }, b.unit)
+        note = note, nms = ms, nos = os, tags = b.tags and #b.tags > 0 and concat(b.tags, ", ") or nil }, b.unit)
     ns.Announce(L["%s wins %s (council: %s)."]:format(b.name, s.link, reason))
     End(s, b.name)
     return true
