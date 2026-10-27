@@ -107,6 +107,28 @@ location /api/ {
 
 Check it from outside: `https://loot.example.org/api/health` should answer `{"ok": true}`. The companion app's "bot address" is then `https://loot.example.org`.
 
+**No reverse proxy yet, or your ISP blocks incoming 80 and 443** (some home connections do): run Caddy next to the bot in a `docker-compose.override.yml`, on another port, and get the certificate by Let's Encrypt's DNS challenge, which needs no incoming connection. If your DNS host has no API Caddy supports, delegate just the challenge to Duck DNS: build Caddy with `xcaddy build --with github.com/caddy-dns/duckdns`, add a CNAME from `_acme-challenge.loot.example.org` to a free `something.duckdns.org`, forward the router's port 8443 to the host's 443, and use:
+
+```
+loot.example.org {
+	tls {
+		dns duckdns {$DUCKDNS_TOKEN} {
+			override_domain {$DUCKDNS_DOMAIN}
+		}
+		propagation_delay 30s
+		propagation_timeout -1
+	}
+	handle /api/* {
+		reverse_proxy bot:8080
+	}
+	handle {
+		respond 404
+	}
+}
+```
+
+The bot address is then `https://loot.example.org:8443`. Keep the Duck DNS token in an env file next to the override, out of git like `.env`.
+
 ### Backups
 
 Everything is in the one SQLite file. A consistent copy while the bot runs: `sqlite3 data/noctis-loot.db ".backup backup.db"` (Docker: `docker compose exec bot python -c "import sqlite3; sqlite3.connect('/data/noctis-loot.db').backup(sqlite3.connect('/data/backup.db'))"`).
