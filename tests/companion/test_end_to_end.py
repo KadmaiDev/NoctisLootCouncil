@@ -126,3 +126,19 @@ async def test_command_line_once(setup, tmp_path, monkeypatch):
     settings.token = "nlc_wrong"
     config.save(ini, settings)
     assert await asyncio.to_thread(main, ["--once", "--config", str(ini)]) == 3
+
+
+def test_loop_survives_unexpected_errors(tmp_path):
+    settings = Settings(wow_dir=tmp_path, bot_url="http://127.0.0.1:9", token="t")
+    calls = []
+
+    def broken_fetch(url, token):
+        calls.append(1)
+        if len(calls) == 1:
+            raise PermissionError("Decisions.lua is locked")
+        raise client.TokenRefused("stop the loop")
+
+    comp = Companion(settings, fetch=broken_fetch)
+    with pytest.raises(client.TokenRefused):
+        comp.run_forever(sleep=lambda _: None)
+    assert len(calls) == 2

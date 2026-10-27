@@ -49,6 +49,7 @@ class LootBot(commands.Bot):
         self._locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._runner: web.AppRunner | None = None
         self._poster_task: asyncio.Task | None = None
+        self._missing_channels: set[int] = set()
 
     # ---- lifecycle ---------------------------------------------------------
 
@@ -106,8 +107,13 @@ class LootBot(commands.Bot):
     def _text_channel(self, channel_id: int) -> discord.TextChannel | None:
         ch = self.get_channel(channel_id)
         if not isinstance(ch, discord.TextChannel):
-            log.warning("Channel %s not found (or not a text channel): check .env and the bot's access", channel_id)
+            # Once per channel, not once per post: a wrong ID would otherwise flood the log.
+            if channel_id not in self._missing_channels:
+                log.warning("Channel %s not found (or not a text channel): check .env and the bot's access",
+                            channel_id)
+                self._missing_channels.add(channel_id)
             return None
+        self._missing_channels.discard(channel_id)
         return ch
 
     def channel_mention(self, channel_id: int) -> str:

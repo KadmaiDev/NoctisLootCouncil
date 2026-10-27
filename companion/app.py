@@ -108,5 +108,10 @@ class Companion:
     def run_forever(self, sleep: Callable[[float], None] = time.sleep) -> None:
         log.info("Watching %s every %d seconds. Ctrl+C stops.", self.settings.wow_dir, self.settings.poll_seconds)
         while True:
-            self.run_once()
+            try:
+                self.run_once()
+            except client.TokenRefused:
+                raise
+            except Exception as exc:  # noqa: BLE001 - e.g. a locked file; keep watching rather than die
+                log.exception("Unexpected problem: %s. Trying again shortly.", exc)
             sleep(self.settings.poll_seconds)
