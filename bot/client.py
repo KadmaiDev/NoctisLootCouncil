@@ -64,6 +64,9 @@ class LootBot(commands.Bot):
         await self._runner.setup()
         await web.TCPSite(self._runner, self.config.api_host, self.config.api_port).start()
         log.info("API listening on http://%s:%d", self.config.api_host, self.config.api_port)
+        # Recheck every post once: a new version may word or lay them out differently (posts that
+        # come out the same are skipped by their digest).
+        self.store.mark_all_dirty()
         self._poster_task = asyncio.create_task(self._poster())
 
     async def close(self) -> None:
