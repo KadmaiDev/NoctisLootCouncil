@@ -3,57 +3,15 @@ decisions into the game, a raid night runs in the realm, the companion uploads i
 it, the officers vote on what's new, and the next night the game knows."""
 from __future__ import annotations
 
-import asyncio
-import re
-
 import pytest
 
-from companion.app import Companion
-from companion.config import Settings
-from harness.realm import Realm, find_luajit
+from harness.realm import find_luajit
 
-from .test_raid import COUNCIL, HELM, SASH, link
+from .helpers import CLOAK, COUNCIL, HELM, SASH, companion_pass, decide, token_for
 
 pytestmark = pytest.mark.skipif(find_luajit() is None, reason="LuaJIT not found (set LUAJIT)")
 
-CLOAK = link(17109, "Cloak of the Shrouded Mists")  # nobody has seen it before tonight
 WEEK = 7 * 24 * 3600
-
-
-async def token_for(guild, officer) -> str:
-    r = await guild.slash(officer, "loot token")
-    return re.search(r"nlc_[\w-]+", r.text).group(0)
-
-
-async def companion_pass(player, api_url: str, token: str) -> None:
-    """One pass of the companion app on this player's PC: upload what changed, write the decisions."""
-    comp = Companion(Settings(wow_dir=player.wow_dir, bot_url=api_url, token=token))
-    await asyncio.to_thread(comp.run_once)
-
-
-async def decide(guild, item_id: int, choice: str, priority: str = "") -> None:
-    post = await guild.wait_until(lambda: next((m for m in guild.channel("loot-officers").posts
-                                                if f"nlc:vote:council:{item_id}" in
-                                                [b.get("custom_id") for b in m.buttons]), None),
-                                  what=f"the officer post for {item_id}")
-    for officer in guild.officers:
-        await guild.click(officer, post, choice)
-    if priority:
-        opened = await guild.click(guild.officers[0], post, "Set priority")
-        await guild.submit(guild.officers[0], opened, priority)
-
-
-@pytest.fixture
-def realm(tmp_path):
-    r = Realm(tmp_path / "pcs")
-    r.lm = r.add_player("Kadmai", "Moonwhisper", "HUNTER", rank="Officer", leader=True)
-    r.seren = r.add_player("Seren", "Vale", "PRIEST", rank="Officer")
-    r.doran = r.add_player("Doran", "Pike", "WARRIOR", rank="Officer")
-    r.ilsa = r.add_player("Ilsa", "Marrow", "WARLOCK")
-    r.vespera = r.add_player("Vespera", "Ashward", "WARLOCK")
-    r.bran = r.add_player("Bran", "Holloway", "MAGE", addon=False)
-    yield r
-    r.close()
 
 
 async def test_week_one(guild, running, realm):

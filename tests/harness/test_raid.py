@@ -6,17 +6,9 @@ import pytest
 
 from harness.realm import Realm, find_luajit
 
+from .helpers import COUNCIL, HELM, SASH
+
 pytestmark = pytest.mark.skipif(find_luajit() is None, reason="LuaJIT not found (set LUAJIT)")
-
-
-def link(item_id: int, name: str, quality: int = 4) -> str:
-    colour = {3: "0070dd", 4: "a335ee", 5: "ff8000"}[quality]
-    return f"|cff{colour}|Hitem:{item_id}::::::::60:::::::::|h[{name}]|h|r"
-
-
-SASH = link(18000, "Sash of the Unseen")
-HELM = link(16866, "Helm of Might")
-COUNCIL = "Seren Vale, Doran Pike, Kadmai Moonwhisper"
 
 
 @pytest.fixture

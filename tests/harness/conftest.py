@@ -10,6 +10,7 @@ import pytest
 from bot.client import LootBot
 from bot.config import Config
 from harness.fake_discord import FakeDiscord, Member
+from harness.realm import Realm
 
 
 @dataclass
@@ -76,3 +77,17 @@ async def running(guild, tmp_path):
     yield rb
     await stop_bot(rb)
     assert guild.unknown_routes == [], guild.unknown_routes
+
+
+@pytest.fixture
+def realm(tmp_path):
+    """Three officers (Kadmai is the loot master), two raiders with the addon, one without."""
+    r = Realm(tmp_path / "pcs")
+    r.lm = r.add_player("Kadmai", "Moonwhisper", "HUNTER", rank="Officer", leader=True)
+    r.seren = r.add_player("Seren", "Vale", "PRIEST", rank="Officer")
+    r.doran = r.add_player("Doran", "Pike", "WARRIOR", rank="Officer")
+    r.ilsa = r.add_player("Ilsa", "Marrow", "WARLOCK")
+    r.vespera = r.add_player("Vespera", "Ashward", "WARLOCK")
+    r.bran = r.add_player("Bran", "Holloway", "MAGE", addon=False)
+    yield r
+    r.close()
