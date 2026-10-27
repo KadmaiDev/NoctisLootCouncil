@@ -9,12 +9,29 @@ PLAN*.md
 # Downloaded API references and build output.
 reference/
 dist/
+build/
 
 # Artwork drafts.
-media/drafts/
+addon/media/drafts/
+
+# Bot and companion secrets and local state.
+.env
+*.db
+*.db-wal
+*.db-shm
+data/
+companion.ini
+companion-state.json
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.venv/
 
 # Editor and OS clutter.
-__pycache__/
 .vscode/
 .idea/
 Thumbs.db

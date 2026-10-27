@@ -1,0 +1,31 @@
+# systemd unit, the alternative to Docker. Install:
+#   sudo useradd --system --home /opt/noctis-loot-bot noctis
+#   sudo git clone <repo> /opt/noctis-loot-bot   (or copy the files there)
+#   cd /opt/noctis-loot-bot && sudo python3.11 -m venv .venv && sudo .venv/bin/pip install -r requirements.txt
+#   sudo cp .env.example .env && sudo nano .env        (fill it in; API_HOST=127.0.0.1)
+#   sudo mkdir -p data && sudo chown noctis data && sudo chown noctis .env && sudo chmod 600 .env
+#   sudo cp deploy/noctis-loot-bot.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now noctis-loot-bot
+#   journalctl -u noctis-loot-bot -f
+[Unit]
+Description=Noctis loot bot (Discord + companion API)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=noctis
+WorkingDirectory=/opt/noctis-loot-bot
+ExecStart=/opt/noctis-loot-bot/.venv/bin/python -m bot
+Restart=on-failure
+RestartSec=10
+
+# The bot only needs to write its database.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/noctis-loot-bot/data
+
+[Install]
+WantedBy=multi-user.target
