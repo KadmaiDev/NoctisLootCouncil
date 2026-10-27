@@ -9,3 +9,9 @@ tests/
 packaging/
 __pycache__/
 .pytest_cache/
+addon/
+docs/
+tools/
+deploy/
+dist/
+build/
