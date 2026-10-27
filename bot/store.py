@@ -169,7 +169,8 @@ class Store:
                 (item_id, user_id, user_name, choice, self.now()))
             result = rules.tally(self._votes(item_id), self.votes_to_decide)
             current = self.conn.execute("SELECT decision FROM items WHERE id = ?", (item_id,)).fetchone()["decision"]
-            if result.decided is None and current is not None:
+            taken_back = result.decided is None and current is not None
+            if taken_back:
                 # Taken back: the game is told "none", and an older in-game decision doesn't
                 # come back in its place.
                 self.conn.execute("UPDATE items SET decision = NULL, decided_at = NULL, cleared_at = ?, "
@@ -180,6 +181,12 @@ class Store:
                                   (result.decided, self.now(), item_id))
             self._mark_dirty(item_id)
             self._refresh_decisions_at()
+            if taken_back:
+                # cleared_at is the decisions version that carries the "none": a game that has
+                # applied it (its decisions_at is at least this) has heard. A time would do too,
+                # except when the decision and its taking back fall in the same second.
+                self.conn.execute("UPDATE items SET cleared_at = ? WHERE id = ?",
+                                  (int(self._meta("decisions_at", "0") or 0), item_id))
         return result
 
     def toggle_suggestion(self, item_id: int, user_id: int) -> tuple[bool, int]:

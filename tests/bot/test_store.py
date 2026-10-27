@@ -236,6 +236,20 @@ def test_taken_back_decision_isnt_relearnt_from_the_game_until_it_has_heard(stor
     assert store.item_state(18000).decided_in_game
 
 
+def test_taken_back_in_the_same_second_it_was_decided(store, clock):
+    # Found by the harness: with times, a game holding the decision from this very second looked
+    # as if it had already heard it was taken back.
+    store.add_item(18000, "Sash of the Unseen")
+    for uid in (1, 2, 3):
+        store.cast_vote(18000, uid, f"O{uid}", COUNCIL)
+    decided = store.decisions()["at"]
+    store.cast_vote(18000, 3, "O3", ROLL)  # same second
+    body = sample_body()  # the game applied the council decision and reports it back
+    body["decisions_at"] = decided
+    upload(store, body)
+    assert store.decisions()["items"]["18000"]["handling"] == "none"
+
+
 def test_slot_and_type_from_the_game_and_award_tags(store):
     body = sample_body()
     body["items"]["18000"].update(slot="INVTYPE_WAIST", sub="Cloth")

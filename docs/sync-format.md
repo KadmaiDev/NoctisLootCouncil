@@ -97,7 +97,7 @@ the whole file each time; the bot de-duplicates:
   has no decision for (the bot shows them as "set in game by <uploader>"). Discord decisions
   always win. After a decision is taken back in Discord, the uploader's game still has the old
   one until it applies decisions that say `"none"`, so the bot ignores an item's uploaded
-  handling while `decisions_at` is older than the time it was taken back.
+  handling while `decisions_at` is older than the decisions (`at`) that first said `"none"`.
 
 Answer: `200 {"ok": true, "new_items": n, "new_awards": n}`; `401` bad token; `400` bad body.
 
