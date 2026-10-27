@@ -30,7 +30,7 @@ function printed() return table.concat(wow.printed, "\n") end
 
 function clearPrinted() wow.printed = {} end
 
-CASES = { "01_files.lua", "02_discovery.lua", "03_commands.lua", "04_rolls.lua", "05_sync.lua", "06_export.lua", "07_popup.lua", "08_council.lua" }
+CASES = { "01_files.lua", "02_discovery.lua", "03_commands.lua", "04_rolls.lua", "05_sync.lua", "06_export.lua", "07_popup.lua", "08_council.lua", "09_council_window.lua" }
 for _, file in ipairs(CASES) do assert(loadfile("tests/cases/" .. file))() end
 
 for _, t in ipairs(tests) do

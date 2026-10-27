@@ -195,8 +195,8 @@ local function Phase(s, phase, seconds)
 end
 
 local function End(s, winner)
-    Phase(s, "done")
     s.winner = winner
+    Phase(s, "done")
     ns.Broadcast("E", s.sid, winner or "")
 end
 

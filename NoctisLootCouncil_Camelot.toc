@@ -24,6 +24,7 @@ Discovery.lua
 Upgrades.lua
 Rolls.lua
 Council.lua
+CouncilWindow.lua
 Popup.lua
 Sync.lua
 Export.lua
