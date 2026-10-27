@@ -65,14 +65,16 @@ Copy `.env.example` to `.env` and fill it in. Turn on Developer Mode in Discord 
 
 ### 4. Run it
 
-**Docker (recommended).** On the server, in the project folder with `.env` filled in:
+**Docker (recommended).** The server doesn't need git: `python tools/package.py bot` makes `dist/NoctisLootBot.zip`, a `NoctisLootBot` folder with just what Docker needs and a short README. Unpack it on the server, fill in `.env` there, then in that folder:
 
 ```sh
 docker compose up -d --build
 docker compose logs -f
 ```
 
-The database lives in the `loot-data` volume. The API is published on the host's `127.0.0.1:8080` only, for the reverse proxy.
+To update, unpack a new zip over the folder (it never contains a `.env`, so yours stays) and run the same command. The database lives in the `noctis-loot_loot-data` volume, which `docker compose down` keeps (`down -v` would delete it). The API is published on the host's `127.0.0.1:8080` only, for the reverse proxy or tunnel. Anything for one server only, such as another host port, goes in a `docker-compose.override.yml` next to the compose file; git ignores it, like `.env`.
+
+On Windows with Docker Desktop, Docker only runs while a user is signed in: turn on "Start Docker Desktop when you sign in" and make sure that account signs in after a reboot.
 
 **systemd instead.** See the instructions at the top of [`deploy/noctis-loot-bot.service`](deploy/noctis-loot-bot.service): a venv in `/opt/noctis-loot-bot`, a `noctis` system user, `API_HOST=127.0.0.1`.
 
@@ -168,7 +170,7 @@ python -m companion --setup          # bot address http://127.0.0.1:8080, the to
 python -m pip install -r requirements-dev.txt
 python -m pytest                          # the bot, the companion and the harness (below)
 cd addon && luajit tests/run.lua          # the addon, against a fake WoW: Forever client
-python tools/package.py                   # dist/: the addon zip and NoctisLootCompanion.exe
+python tools/package.py all               # dist/: the addon zip, NoctisLootCompanion.exe, NoctisLootBot.zip
 python addon/tools/install_dev.py "<WoW>\_forever_"   # a dev copy of the addon in game
 ```
 

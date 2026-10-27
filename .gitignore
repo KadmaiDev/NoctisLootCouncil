@@ -14,8 +14,12 @@ build/
 # Artwork drafts.
 addon/media/drafts/
 
-# Bot and companion secrets and local state.
+# Bot and companion secrets and local state. Settings for one server go in a compose override.
 .env
+.env.*
+!.env.example
+docker-compose.override.yml
+compose.override.yaml
 *.db
 *.db-wal
 *.db-shm

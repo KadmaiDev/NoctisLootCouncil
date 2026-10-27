@@ -1,8 +1,14 @@
+# The bot: docker compose up -d --build (README, "Setting up the bot"). Settings for one server
+# only (another host port, say) go in docker-compose.override.yml, which git ignores.
+name: noctis-loot  # fixed, so the database volume is the same whatever the folder is called
+
 services:
   bot:
     build: .
+    image: noctis-loot-bot
     container_name: noctis-loot-bot
     restart: unless-stopped
+    init: true
     env_file: .env
     environment:
       # Inside the container these are fixed; the host side is the ports line below.
@@ -12,8 +18,13 @@ services:
     volumes:
       - loot-data:/data
     ports:
-      # Only reachable from the host itself: the reverse proxy forwards to it.
+      # Only reachable from the host itself: the reverse proxy or tunnel forwards to it.
       - "127.0.0.1:8080:8080"
+    logging:
+      driver: json-file
+      options:
+        max-size: 1m
+        max-file: "3"
 
 volumes:
   loot-data:
