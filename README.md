@@ -1,9 +1,16 @@
-# Noctis Loot bot and companion app
+# Noctis Loot
 
-The Discord side of the Noctis guild's loot system for WoW: Forever. Two programs:
+The Noctis guild's loot system for WoW: Forever: loot rolls and a loot council in game, decisions and the loot log in Discord. Three programs, one repo, each packaged for the people who use it:
 
-- **The loot bot** (`bot/`), always on, on a home server. It keeps the official item list, runs the officers' votes in Discord and posts the loot log. It also serves a small HTTP API.
-- **The companion app** (`companion/`), on officers' Windows PCs. It uploads what the addon saw in the raid and writes the latest decisions where the game can load them.
+| | Folder | Who gets it | How |
+|---|---|---|---|
+| **Noctis Loot Council**, the addon (`/nlc`) | [`addon/`](addon/README.md) | everyone in the raid | CurseForge zip: `python tools/package.py addon` |
+| **The companion app** | `companion/` | officers, on their Windows PCs | `NoctisLootCompanion.exe`: `python tools/package.py companion` |
+| **The loot bot** | `bot/` | the server | `docker compose up -d --build` (below) |
+
+- The **addon** runs the rolls and the council in game and keeps the list of raid drops; its README is the player's guide.
+- The **loot bot**, always on, keeps the official item list, runs the officers' votes in Discord and posts the loot log. It also serves a small HTTP API.
+- The **companion app** uploads what the addon saw in the raid and writes the latest decisions where the game can load them.
 
 The game can't reach the internet, so data moves through files:
 
@@ -12,7 +19,7 @@ addon ──saved file──▶ companion app ──POST /api/upload──▶ bo
 addon ◀─NoctisLootDecisions addon── companion app ◀──GET /api/decisions── bot
 ```
 
-The exact formats are in [`docs/sync-format.md`](docs/sync-format.md), the contract with the addon (Noctis Loot Council, a separate project).
+The exact formats are in [`docs/sync-format.md`](docs/sync-format.md). A change to them changes the addon and the bot together, in one commit.
 
 ### The weekly flow
 
@@ -143,7 +150,7 @@ What it does each pass:
 - For every `WTF\Account\*\SavedVariables\NoctisLootCouncil.lua` that changed since it last uploaded: reads it and sends it to the bot. (The game writes it at `/reload` and logout.)
 - Fetches the decisions, and if they changed, writes `Interface\AddOns\NoctisLootDecisions\` (two `.toc` files and `Decisions.lua`). The game loads it at the next `/reload` or login. It shows in the AddOns list as "Noctis Loot Decisions"; leave it enabled.
 
-**Single .exe (optional):** `python -m pip install pyinstaller`, then `python -m PyInstaller packaging/companion.spec` builds `dist\NoctisLootCompanion.exe`.
+**Single .exe:** `python -m pip install -r requirements-dev.txt`, then `python tools/package.py companion` builds `dist\NoctisLootCompanion.exe`.
 
 ---
 
@@ -159,7 +166,9 @@ python -m companion --setup          # bot address http://127.0.0.1:8080, the to
 
 ```
 python -m pip install -r requirements-dev.txt
-python -m pytest
+python -m pytest                          # the bot and the companion
+cd addon && luajit tests/run.lua          # the addon, against a fake WoW: Forever client
+python addon/tools/install_dev.py "<WoW>\_forever_"   # a dev copy of the addon in game
 ```
 
 The rules (vote tally, upload merge and de-duplication, post wording) are plain modules with no Discord import (`bot/rules.py`, `bot/upload.py`, `bot/store.py`, `bot/render.py`) and are tested directly; the API is tested with aiohttp's test client against a temporary database; the poster against fake channels; the companion end to end against the real API.
