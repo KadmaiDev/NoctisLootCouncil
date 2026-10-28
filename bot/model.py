@@ -22,6 +22,7 @@ class AwardInfo:
     tags: str | None = None
     new_item: bool = False  # the item's first night in our raids
     emoji: str | None = None  # the item's icon as the bot's emoji
+    url: str | None = None  # the item's Wowhead page
 
 
 @dataclass(frozen=True)

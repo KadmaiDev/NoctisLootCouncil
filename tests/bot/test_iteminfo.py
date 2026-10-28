@@ -1,7 +1,8 @@
 from bot import iteminfo, render
 from bot.iteminfo import CLASSIC, FOREVER, ItemInfo
+from bot.upload import parse_upload
 
-from .conftest import TZ, link
+from .conftest import TZ, link, sample_body
 
 # What nether.wowhead.com/forever/tooltip/item/873 answers (shortened).
 STAFF = {
@@ -108,6 +109,15 @@ def test_classic_only_item_links_to_classic(store):
     store.save_item_info(16805, iteminfo.parse(GLOVES, CLASSIC))
     assert render.items_card(store.item_state(16805), TZ).url == \
         "https://www.wowhead.com/classic/item=16805/felheart-gloves"
+
+
+def test_log_awards_link_to_wowhead(store):
+    store.apply_upload(parse_upload(sample_body()), "discord:1", "Kadmai")
+    store.save_item_info(16805, iteminfo.parse(GLOVES, CLASSIC))
+    store.save_item_info(18000, ItemInfo(found=False))
+    urls = {a.item_name: a.url for a in store.log_group("Molten Core", "2026-10-26").awards}
+    assert urls == {"Felheart Gloves": "https://www.wowhead.com/classic/item=16805/felheart-gloves",
+                    "Sash of the Unseen": None}
 
 
 def test_unknown_item_has_no_link_or_icon(store):

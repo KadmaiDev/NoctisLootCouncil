@@ -1,3 +1,5 @@
+import dataclasses
+
 from bot import render
 from bot.model import AwardInfo, ItemState, LogGroup
 from bot.rules import COUNCIL, ROLL, Vote, tally
@@ -187,9 +189,40 @@ def test_long_log_is_split_without_breaking_lines():
     assert sum(p.body.count(" → ") for p in parts) == 200
 
 
+def test_log_post_by_boss_with_links_and_short_notes():
+    def at(a, boss, minutes, url=None):
+        return dataclasses.replace(a, boss=boss, at=RAID + 60 * minutes, url=url)
+    group = LogGroup("Molten Core", "2026-10-26", [
+        at(aw("Band of Accuria", "Doran Pike", "council", note="Tank, then melee"), "Ragnaros", 200),
+        at(aw("Arcanist Boots", "Ilsa Marrow", "ms", 88), "Lucifron", 10,
+           "https://www.wowhead.com/forever/item=16800/arcanist-boots"),
+        at(aw("Lava Core", "Bran Holloway", "os", 12), None, 5),
+        at(aw("Striker's Mark", "Brannoc Vale", "council", note="Hunter priority, then whoever has waited longest"),
+           "Magmadar", 40),
+        at(aw("Felheart Gloves", "Corvin Dusk", "ms", 77), "Lucifron", 11),
+    ])
+    [card] = render.log_cards(group)
+    assert card.body.splitlines() == [
+        "__Lucifron__",
+        "[Arcanist Boots](https://www.wowhead.com/forever/item=16800/arcanist-boots) → **Ilsa Marrow** · "
+        "main-spec roll, 88",
+        "Felheart Gloves → **Corvin Dusk** · main-spec roll, 77",
+        "",
+        "__Magmadar__",
+        "Striker's Mark → **Brannoc Vale** · council",
+        '> "Hunter priority, then whoever has waited longest"',
+        "",
+        "__Ragnaros__",
+        "Band of Accuria → **Doran Pike** · council · Tank, then melee",
+        "",
+        "__Other loot__",
+        "Lava Core → **Bran Holloway** · off-spec roll, 12",
+    ]
+
+
 def test_markdown_in_player_text_is_escaped():
     line = render.award_line(aw("Sash", "Ilsa", "council", note="*best* upgrade"))
-    assert '"\\*best\\* upgrade"' in line
+    assert "council · \\*best\\* upgrade" in line
 
 
 def test_priorities_post_for_one_raid():
@@ -218,6 +251,14 @@ def test_priorities_post_all_raids_grouped():
     assert card.title == "Thursday 29 Oct"
     assert card.body.splitlines()[:6] == ["__Molten Core__", "- **Sash**", "__Onyxia's Lair__", "- **Head of Onyxia**",
                                           "__Other__", "- **Mystery**"]
+
+
+def test_priorities_link_to_wowhead():
+    states = [state(id=873, name="Staff of Jordan", decision=COUNCIL, priority="Casters",
+                    wowhead=("forever", "Staff of Jordan"), emoji="<:inv_staff_13:42>")]
+    [card] = render.priorities_cards(states, "Thursday 29 Oct", "Molten Core")
+    assert card.body.splitlines()[0] == \
+        "- <:inv_staff_13:42> **[Staff of Jordan](https://www.wowhead.com/forever/item=873/staff-of-jordan)** · Casters"
 
 
 def test_status_text():

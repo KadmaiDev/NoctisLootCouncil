@@ -235,7 +235,8 @@ async def test_posts_get_the_icon_link_and_emoji(tmp_path, channels):
     assert uploads(officer) == ["title.png"]
     assert "[Wowhead](https://www.wowhead.com/forever/item=16805/felheart-gloves)" in text(officer)
     log_text = text(next(iter(channels[LOG].messages.values())))
-    assert "<:inv_gauntlets_19:1> Felheart Gloves → **Corvin Dusk**" in log_text
+    assert ("<:inv_gauntlets_19:1> [Felheart Gloves](https://www.wowhead.com/forever/item=16805/felheart-gloves)"
+            " → **Corvin Dusk**") in log_text
     # Items Wowhead doesn't know go without, and nothing is asked again on the next pass.
     sash = next(m for m in channels[OFFICERS].messages.values() if "Sash" in text(m))
     assert "[image: Sash of the Unseen]" in text(sash)  # drawn without an icon

@@ -29,6 +29,7 @@ DEFAULT_COLOUR = 0x4A55C9
 
 ROLL_ORDER_TEXT = "Main spec, then second main spec, then off spec."
 SUGGESTERS_SHOWN = 15  # names on the officer post; the rest are "and N more"
+NOTE_INLINE = 40  # a council note up to this long goes on the award's line, a longer one quoted under it
 EVERYTHING_ELSE = ("Everything else is rolled: main spec, then second main spec (already won one that night), "
                    "then off spec. Items we haven't seen before are rolled.")
 LOG_FOOTER = ("Questions about a decision: message the raid leader. "
@@ -117,6 +118,11 @@ def item_links(state: ItemState) -> dict[str, str]:
 
 def with_emoji(emoji: str | None, text: str) -> str:
     return f"{emoji} {text}" if emoji else text
+
+
+def linked(text: str, url: str | None) -> str:
+    """The item's name as a link to its Wowhead page, when there is one."""
+    return f"[{text}]({url})" if url else text
 
 
 def _night(ts: int, tz: ZoneInfo) -> dt.date:
@@ -262,10 +268,12 @@ def suggestion_reply(on: bool, count: int) -> str:
 
 def award_line(a: AwardInfo) -> str:
     """'Felheart Gloves → **Corvin Dusk** · main-spec roll, 77 · new item'."""
-    item = with_emoji(a.emoji, md(a.item_name))
+    item = with_emoji(a.emoji, linked(md(a.item_name), a.url))
     if a.how == COUNCIL:
         line = f"{item} → **{md(a.who)}** · council"
-        if a.note:
+        if a.note and len(a.note) <= NOTE_INLINE:
+            line += f" · {md(a.note)}"
+        elif a.note:
             line += f'\n> "{md(a.note)}"'
         return line
     how = rules.HOW_ROLL_TEXT.get(a.how, md(a.how))
@@ -300,15 +308,32 @@ def split_cards(title: str, subtitle: str, lines: list[str], footer: str, colour
     """As many cards as the lines need: the subtitle on the first, the footer on the last."""
     parts = chunk(lines) or [""]
     return [Card(title=title if i == 0 else f"{title} (continued)", colour=colour,
-                 subtitle=subtitle if i == 0 else "", body=part, footer=footer if i == len(parts) - 1 else "")
+                 subtitle=subtitle if i == 0 else "", body=part.strip("\n"), footer=footer if i == len(parts) - 1 else "")
             for i, part in enumerate(parts)]
 
 
+def log_lines(awards: list[AwardInfo]) -> list[str]:
+    """A line per award, under its boss's name in the order they were killed (loot from no boss
+    last). A heading travels with its first line, so a long night is never split between them."""
+    if not any(a.boss for a in awards):
+        return [award_line(a) for a in awards]
+    by_boss: dict[str | None, list[AwardInfo]] = {}
+    for a in sorted(awards, key=lambda a: a.at):
+        by_boss.setdefault(a.boss or None, []).append(a)
+    lines: list[str] = []
+    for boss in sorted(by_boss, key=lambda b: b is None):  # stable: kill order, then the rest
+        first, *rest = [award_line(a) for a in by_boss[boss]]
+        gap = "\n" if lines else ""
+        lines.append(f"{gap}__{md(boss or 'Other loot')}__\n{first}")
+        lines.extend(rest)
+    return lines
+
+
 def log_cards(group: LogGroup) -> list[Card]:
-    """One raid night in one instance: 'Molten Core · Monday 27 Oct', '6 items', then a line per award."""
+    """One raid night in one instance: 'Molten Core · Monday 27 Oct', '6 items', then the awards by boss."""
     day = rules.day_label(dt.date.fromisoformat(group.night))
     return split_cards(f"{md(group.inst or 'Raid')} · {day}", plural(len(group.awards), "item"),
-                       [award_line(a) for a in group.awards], LOG_FOOTER)
+                       log_lines(group.awards), LOG_FOOTER)
 
 
 # ---- #loot-priorities -------------------------------------------------------
@@ -322,7 +347,7 @@ def priorities_cards(states: list[ItemState], day: str, raid: str | None = None,
     lines: list[str] = []
 
     def item_line(s: ItemState) -> str:
-        name = with_emoji(s.emoji, f"**{md(s.name)}**")
+        name = with_emoji(s.emoji, f"**{linked(md(s.name), item_links(s)['url'])}**")
         return f"- {name} · {md(s.note)}" if s.note else f"- {name}"
 
     if not council:

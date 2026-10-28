@@ -367,7 +367,8 @@ class Store:
         return rules.night_of(row["t"], self.tz).isoformat() if row["t"] is not None else None
 
     def log_group(self, inst: str, night: str) -> LogGroup:
-        rows = self.conn.execute("SELECT a.*, i.name AS item_name, e.emoji FROM awards a "
+        rows = self.conn.execute("SELECT a.*, i.name AS item_name, e.emoji, ii.found AS wh_found, "
+                                 "ii.env AS wh_env, ii.name AS wh_name FROM awards a "
                                  "LEFT JOIN items i ON i.id = a.item_id "
                                  "LEFT JOIN item_info ii ON ii.item_id = a.item_id "
                                  "LEFT JOIN icon_emojis e ON e.icon = ii.icon "
@@ -378,7 +379,9 @@ class Store:
             name = r["item_name"] or name_from_link(r["link"]) or f"Item {r['item_id']}"
             # "new item": rolled on its first night in our raids (council items were decided, so not new).
             new_item = r["how"] != COUNCIL and self._first_night(r["item_id"]) == night
-            awards.append(dataclasses.replace(self._award_info(r, name, new_item), emoji=r["emoji"]))
+            url = (iteminfo.page_url(r["item_id"], r["wh_name"] or name, r["wh_env"])
+                   if r["wh_found"] and r["wh_env"] else None)
+            awards.append(dataclasses.replace(self._award_info(r, name, new_item), emoji=r["emoji"], url=url))
         return LogGroup(inst=inst, night=night, awards=awards)
 
     # ---- item info (iteminfo.py) ---------------------------------------------
