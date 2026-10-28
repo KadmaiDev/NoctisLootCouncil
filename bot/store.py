@@ -140,15 +140,16 @@ class Store:
                                         (item_id,)).fetchone()
         firsts = [t for t in (drops["first"], aw["first"]) if t is not None]
         lasts = [t for t in (drops["last"], aw["last"]) if t is not None]
-        suggestions = self.conn.execute("SELECT COUNT(*) AS n FROM suggestions WHERE item_id = ?",
-                                        (item_id,)).fetchone()["n"]
+        suggesters = [r["user_name"] for r in self.conn.execute(
+            "SELECT user_name FROM suggestions WHERE item_id = ? ORDER BY at, user_id", (item_id,))]
         return ItemState(
             id=row["id"], name=row["name"], quality=row["quality"], slot=row["slot"],
             source_text=self._source_text(row), raid=self._raid_name(row),
             tally=rules.tally(self._votes(item_id), self.votes_to_decide),
             decision=row["decision"], game_handling=row["game_handling"], game_note=row["game_note"],
             game_by=row["game_by"], priority=row["priority"], priority_by=row["priority_by"],
-            suggestions=suggestions, drops=max(drops["n"], row["seen"]),
+            suggestions=len(suggesters), suggested_by=tuple(n for n in suggesters if n),
+            drops=max(drops["n"], row["seen"]),
             first_drop_at=min(firsts) if firsts else None, last_drop_at=max(lasts) if lasts else None,
             new_in_raid=bool(row["new_in_raid"]), created_at=row["created_at"],
             first_award=self._award_info(first_award, row["name"]) if first_award else None,
@@ -191,14 +192,14 @@ class Store:
                                   (int(self._meta("decisions_at", "0") or 0), item_id))
         return result
 
-    def toggle_suggestion(self, item_id: int, user_id: int) -> tuple[bool, int]:
+    def toggle_suggestion(self, item_id: int, user_id: int, user_name: str | None = None) -> tuple[bool, int]:
         """Suggest for council, or take the suggestion back. Returns (suggesting now, total)."""
         with self.conn:
             cur = self.conn.execute("DELETE FROM suggestions WHERE item_id = ? AND user_id = ?", (item_id, user_id))
             on = cur.rowcount == 0
             if on:
-                self.conn.execute("INSERT INTO suggestions(item_id, user_id, at) VALUES(?, ?, ?)",
-                                  (item_id, user_id, self.now()))
+                self.conn.execute("INSERT INTO suggestions(item_id, user_id, at, user_name) VALUES(?, ?, ?, ?)",
+                                  (item_id, user_id, self.now(), user_name))
             self._mark_dirty(item_id)
         n = self.conn.execute("SELECT COUNT(*) AS n FROM suggestions WHERE item_id = ?", (item_id,)).fetchone()["n"]
         return on, n

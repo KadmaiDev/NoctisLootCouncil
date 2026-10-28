@@ -28,6 +28,7 @@ QUALITY_NAMES = {0: "Poor", 1: "Common", 2: "Uncommon", 3: "Rare", 4: "Epic", 5:
 DEFAULT_COLOUR = 0x4A55C9
 
 ROLL_ORDER_TEXT = "Main spec, then second main spec, then off spec."
+SUGGESTERS_SHOWN = 15  # names on the officer post; the rest are "and N more"
 EVERYTHING_ELSE = ("Everything else is rolled: main spec, then second main spec (already won one that night), "
                    "then off spec. Items we haven't seen before are rolled.")
 LOG_FOOTER = ("Questions about a decision: message the raid leader. "
@@ -152,6 +153,17 @@ def decision_line(state: ItemState) -> str | None:
     return None
 
 
+def suggesters_text(state: ItemState, items_channel: str) -> str | None:
+    """Who pressed Suggest for council: names for the officers (the public post shows only the count)."""
+    if not state.suggestions:
+        return None
+    names = [md(n) for n in state.suggested_by[:SUGGESTERS_SHOWN]]
+    if not names:  # all from before names were kept
+        return f"{plural(state.suggestions, 'raider suggests', 'raiders suggest')} council in {items_channel}"
+    more = state.suggestions - len(names)
+    return f"Suggested for council by {', '.join(names)}{f' and {more} more' if more else ''}"
+
+
 def officer_card(state: ItemState, tz: ZoneInfo, items_channel: str = "#loot-items") -> Card:
     """The private #loot-officers post: decision, votes, priority, and the vote buttons."""
     kicker = ""
@@ -171,13 +183,11 @@ def officer_card(state: ItemState, tz: ZoneInfo, items_channel: str = "#loot-ite
     elif state.decided_in_game and state.game_note:
         lines += [f"**Priority:** {md(state.game_note)}",
                   small(f"Set in game by {md(state.game_by or 'an officer')}")]
-    footer = [drops_text(state, tz)]
-    if state.suggestions:
-        footer.append(f"{plural(state.suggestions, 'raider suggests', 'raiders suggest')} council in {items_channel}")
+    footer = [drops_text(state, tz), suggesters_text(state, items_channel)]
     buttons = [Button("council", "Council", "success"), Button("roll", "Roll", "secondary"),
                Button("priority", "Set priority", "secondary")]
     return Card(title=state.name, colour=colour(state), subtitle=subtitle(state), kicker=kicker,
-                body="\n".join(p for p in lines if p), footer=" · ".join(footer), buttons=buttons)
+                body="\n".join(p for p in lines if p), footer="\n".join(p for p in footer if p), buttons=buttons)
 
 
 def status_badge(state: ItemState) -> str:
@@ -213,7 +223,7 @@ def items_card(state: ItemState, tz: ZoneInfo) -> Card:
 
 def suggestion_reply(on: bool, count: int) -> str:
     if on:
-        return f"Thanks, that's {plural(count, 'suggestion')}. The officers see the count when they decide."
+        return f"Thanks, that's {plural(count, 'suggestion')}. The officers see who suggested it when they decide."
     return f"Taken back. That leaves {plural(count, 'suggestion')}."
 
 

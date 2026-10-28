@@ -54,9 +54,10 @@ CREATE TABLE IF NOT EXISTS votes (
 );
 
 CREATE TABLE IF NOT EXISTS suggestions (
-    item_id INTEGER NOT NULL REFERENCES items(id),
-    user_id INTEGER NOT NULL,
-    at      INTEGER NOT NULL,
+    item_id   INTEGER NOT NULL REFERENCES items(id),
+    user_id   INTEGER NOT NULL,
+    at        INTEGER NOT NULL,
+    user_name TEXT,                              -- shown to the officers; NULL for suggestions made before 2026-10-28
     PRIMARY KEY (item_id, user_id)
 );
 
@@ -141,6 +142,9 @@ CREATE TABLE IF NOT EXISTS uploads (
 );
 """
 
+# Columns added after the first release: CREATE TABLE IF NOT EXISTS leaves an older table as it was.
+ADDED_COLUMNS = {("suggestions", "user_name"): "TEXT"}
+
 
 def connect(path: pathlib.Path | str) -> sqlite3.Connection:
     if str(path) != ":memory:":
@@ -148,4 +152,7 @@ def connect(path: pathlib.Path | str) -> sqlite3.Connection:
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    for (table, column), decl in ADDED_COLUMNS.items():
+        if column not in {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
     return conn

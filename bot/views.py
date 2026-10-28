@@ -121,7 +121,7 @@ class SuggestButton(discord.ui.DynamicItem[discord.ui.Button], template=r"nlc:su
         if state.handling == COUNCIL:
             await interaction.followup.send("It's already a council item.", ephemeral=True)
             return
-        on, count = bot.store.toggle_suggestion(self.item_id, interaction.user.id)
+        on, count = bot.store.toggle_suggestion(self.item_id, interaction.user.id, interaction.user.display_name)
         await bot.sync_item(self.item_id)
         await interaction.followup.send(render.suggestion_reply(on, count), ephemeral=True)
 

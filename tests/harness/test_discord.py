@@ -69,12 +69,16 @@ async def test_priority_form(guild, running):
 
 
 async def test_suggestions_count_on_the_public_post(guild, running):
-    _, items = await add_sash(guild)
+    officer, items = await add_sash(guild)
     ilsa, vespera = guild.raiders
     await guild.click(ilsa, items, "Suggest for council · 0")
     await guild.wait_until(lambda: items.button_labels == ["Suggest for council · 1"])
     await guild.click(vespera, items, "Suggest for council · 1")
     await guild.wait_until(lambda: items.button_labels == ["Suggest for council · 2"])
+    # The officers see who; the public post only the count.
+    await guild.wait_until(lambda: f"Suggested for council by {ilsa.name}, {vespera.name}" in officer.text,
+                           what="the officer post to name the raiders")
+    assert ilsa.name not in items.text
     r = await guild.click(ilsa, items, "Suggest for council · 2")  # takes it back
     assert r.ephemeral
     await guild.wait_until(lambda: items.button_labels == ["Suggest for council · 1"])

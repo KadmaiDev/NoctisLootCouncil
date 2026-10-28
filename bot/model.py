@@ -39,6 +39,7 @@ class ItemState:
     priority: str | None = None
     priority_by: str | None = None
     suggestions: int = 0
+    suggested_by: tuple[str, ...] = ()  # raiders' names, oldest first (older suggestions have none)
     drops: int = 0
     first_drop_at: int | None = None
     last_drop_at: int | None = None

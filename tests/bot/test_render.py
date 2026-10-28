@@ -34,8 +34,17 @@ def test_officer_card_matches_mockup():
         "**Priority:** Warlock priority",
         "-# Set by Seren",
     ]
-    assert card.footer == "No drops yet · 6 raiders suggest council in #loot-items"
+    assert card.footer == "No drops yet\n6 raiders suggest council in #loot-items"  # from before names were kept
     assert [b.label for b in card.buttons] == ["Council", "Roll", "Set priority"]
+
+
+def test_officer_card_names_the_raiders_who_suggested_council():
+    card = render.officer_card(state(suggestions=3, suggested_by=("Ilsa", "Vespera_x")), TZ)
+    assert card.footer.splitlines()[1] == "Suggested for council by Ilsa, Vespera\\_x and 1 more"
+    names = tuple(f"Raider{i}" for i in range(20))
+    card = render.officer_card(state(suggestions=20, suggested_by=names), TZ)
+    assert card.footer.splitlines()[1].endswith("Raider14 and 5 more")
+    assert "Ilsa" not in render.items_card(state(suggestions=3, suggested_by=("Ilsa",)), TZ).text()
 
 
 def test_officer_card_new_in_raid():
@@ -43,7 +52,7 @@ def test_officer_card_new_in_raid():
                       roll=77, nms=4, nos=1)
     s = state(id=16805, name="Felheart Gloves", slot="Hands · Cloth", source_text="Molten Core, Lucifron",
               new_in_raid=True, drops=1, first_drop_at=RAID + 900, last_drop_at=RAID + 900, first_award=award,
-              suggestions=2)
+              suggestions=2, suggested_by=("Ilsa", "Vespera"))
     card = render.officer_card(s, TZ)
     assert card.kicker == "NEW IN OUR RAID LAST NIGHT"
     assert card.body.splitlines() == [
@@ -51,7 +60,7 @@ def test_officer_card_new_in_raid():
         "-# Wanted it: 4 main spec, 1 off spec",
         "**Votes:** none yet",
     ]
-    assert card.footer == "Dropped once, last Mon 26 Oct · 2 raiders suggest council in #loot-items"
+    assert card.footer == "Dropped once, last Mon 26 Oct\nSuggested for council by Ilsa, Vespera"
 
 
 def test_new_in_raid_posted_days_later_names_the_day():
@@ -115,7 +124,8 @@ def test_card_digest_changes_with_content():
 
 
 def test_suggestion_replies():
-    assert render.suggestion_reply(True, 3) == "Thanks, that's 3 suggestions. The officers see the count when they decide."
+    assert render.suggestion_reply(True, 3) == ("Thanks, that's 3 suggestions. The officers see who suggested it "
+                                                "when they decide.")
     assert render.suggestion_reply(False, 1) == "Taken back. That leaves 1 suggestion."
 
 

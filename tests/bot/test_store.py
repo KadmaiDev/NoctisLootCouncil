@@ -266,6 +266,26 @@ def test_suggestions_toggle(store):
     assert store.toggle_suggestion(18000, 8) == (True, 2)
     assert store.toggle_suggestion(18000, 7) == (False, 1)
     assert store.item_state(18000).suggestions == 1
+    store.toggle_suggestion(18000, 9, "Ilsa")
+    store.toggle_suggestion(18000, 10, "Vespera")
+    s = store.item_state(18000)
+    assert (s.suggestions, s.suggested_by) == (3, ("Ilsa", "Vespera"))  # 8 suggested without a name
+
+
+def test_old_database_gets_the_new_columns(tmp_path):
+    import sqlite3
+
+    from bot.db import connect
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.execute("CREATE TABLE suggestions (item_id INTEGER NOT NULL, user_id INTEGER NOT NULL, "
+                "at INTEGER NOT NULL, PRIMARY KEY (item_id, user_id))")
+    old.execute("INSERT INTO suggestions VALUES (18000, 7, 1)")
+    old.commit()
+    old.close()
+    conn = connect(path)
+    assert [tuple(r) for r in conn.execute("SELECT user_id, user_name FROM suggestions")] == [(7, None)]
+    connect(path)  # and again: nothing to add
 
 
 # ---- posting queues -----------------------------------------------------------
