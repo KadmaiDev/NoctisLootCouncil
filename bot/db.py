@@ -61,14 +61,17 @@ CREATE TABLE IF NOT EXISTS suggestions (
     PRIMARY KEY (item_id, user_id)
 );
 
--- What Wowhead's Classic database says about an item (iteminfo.py): looked up once, or again a
--- day later if it didn't know the item.
+-- What Wowhead says about an item (iteminfo.py): looked up once, or again a day later if its
+-- Forever database didn't have it.
 CREATE TABLE IF NOT EXISTS item_info (
     item_id    INTEGER PRIMARY KEY,
     found      INTEGER NOT NULL,
     icon       TEXT,
     slot       TEXT,
-    fetched_at INTEGER NOT NULL
+    fetched_at INTEGER NOT NULL,
+    env        TEXT,                             -- forever or classic: the database that had it
+    name       TEXT,
+    quality    INTEGER                           -- Forever's, used until the game reports one
 );
 
 -- The bot's own emoji for each icon, '<:inv_staff_13:123>', for item lines in lists.
@@ -159,7 +162,8 @@ CREATE TABLE IF NOT EXISTS uploads (
 """
 
 # Columns added after the first release: CREATE TABLE IF NOT EXISTS leaves an older table as it was.
-ADDED_COLUMNS = {("suggestions", "user_name"): "TEXT"}
+ADDED_COLUMNS = {("suggestions", "user_name"): "TEXT", ("item_info", "env"): "TEXT", ("item_info", "name"): "TEXT",
+                 ("item_info", "quality"): "INTEGER"}
 
 
 def connect(path: pathlib.Path | str) -> sqlite3.Connection:

@@ -49,7 +49,7 @@ class ItemState:
     first_award: AwardInfo | None = None
     icon: str | None = None            # Wowhead's icon name, e.g. inv_staff_13
     emoji: str | None = None           # that icon as the bot's emoji
-    on_wowhead: bool = False           # Wowhead's Classic database has the item: link to it
+    wowhead: tuple[str, str] | None = None  # (database, name) when Wowhead has the item: link to it
 
     @property
     def handling(self) -> str | None:

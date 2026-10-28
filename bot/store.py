@@ -143,12 +143,17 @@ class Store:
         lasts = [t for t in (drops["last"], aw["last"]) if t is not None]
         suggesters = [r["user_name"] for r in self.conn.execute(
             "SELECT user_name FROM suggestions WHERE item_id = ? ORDER BY at, user_id", (item_id,))]
-        info = self.conn.execute("SELECT ii.found, ii.icon, ii.slot, e.emoji FROM item_info ii "
+        info = self.conn.execute("SELECT ii.*, e.emoji FROM item_info ii "
                                  "LEFT JOIN icon_emojis e ON e.icon = ii.icon WHERE ii.item_id = ?",
                                  (item_id,)).fetchone()
+        # Quality: the game's once an upload has it, else Wowhead's Forever data, else /loot add's.
+        quality = row["quality"]
+        if row["link"] is None and info and info["quality"] is not None:
+            quality = info["quality"]
         return ItemState(
-            id=row["id"], name=row["name"], quality=row["quality"], slot=row["slot"] or (info and info["slot"]),
-            icon=info and info["icon"], emoji=info and info["emoji"], on_wowhead=bool(info and info["found"]),
+            id=row["id"], name=row["name"], quality=quality, slot=row["slot"] or (info and info["slot"]),
+            icon=info and info["icon"], emoji=info and info["emoji"],
+            wowhead=(info["env"], info["name"] or row["name"]) if info and info["found"] and info["env"] else None,
             source_text=self._source_text(row), raid=self._raid_name(row),
             tally=rules.tally(self._votes(item_id), self.votes_to_decide),
             decision=row["decision"], game_handling=row["game_handling"], game_note=row["game_note"],
@@ -389,17 +394,19 @@ class Store:
         return due[:limit]
 
     def item_info_due(self, item_id: int) -> bool:
-        """Never looked up, or Wowhead didn't know it a day or more ago."""
-        r = self.conn.execute("SELECT found, fetched_at FROM item_info WHERE item_id = ?", (item_id,)).fetchone()
-        return r is None or (not r["found"] and self.now() - r["fetched_at"] >= iteminfo.RETRY_SECONDS)
+        """Never looked up, or not in Wowhead's Forever database a day or more ago."""
+        r = self.conn.execute("SELECT env, fetched_at FROM item_info WHERE item_id = ?", (item_id,)).fetchone()
+        return r is None or (r["env"] != iteminfo.FOREVER and self.now() - r["fetched_at"] >= iteminfo.RETRY_SECONDS)
 
     def save_item_info(self, item_id: int, info: iteminfo.ItemInfo) -> None:
         with self.conn:
             self.conn.execute(
-                "INSERT INTO item_info(item_id, found, icon, slot, fetched_at) VALUES(?, ?, ?, ?, ?) "
+                "INSERT INTO item_info(item_id, found, icon, slot, fetched_at, env, name, quality) "
+                "VALUES(?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(item_id) DO UPDATE SET found = excluded.found, icon = excluded.icon, "
-                "slot = excluded.slot, fetched_at = excluded.fetched_at",
-                (item_id, int(info.found), info.icon, info.slot, self.now()))
+                "slot = excluded.slot, fetched_at = excluded.fetched_at, env = excluded.env, "
+                "name = excluded.name, quality = excluded.quality",
+                (item_id, int(info.found), info.icon, info.slot, self.now(), info.env, info.name, info.quality))
             self._mark_dirty(item_id)
             self.conn.execute(
                 "UPDATE log_groups SET dirty = dirty + 1 WHERE EXISTS (SELECT 1 FROM awards a WHERE a.item_id = ? "

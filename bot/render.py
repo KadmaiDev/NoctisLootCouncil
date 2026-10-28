@@ -100,7 +100,7 @@ def subtitle(state: ItemState) -> str:
 
 def item_links(state: ItemState) -> dict[str, str]:
     """The card's link to Wowhead and its icon, when Wowhead knows the item."""
-    return {"url": iteminfo.page_url(state.id) if state.on_wowhead else "",
+    return {"url": iteminfo.page_url(state.id, state.wowhead[1], state.wowhead[0]) if state.wowhead else "",
             "icon_url": iteminfo.icon_url(state.icon) if state.icon else ""}
 
 

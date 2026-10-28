@@ -1,8 +1,10 @@
-"""Item icons, slots and Wowhead links, looked up once per item in Wowhead's Classic database.
+"""Item icons, slots, quality and Wowhead links, looked up on Wowhead: its Forever database first,
+then Classic's.
 
-Only what Forever shares with Classic is taken: the icon and the slot. Wowhead's Classic pages show
-Season of Discovery's version of some items, so quality and stats keep coming from the game.
-Items Wowhead doesn't know (Forever's own) simply go without, and are asked about again a day later.
+Wowhead's Forever data has Forever's own version of an item, so its quality is used until the game
+reports one. Not every item is in it yet: for those, Classic's database gives the icon and slot only,
+since its pages show Season of Discovery's version of some items. An item not in Forever's data is
+asked about again a day later (Wowhead keeps adding them); one in neither simply goes without.
 """
 from __future__ import annotations
 
@@ -15,9 +17,10 @@ import aiohttp
 
 log = logging.getLogger("noctis")
 
-TOOLTIP_URL = "https://nether.wowhead.com/classic/tooltip/item/{id}"
+FOREVER, CLASSIC = "forever", "classic"
+TOOLTIP_URL = "https://nether.wowhead.com/{env}/tooltip/item/{id}"
 ICON_URL = "https://wow.zamimg.com/images/wow/icons/large/{icon}.jpg"
-PAGE_URL = "https://www.wowhead.com/classic/item={id}"
+PAGE_URL = "https://www.wowhead.com/{env}/item={id}/{slug}"
 RETRY_SECONDS = 86400
 TIMEOUT = aiohttp.ClientTimeout(total=15)
 
@@ -30,6 +33,9 @@ _ICON = re.compile(r"^[a-z0-9_]{1,64}$")
 @dataclass(frozen=True)
 class ItemInfo:
     found: bool
+    env: str | None = None   # forever or classic: which of Wowhead's databases has it
+    name: str | None = None
+    quality: int | None = None  # Forever's only
     icon: str | None = None
     slot: str | None = None  # 'Two-Hand · Staff', as /loot add writes it
 
@@ -38,35 +44,49 @@ def icon_url(icon: str) -> str:
     return ICON_URL.format(icon=icon)
 
 
-def page_url(item_id: int) -> str:
-    return PAGE_URL.format(id=item_id)
+def slug(name: str) -> str:
+    """'Staff of Jordan' -> 'staff-of-jordan', as Wowhead's page addresses end."""
+    return re.sub(r"[^a-z0-9]+", "-", name.lower().replace("'", "")).strip("-")
+
+
+def page_url(item_id: int, name: str, env: str = FOREVER) -> str:
+    return PAGE_URL.format(env=env, id=item_id, slug=slug(name)).rstrip("/")
 
 
 def _text(fragment: str) -> str:
     return html.unescape(_TAG.sub("", fragment)).strip()
 
 
-def parse(data: dict) -> ItemInfo:
+def parse(data: dict, env: str) -> ItemInfo:
     icon = str(data.get("icon") or "").lower()
     m = _SLOT.search(str(data.get("tooltip") or ""))
     slot = " · ".join(p for p in (_text(m[1]), _text(m[2])) if p) if m else ""
-    return ItemInfo(found=True, icon=icon if _ICON.match(icon) else None, slot=slot or None)
+    quality = data.get("quality") if env == FOREVER and isinstance(data.get("quality"), int) else None
+    return ItemInfo(found=True, env=env, name=str(data.get("name") or "") or None, quality=quality,
+                    icon=icon if _ICON.match(icon) else None, slot=slot or None)
+
+
+async def _fetch_env(session: aiohttp.ClientSession, item_id: int, env: str) -> ItemInfo | None:
+    async with session.get(TOOLTIP_URL.format(env=env, id=item_id), timeout=TIMEOUT) as r:
+        if r.status == 404:
+            return ItemInfo(found=False)
+        if r.status != 200:
+            log.warning("Wowhead lookup for item %s (%s): HTTP %s", item_id, env, r.status)
+            return None
+        data = await r.json(content_type=None)
+    return parse(data, env) if isinstance(data, dict) and data.get("name") else ItemInfo(found=False)
 
 
 async def fetch(session: aiohttp.ClientSession, item_id: int) -> ItemInfo | None:
     """What Wowhead knows about an item; ItemInfo(found=False) if nothing, None if it couldn't be asked."""
     try:
-        async with session.get(TOOLTIP_URL.format(id=item_id), timeout=TIMEOUT) as r:
-            if r.status == 404:
-                return ItemInfo(found=False)
-            if r.status != 200:
-                log.warning("Wowhead lookup for item %s: HTTP %s", item_id, r.status)
-                return None
-            data = await r.json(content_type=None)
+        info = await _fetch_env(session, item_id, FOREVER)
+        if info is not None and not info.found:
+            info = await _fetch_env(session, item_id, CLASSIC)
     except (aiohttp.ClientError, TimeoutError, ValueError) as exc:
         log.warning("Wowhead lookup for item %s failed: %s", item_id, exc)
         return None
-    return parse(data) if isinstance(data, dict) and data.get("name") else ItemInfo(found=False)
+    return info
 
 
 async def fetch_icon(session: aiohttp.ClientSession, icon: str) -> bytes | None:
