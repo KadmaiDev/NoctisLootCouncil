@@ -44,9 +44,9 @@ class Button:
 
 @dataclass(frozen=True)
 class Card:
-    """One post: kicker (small capitals above the title), title (a heading, linked to `url`),
-    subtitle (grey, under it), the item's icon beside them, then below a divider the body (markdown)
-    and footer (grey), then the buttons."""
+    """One post: kicker (small capitals above the title), title (a heading, after the item's icon
+    `emoji` and linked to `url`), subtitle (grey, under it), then below a divider the body
+    (markdown) and footer (grey), then the buttons."""
     title: str
     colour: int
     subtitle: str = ""
@@ -55,13 +55,15 @@ class Card:
     kicker: str = ""
     buttons: list[Button] = field(default_factory=list)
     url: str = ""
-    icon_url: str = ""
+    emoji: str = ""
 
     def digest(self) -> str:
         return hashlib.sha256(json.dumps(asdict(self), sort_keys=True).encode()).hexdigest()
 
     def head(self) -> str:
-        title = f"[{self.title}]({self.url})" if self.url else self.title
+        # The icon as a small emoji before the name, like an item link in game: Discord draws a
+        # Section thumbnail at a fixed, much larger size.
+        title = with_emoji(self.emoji, f"[{self.title}]({self.url})" if self.url else self.title)
         return "\n".join(p for p in (small(self.kicker), f"### {title}", small(self.subtitle)) if p)
 
     def tail(self) -> str:
@@ -101,7 +103,7 @@ def subtitle(state: ItemState) -> str:
 def item_links(state: ItemState) -> dict[str, str]:
     """The card's link to Wowhead and its icon, when Wowhead knows the item."""
     return {"url": iteminfo.page_url(state.id, state.wowhead[1], state.wowhead[0]) if state.wowhead else "",
-            "icon_url": iteminfo.icon_url(state.icon) if state.icon else ""}
+            "emoji": state.emoji or ""}
 
 
 def with_emoji(emoji: str | None, text: str) -> str:

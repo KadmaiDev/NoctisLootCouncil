@@ -139,14 +139,10 @@ def card_button(b: render.Button, item_id: int) -> discord.ui.Item:
 
 def card_layout(card: render.Card, item_id: int | None = None) -> discord.ui.LayoutView:
     """The card as a Discord layout message: a container in the card's colour holding the heading
-    (with the item's icon beside it) and, below a divider, the body; the buttons in a row under the
-    container, as in the mockups."""
+    and, below a divider, the body; the buttons in a row under the container, as in the mockups."""
     view = discord.ui.LayoutView(timeout=None)
     head, tail = card.head(), card.tail()
-    top: discord.ui.Item = discord.ui.TextDisplay(head)
-    if card.icon_url:
-        top = discord.ui.Section(top, accessory=discord.ui.Thumbnail(card.icon_url))
-    box = discord.ui.Container(top, accent_colour=card.colour)
+    box = discord.ui.Container(discord.ui.TextDisplay(head), accent_colour=card.colour)
     if tail:
         box.add_item(discord.ui.Separator())
         box.add_item(discord.ui.TextDisplay(tail[: 4000 - len(head)]))

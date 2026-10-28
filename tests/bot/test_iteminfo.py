@@ -87,8 +87,9 @@ def test_item_state_gets_the_icon_slot_quality_and_link(store):
     assert (s.icon, s.emoji, s.quality, s.slot) == ("inv_staff_13", "<:inv_staff_13:42>", 4, "Two-Hand · Staff")
     assert store.icons_without_emoji() == []
     card = render.officer_card(s, TZ)
-    assert card.head().startswith("### [Staff of Jordan](https://www.wowhead.com/forever/item=873/staff-of-jordan)")
-    assert card.icon_url.endswith("/inv_staff_13.jpg") and card.colour == 0xA335EE
+    assert card.head().startswith(
+        "### <:inv_staff_13:42> [Staff of Jordan](https://www.wowhead.com/forever/item=873/staff-of-jordan)")
+    assert card.colour == 0xA335EE
     # A slot typed in with /loot add wins over Wowhead's.
     store.add_item(873, "Staff of Jordan", slot="Two-Hand · Staff (Forever)")
     assert store.item_state(873).slot == "Two-Hand · Staff (Forever)"
@@ -113,5 +114,5 @@ def test_unknown_item_has_no_link_or_icon(store):
     store.add_item(99999, "Forever's own")
     store.save_item_info(99999, ItemInfo(found=False))
     card = render.items_card(store.item_state(99999), TZ)
-    assert (card.url, card.icon_url) == ("", "")
+    assert (card.url, card.emoji) == ("", "")
     assert card.head() == "### Forever's own"

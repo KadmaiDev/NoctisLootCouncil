@@ -218,15 +218,13 @@ async def test_posts_get_the_icon_link_and_emoji(tmp_path, channels):
     await bot.sync_pending()
     assert sorted(wowhead.asked) == [16805, 17069, 18000] and wowhead.emojis == ["inv_gauntlets_19"]
     officer = next(m for m in channels[OFFICERS].messages.values() if "Felheart" in text(m))
-    thumbs = [c for c in officer["view"].walk_children() if isinstance(c, discord.ui.Thumbnail)]
-    assert [t.media.url for t in thumbs] == ["https://wow.zamimg.com/images/wow/icons/large/inv_gauntlets_19.jpg"]
-    assert "### [Felheart Gloves](https://www.wowhead.com/forever/item=16805/felheart-gloves)" in text(officer)
+    assert ("### <:inv_gauntlets_19:1> [Felheart Gloves](https://www.wowhead.com/forever/item=16805/felheart-gloves)"
+            in text(officer))
     log_text = text(next(iter(channels[LOG].messages.values())))
     assert "<:inv_gauntlets_19:1> Felheart Gloves → **Corvin Dusk**" in log_text
     # Items Wowhead doesn't know go without, and nothing is asked again on the next pass.
     sash = next(m for m in channels[OFFICERS].messages.values() if "Sash" in text(m))
     assert "### Sash of the Unseen" in text(sash)
-    assert not [c for c in sash["view"].walk_children() if isinstance(c, discord.ui.Thumbnail)]
     bot.store.mark_all_dirty()
     await bot.sync_pending()
     assert len(wowhead.asked) == 3 and channels[OFFICERS].edits == 0
