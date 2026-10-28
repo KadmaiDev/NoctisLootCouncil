@@ -55,6 +55,14 @@ def _now() -> str:
 
 
 @dataclass
+class FileUpload:
+    """A file attached to a slash command's option: `slash(user, "loot import", file=FileUpload(...))`."""
+    filename: str
+    data: bytes
+    content_type: str = "text/csv"
+
+
+@dataclass
 class Member:
     id: int
     name: str
@@ -115,7 +123,8 @@ class Message:
             if c.get("type") == 10:
                 parts.append(c.get("content") or "")
             elif c.get("type") == 12:  # a picture, by its alt text: the drawn item title
-                parts += [f"[image: {i.get('description') or ''}]" for i in c.get("items") or []]
+                parts += [f"[{'spoiler ' if i.get('spoiler') else ''}image: {i.get('description') or ''}]"
+                          for i in c.get("items") or []]
         return "\n".join(p for p in parts if p)
 
     @property
@@ -216,6 +225,7 @@ class FakeDiscord:
         self.commands: list[dict] = []  # as the bot registered them, with ids
         self.interactions: dict[str, Interaction] = {}  # by token
         self.unknown_routes: list[str] = []
+        self.cdn: dict[str, bytes] = {}  # files attached to slash commands, by attachment id
         self.requests: list[tuple[str, str]] = []  # (method, path), every REST call
         self.gateway_connections = 0
         self._ws: web.WebSocketResponse | None = None
@@ -284,6 +294,7 @@ class FakeDiscord:
         app = web.Application()
         app.router.add_get("/gateway", self._gateway)
         app.router.add_route("*", "/api/v10/{path:.*}", self._rest)
+        app.router.add_get("/cdn/{aid}/{name}", self._cdn)
         self._runner = web.AppRunner(app, access_log=None)
         await self._runner.setup()
         site = web.TCPSite(self._runner, host, 0)
@@ -631,8 +642,24 @@ class FakeDiscord:
         """`/loot add item_id:18000 ...` as `slash(user, "loot add", item_id=18000, ...)`, typed in
         `channel` (default: #general if there is one)."""
         ch = self._typing_channel(channel)
-        it = self._interaction_payload(2, user, ch, self._command_data(path, values))
+        resolved = {}
+        for name, value in list(values.items()):
+            if isinstance(value, FileUpload):  # as Discord: the option is the attachment's id, resolved beside it
+                aid = str(next(_attachment_ids))
+                self.cdn[aid] = value.data
+                url = f"{self.url}/cdn/{aid}/{value.filename}"
+                resolved[aid] = {"id": aid, "filename": value.filename, "size": len(value.data), "url": url,
+                                 "proxy_url": url, "content_type": value.content_type}
+                values[name] = aid
+        data = self._command_data(path, values)
+        if resolved:
+            data["resolved"] = {"attachments": resolved}
+        it = self._interaction_payload(2, user, ch, data)
         return await self._run(it, timeout)
+
+    async def _cdn(self, request: web.Request) -> web.Response:
+        data = self.cdn.get(request.match_info["aid"])
+        return web.Response(body=data) if data is not None else web.Response(status=404)
 
     def _typing_channel(self, channel: str | int) -> Channel:
         if channel:

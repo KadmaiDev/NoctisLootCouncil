@@ -14,6 +14,11 @@ def state(**kw) -> ItemState:
     return ItemState(**base)
 
 
+def dropped(**kw) -> ItemState:
+    """An item that has dropped for us (one that hasn't is behind a spoiler on the public posts)."""
+    return state(drops=1, **kw)
+
+
 def votes(*pairs) -> list[Vote]:
     return [Vote(i, name, choice, i) for i, (name, choice) in enumerate(pairs)]
 
@@ -135,6 +140,29 @@ def test_layout_spaces_the_footer_from_the_body():
     assert plain.children[0].content.startswith("### Sash of the Unseen")
     assert box.children[-1].content.startswith("-# No drops yet")
     assert isinstance(box, discord.ui.Container)
+    assert not box.children[0].items[0].spoiler
+
+
+def test_public_post_hides_an_item_that_hasnt_dropped_for_us():
+    from bot.views import card_layout
+    s = state(origin="wowhead", wowhead=("forever", "Sash of the Unseen"), emoji="<:e:1>")
+    card = render.items_card(s, TZ)
+    assert card.spoiler and card.kicker == "NOT DROPPED FOR US YET · SPOTTED ON WOWHEAD"
+    assert card.head() == (
+        "-# NOT DROPPED FOR US YET · SPOTTED ON WOWHEAD\n### ||<:e:1> Sash of the Unseen||\n"
+        "-# ||Epic · Waist · Cloth · Molten Core, Gehennas · "
+        "[Wowhead](https://www.wowhead.com/forever/item=18000/sash-of-the-unseen)||")
+    box = card_layout(card, 18000).children[0]
+    assert [type(c).__name__ for c in box.children[:3]] == ["TextDisplay", "MediaGallery", "TextDisplay"]
+    assert box.children[1].items[0].spoiler  # the drawn name, blurred until tapped
+    # The officers see it plainly, with where it was found.
+    officer = render.officer_card(s, TZ)
+    assert not officer.spoiler and officer.footer == "Not dropped for us yet · spotted on Wowhead"
+    assert render.officer_card(state(origin="other_raid"), TZ).footer == \
+        "Not dropped for us yet · seen in another guild's raid"
+    # Once it drops for us, nothing is hidden.
+    shown = render.items_card(dataclasses.replace(s, drops=1), TZ)
+    assert not shown.spoiler and shown.kicker == ""
 
 
 def test_card_digest_changes_with_content():
@@ -227,10 +255,10 @@ def test_markdown_in_player_text_is_escaped():
 
 def test_priorities_post_for_one_raid():
     states = [
-        state(name="Sash of the Unseen", decision=COUNCIL, priority="Warlock priority"),
-        state(id=2, name="Onslaught Girdle", decision=COUNCIL, priority="tanks first"),
-        state(id=3, name="Robe of Volatile Power", decision=ROLL),
-        state(id=4, name="Head of Onyxia", decision=COUNCIL, raid="Onyxia's Lair"),
+        dropped(name="Sash of the Unseen", decision=COUNCIL, priority="Warlock priority"),
+        dropped(id=2, name="Onslaught Girdle", decision=COUNCIL, priority="tanks first"),
+        dropped(id=3, name="Robe of Volatile Power", decision=ROLL),
+        dropped(id=4, name="Head of Onyxia", decision=COUNCIL, raid="Onyxia's Lair"),
     ]
     [card] = render.priorities_cards(states, "Thursday 29 Oct", "Molten Core")
     assert (card.title, card.subtitle) == ("Molten Core · Thursday 29 Oct", "Council items")
@@ -244,9 +272,9 @@ def test_priorities_post_for_one_raid():
 
 
 def test_priorities_post_all_raids_grouped():
-    states = [state(name="Sash", decision=COUNCIL), state(id=4, name="Head of Onyxia", game_handling=COUNCIL,
+    states = [dropped(name="Sash", decision=COUNCIL), dropped(id=4, name="Head of Onyxia", game_handling=COUNCIL,
                                                           raid="Onyxia's Lair"),
-              state(id=5, name="Mystery", decision=COUNCIL, raid=None)]
+              dropped(id=5, name="Mystery", decision=COUNCIL, raid=None)]
     [card] = render.priorities_cards(states, "Thursday 29 Oct")
     assert card.title == "Thursday 29 Oct"
     assert card.body.splitlines()[:6] == ["__Molten Core__", "- **Sash**", "__Onyxia's Lair__", "- **Head of Onyxia**",
@@ -254,7 +282,7 @@ def test_priorities_post_all_raids_grouped():
 
 
 def test_priorities_link_to_wowhead():
-    states = [state(id=873, name="Staff of Jordan", decision=COUNCIL, priority="Casters",
+    states = [dropped(id=873, name="Staff of Jordan", decision=COUNCIL, priority="Casters",
                     wowhead=("forever", "Staff of Jordan"), emoji="<:inv_staff_13:42>")]
     [card] = render.priorities_cards(states, "Thursday 29 Oct", "Molten Core")
     assert card.body.splitlines()[0] == \

@@ -52,6 +52,12 @@ class ItemState:
     emoji: str | None = None           # that icon as the bot's emoji
     icon_image: bool = False           # the icon's picture is stored, for the drawn title
     wowhead: tuple[str, str] | None = None  # (database, name) when Wowhead has the item: link to it
+    origin: str | None = None          # where it was found before it dropped for us: wowhead, other_raid
+
+    @property
+    def dropped(self) -> bool:
+        """It has dropped in our raids (until then #loot-items hides it behind a spoiler)."""
+        return self.drops > 0 or self.first_drop_at is not None
 
     @property
     def handling(self) -> str | None:

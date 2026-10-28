@@ -21,8 +21,8 @@ async def test_week_one(guild, running, realm):
     seren_token = await token_for(guild, seren_d)
 
     # Between raids, in Discord: the sash is a council item (Warlock priority), the helm is rolled.
-    await guild.slash(seren_d, "loot add", item_id=18000, name="Sash of the Unseen", slot="Waist · Cloth")
-    await guild.slash(seren_d, "loot add", item_id=16866, name="Helm of Might", slot="Head · Plate")
+    await guild.slash(seren_d, "loot add", item="18000", name="Sash of the Unseen", slot="Waist · Cloth")
+    await guild.slash(seren_d, "loot add", item="16866", name="Helm of Might", slot="Head · Plate")
     await decide(guild, 18000, "Council", "Warlock priority")
     await decide(guild, 16866, "Roll")
 
@@ -106,7 +106,7 @@ async def test_a_decision_taken_back_in_discord_is_forgotten_in_game(guild, runn
     r = realm
     kadmai_d = guild.officers[2]
     token = await token_for(guild, kadmai_d)
-    await guild.slash(kadmai_d, "loot add", item_id=18000, name="Sash of the Unseen")
+    await guild.slash(kadmai_d, "loot add", item="18000", name="Sash of the Unseen")
     await decide(guild, 18000, "Council", "Warlock priority")
     await companion_pass(r.lm, running.api_url, token)
     r.login()

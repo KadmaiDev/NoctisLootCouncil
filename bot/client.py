@@ -13,6 +13,7 @@ import logging
 import time
 import traceback
 from collections import defaultdict
+from dataclasses import dataclass, field
 from zoneinfo import ZoneInfo
 
 import aiohttp
@@ -21,7 +22,7 @@ from aiohttp import web
 from discord import app_commands
 from discord.ext import commands
 
-from . import iteminfo, render, titleimage, warcraftlogs
+from . import importer, iteminfo, render, titleimage, warcraftlogs
 from .api import create_app
 from .checks import NotOfficer
 from .config import Config
@@ -41,6 +42,17 @@ NO_MENTIONS = discord.AllowedMentions.none()
 
 class UserError(Exception):
     """Raised inside a command to show a friendly, ephemeral message."""
+
+
+@dataclass
+class ImportPlan:
+    """What /loot import would do: items as (ID, name, source, quality)."""
+    origin: str
+    unread: int = 0
+    new: list[tuple[int, str, str | None, int | None]] = field(default_factory=list)
+    known: list[tuple[int, str, str | None, int | None]] = field(default_factory=list)  # already on the list
+    unknown: list[int] = field(default_factory=list)  # no name: Wowhead doesn't know them and the paste didn't say
+    wowhead_down: bool = False
 
 
 class LootBot(commands.Bot):
@@ -133,6 +145,33 @@ class LootBot(commands.Bot):
         if self._http is None:
             self._http = aiohttp.ClientSession(headers={"User-Agent": "NoctisLootBot (guild loot bot)"})
         return self._http
+
+    async def wowhead_info(self, item_id: int) -> iteminfo.ItemInfo | None:
+        """Wowhead's details for an item (kept for its posts); None when lookups are off or Wowhead isn't answering."""
+        if not self.config.wowhead:
+            return None
+        info = await self.lookup(self._session(), item_id)
+        if info is not None:
+            self.store.save_item_info(item_id, info)
+        return info
+
+    async def plan_import(self, parsed: importer.Parsed) -> ImportPlan:
+        """/loot import's preview: names and qualities from Wowhead (or the CSV), what's new, what isn't known."""
+        plan = ImportPlan(origin=parsed.origin, unread=parsed.unread)
+        for f in parsed.items:
+            state = self.store.item_state(f.item_id)
+            if state is not None:
+                plan.known.append((f.item_id, state.name, f.source, None))
+                continue
+            info = await self.wowhead_info(f.item_id)
+            if info is None and self.config.wowhead:
+                plan.wowhead_down = True
+            name = (info.name if info and info.found else None) or f.name
+            if name:
+                plan.new.append((f.item_id, name, f.source, info.quality if info else None))
+            else:
+                plan.unknown.append(f.item_id)
+        return plan
 
     async def link_report(self, link: str, by: str) -> tuple[warcraftlogs.Report, list[tuple[str, str]]]:
         """/loot wcl: fetch a Warcraft Logs report and keep it. Returns it and the #loot-log posts

@@ -23,7 +23,7 @@ The exact formats are in [`docs/sync-format.md`](docs/sync-format.md). A change 
 
 ### The weekly flow
 
-1. **Between raids, in Discord.** An officer posts a known item with `/loot add`. In the private **#loot-officers** channel officers vote **Council** or **Roll** and set a priority ("Warlock priority"); an option wins once it has 3 votes (and more than the other). To discuss an item, an officer starts a thread on its post (Discord's own Create Thread). In the public **#loot-items** channel raiders see every item's status and can press **Suggest for council**; officers see who suggested it, and it never changes anything by itself. Each post shows the item's icon and links to its Wowhead page (Forever's when Wowhead has it).
+1. **Between raids, in Discord.** An officer posts a known item with `/loot add`. In the private **#loot-officers** channel officers vote **Council** or **Roll** and set a priority ("Warlock priority"); an option wins once it has 3 votes (and more than the other). To discuss an item, an officer starts a thread on its post (Discord's own Create Thread). In the public **#loot-items** channel raiders see every item's status and can press **Suggest for council**; officers see who suggested it, and it never changes anything by itself. Each post shows the item's icon and links to its Wowhead page (Forever's when Wowhead has it). Items seen on Wowhead or in other guilds' raids can go on the list before they drop for us (`/loot add` with a link, `/loot import`); raiders see those behind a spoiler.
 2. **Before the raid.** An officer runs `/loot priorities`: the council items and their priorities go to **#loot-priorities**. The companion app has already written the latest decisions into the game's AddOns folder; the loot master types `/reload` and the addon says "Decisions from 27 Oct, 18:40: 34 council, 112 roll."
 3. **In the raid.** The addon applies the decisions. Items nobody has decided are rolled.
 4. **After the raid.** The loot master logs out or types `/reload`. The companion app uploads the night. The bot posts the awards to **#loot-log** (one post per raid and night) and every item that dropped for the first time to **#loot-officers** ("NEW IN OUR RAID LAST NIGHT", who won it, how many wanted it) and **#loot-items**, for a vote.
@@ -142,7 +142,8 @@ Everything is in the one SQLite file. A consistent copy while the bot runs: `sql
 
 | | Who | |
 |---|---|---|
-| `/loot add <item_id> <name> [slot] [source]` | officers | Puts an item on the list and posts it to #loot-officers and #loot-items. Discord can't look items up, so the name is typed in; slot ("Waist · Cloth") and source ("Molten Core, Gehennas") are optional text. Using it again on the same ID updates the details. |
+| `/loot add <item> [name] [slot] [source] [quality] [found]` | officers | Puts an item on the list and posts it to #loot-officers and #loot-items. `item` is a Wowhead link, an in-game link or the item ID; the name, slot and quality come from Wowhead's Forever data (Classic's when Forever's doesn't have it), or type the name if Wowhead doesn't know the item. Slot ("Waist · Cloth") and source ("Molten Core, Gehennas") are optional text. `found` says where an item that hasn't dropped for us was seen (Wowhead, another guild's raid). Using it again on the same item updates the details. |
+| `/loot import [text] [file] [found]` | officers | Puts items found outside our raids on the list, so they can be decided before they drop for us. Paste Wowhead links, in-game links or IDs in `text`, or attach another guild's RCLootCouncil or oxm.gg CSV export in `file` (their item IDs, raids and bosses are used; who won is not). Just for you, it first shows what it would add, with **Import** and **Cancel**. Items already on the list are left alone, except that one without a source gets the CSV's. |
 | **Council** / **Roll** buttons | officers | One vote each, press the other button to change it. Decided once an option has `VOTES_TO_DECIDE` votes and more than the other. |
 | **Set priority** button | officers | A short text such as "Warlock priority", shown in #loot-items, #loot-priorities and in game. Empty clears it. |
 | **Suggest for council** button | everyone | On roll and undecided items in #loot-items. Press again to take it back. |
@@ -152,6 +153,8 @@ Everything is in the one SQLite file. A consistent copy while the bot runs: `sql
 | `/loot wcl <link>` | officers | Links a Warcraft Logs report to its night's #loot-log post: "Warcraft Logs" under the heading, and each boss heading to that boss's kill (the last one before its loot went out). The post that takes it is the one on the report's night whose loot falls in the report's time; a report linked before the upload is used once the loot comes. Linking another report that holds that night's loot replaces it. The report must be public or unlisted. Needs `WCL_CLIENT_ID` and `WCL_CLIENT_SECRET`. |
 
 The posts are edited in place as votes, priorities, suggestions and uploads change things; restarting the bot never reposts. If a post is deleted, the bot posts it again on the next change.
+
+An item that hasn't dropped for us yet is behind a spoiler on #loot-items and #loot-priorities (its name, picture and details; tap to see them), for raiders who'd rather not see loot before it drops. Its status, priority and Suggest button stay visible. The officers' post shows it plainly, with where it was found. The spoiler goes once it drops in our raid.
 
 ---
 

@@ -68,7 +68,7 @@ def text(msg: dict) -> str:
         if isinstance(c, discord.ui.TextDisplay):
             parts.append(c.content)
         elif isinstance(c, discord.ui.MediaGallery):
-            parts += [f"[image: {i.description}]" for i in c.items]
+            parts += [f"[{'spoiler ' if i.spoiler else ''}image: {i.description}]" for i in c.items]
     return "\n".join(parts)
 
 
@@ -186,8 +186,9 @@ async def test_priorities_post(tmp_path, channels):
     bot.store.set_priority(18000, "Warlock priority", "Seren")
     assert await bot.post_priorities("Thursday 29 Oct", "Molten Core") == 1
     post = text(next(iter(channels[PRIORITIES].messages.values())))
+    # It hasn't dropped for us, so it's behind a spoiler, as on #loot-items.
     assert post.splitlines()[:3] == ["### Molten Core · Thursday 29 Oct", "-# Council items",
-                                     "- **Sash of the Unseen** · Warlock priority"]
+                                     "- ||**Sash of the Unseen**|| · Warlock priority"]
 
 
 class FakeWowhead:
@@ -251,7 +252,7 @@ async def test_wowhead_down_posts_without_icons_and_pauses_lookups(tmp_path, cha
     wowhead.install(bot)
     bot.store.add_item(16805, "Felheart Gloves")
     await bot.sync_pending()
-    assert channels[ITEMS].sends == 1 and "### Felheart Gloves" in text(next(iter(channels[ITEMS].messages.values())))
+    assert channels[ITEMS].sends == 1 and "### ||Felheart Gloves||" in text(next(iter(channels[ITEMS].messages.values())))
     # (No quality known yet, so the plain heading: the drawn title needs the item's colour.)
     bot.store.toggle_suggestion(16805, 5)
     await bot.sync_pending()
@@ -272,4 +273,4 @@ async def test_cog_loads_with_the_commands(tmp_path, channels):
     bot = make_bot(tmp_path, channels)
     await bot.load_extension("bot.cogs.loot")
     group = bot.tree.get_command("loot")
-    assert sorted(c.name for c in group.commands) == ["add", "priorities", "status", "token", "wcl"]
+    assert sorted(c.name for c in group.commands) == ["add", "import", "priorities", "status", "token", "wcl"]

@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS items (
     game_handling TEXT,                          -- decision set in game, used only without a Discord one
     game_note     TEXT,
     game_by       TEXT,
+    origin        TEXT,                          -- where an item was found before it dropped for us: wowhead, other_raid
     dirty         INTEGER NOT NULL DEFAULT 1
 );
 
@@ -191,7 +192,7 @@ CREATE TABLE IF NOT EXISTS uploads (
 
 # Columns added after the first release: CREATE TABLE IF NOT EXISTS leaves an older table as it was.
 ADDED_COLUMNS = {("suggestions", "user_name"): "TEXT", ("item_info", "env"): "TEXT", ("item_info", "name"): "TEXT",
-                 ("item_info", "quality"): "INTEGER"}
+                 ("item_info", "quality"): "INTEGER", ("items", "origin"): "TEXT"}
 
 
 def connect(path: pathlib.Path | str) -> sqlite3.Connection:

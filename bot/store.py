@@ -64,23 +64,44 @@ class Store:
         return self.conn.execute("SELECT 1 FROM items WHERE id = ?", (item_id,)).fetchone() is not None
 
     def add_item(self, item_id: int, name: str, *, slot: str | None = None, source: str | None = None,
-                 quality: int | None = None, by: str | None = None) -> bool:
+                 quality: int | None = None, by: str | None = None, origin: str | None = None) -> bool:
         """/loot add. Returns True if the item is new; an existing item gets the given details updated.
-        The quality is the officer's choice until an upload from the game sets the real one."""
+        The quality is the officer's choice until an upload from the game sets the real one. `origin`
+        says where an item that hasn't dropped for us was found (wowhead, other_raid)."""
         name = name.strip()
         with self.conn:
             if self.item_exists(item_id):
                 self.conn.execute(
                     "UPDATE items SET name = ?, slot = COALESCE(?, slot), source = COALESCE(?, source), "
-                    "quality = CASE WHEN link IS NULL THEN COALESCE(?, quality) ELSE quality END WHERE id = ?",
-                    (name, slot or None, source or None, quality, item_id))
+                    "quality = CASE WHEN link IS NULL THEN COALESCE(?, quality) ELSE quality END, "
+                    "origin = COALESCE(origin, ?) WHERE id = ?",
+                    (name, slot or None, source or None, quality, origin, item_id))
                 self._mark_dirty(item_id)
                 self._refresh_decisions_at()
                 return False
             self.conn.execute(
-                "INSERT INTO items(id, name, slot, source, quality, added_by, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)",
-                (item_id, name, slot or None, source or None, quality, by, self.now()))
+                "INSERT INTO items(id, name, slot, source, quality, added_by, created_at, origin) "
+                "VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+                (item_id, name, slot or None, source or None, quality, by, self.now(), origin))
             return True
+
+    def import_items(self, found: list[tuple[int, str, str | None, int | None]], origin: str,
+                     by: str | None = None) -> tuple[int, int]:
+        """/loot import: (item ID, name, source, quality) found outside our raids. New items are added;
+        one already on the list only gets a source if it had none. Returns (added, sources filled)."""
+        added = filled = 0
+        for item_id, name, source, quality in found:
+            if not self.item_exists(item_id):
+                self.add_item(item_id, name, source=source, quality=quality, by=by, origin=origin)
+                added += 1
+            elif source:
+                with self.conn:
+                    cur = self.conn.execute("UPDATE items SET source = ? WHERE id = ? AND source IS NULL "
+                                            "AND inst IS NULL", (source, item_id))
+                    if cur.rowcount:
+                        self._mark_dirty(item_id)
+                        filled += 1
+        return added, filled
 
     def find_items(self, text: str, limit: int = 25) -> list[tuple[int, str]]:
         text = text.strip()
@@ -173,7 +194,7 @@ class Store:
             suggestions=len(suggesters), suggested_by=tuple(n for n in suggesters if n),
             drops=max(drops["n"], row["seen"]),
             first_drop_at=min(firsts) if firsts else None, last_drop_at=max(lasts) if lasts else None,
-            new_in_raid=bool(row["new_in_raid"]), created_at=row["created_at"],
+            new_in_raid=bool(row["new_in_raid"]), created_at=row["created_at"], origin=row["origin"],
             first_award=self._award_info(first_award, row["name"]) if first_award else None,
         )
 

@@ -152,7 +152,8 @@ def card_layout(card: render.Card, item_id: int | None = None) -> discord.ui.Lay
         if kicker:
             box.add_item(discord.ui.TextDisplay(kicker))
         box.add_item(discord.ui.MediaGallery(
-            discord.MediaGalleryItem(f"attachment://{titleimage.FILENAME}", description=card.title)))
+            discord.MediaGalleryItem(f"attachment://{titleimage.FILENAME}", description=card.title,
+                                     spoiler=card.spoiler)))
         if sub:
             box.add_item(discord.ui.TextDisplay(sub))
     if card.body or footer:

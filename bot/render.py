@@ -30,6 +30,8 @@ DEFAULT_COLOUR = 0x4A55C9
 ROLL_ORDER_TEXT = "Main spec, then second main spec, then off spec."
 SUGGESTERS_SHOWN = 15  # names on the officer post; the rest are "and N more"
 NOTE_INLINE = 40  # a council note up to this long goes on the award's line, a longer one quoted under it
+# Where an item was found before it dropped for us (items.origin).
+ORIGIN_TEXT = {"wowhead": "spotted on Wowhead", "other_raid": "seen in another guild's raid"}
 EVERYTHING_ELSE = ("Everything else is rolled: main spec, then second main spec (already won one that night), "
                    "then off spec. Items we haven't seen before are rolled.")
 LOG_FOOTER = ("Questions about a decision: message the raid leader. "
@@ -61,6 +63,9 @@ class Card:
     # `icon` (its picture is stored) before it, instead of the white markdown heading.
     title_colour: int | None = None
     icon: str = ""
+    # The item hasn't dropped for us: its name, picture and details are behind a spoiler for those
+    # who'd rather not see loot before it drops (#loot-items).
+    spoiler: bool = False
 
     def digest(self) -> str:
         return hashlib.sha256(json.dumps(asdict(self), sort_keys=True).encode()).hexdigest()
@@ -71,7 +76,10 @@ class Card:
         # Section thumbnail at a fixed, much larger size). The name itself isn't a link: Discord
         # colours links blue, which reads as a Rare item to a WoW player.
         sub = " · ".join(p for p in (self.subtitle, f"[Wowhead]({self.url})" if self.url else "") if p)
-        return small(self.kicker), f"### {with_emoji(self.emoji, self.title)}", small(sub)
+        title = with_emoji(self.emoji, self.title)
+        if self.spoiler:
+            title, sub = spoiler(title), spoiler(sub)
+        return small(self.kicker), f"### {title}", small(sub)
 
     def head(self) -> str:
         return "\n".join(p for p in self.head_parts() if p)
@@ -120,6 +128,11 @@ def with_emoji(emoji: str | None, text: str) -> str:
     return f"{emoji} {text}" if emoji else text
 
 
+def spoiler(text: str) -> str:
+    """Hidden until the reader taps it."""
+    return f"||{text}||" if text else text
+
+
 def linked(text: str, url: str | None) -> str:
     """The item's name as a link to its Wowhead page, when there is one."""
     return f"[{text}]({url})" if url else text
@@ -140,7 +153,8 @@ def seen_phrase(first_drop_at: int, posted_at: int, tz: ZoneInfo) -> str:
 
 def drops_text(state: ItemState, tz: ZoneInfo) -> str:
     if state.drops <= 0:
-        return "No drops yet"
+        found = ORIGIN_TEXT.get(state.origin or "")
+        return f"Not dropped for us yet · {found}" if found else "No drops yet"
     times = "once" if state.drops == 1 else f"{state.drops} times"
     if state.last_drop_at is None:
         return f"Dropped {times}"
@@ -254,8 +268,16 @@ def items_card(state: ItemState, tz: ZoneInfo) -> Card:
         footer.append(f"Set in game by {md(state.game_by or 'an officer')}.")
     buttons = [] if state.handling == COUNCIL else [
         Button("suggest", f"Suggest for council · {state.suggestions}", "primary")]
+    kicker = "" if state.dropped else not_dropped_kicker(state)
     return Card(title=state.name, colour=colour(state), subtitle=subtitle(state), body="\n".join(lines),
-                footer="\n".join(footer), buttons=buttons, **item_links(state))
+                footer="\n".join(footer), buttons=buttons, kicker=kicker, spoiler=not state.dropped,
+                **item_links(state))
+
+
+def not_dropped_kicker(state: ItemState) -> str:
+    """'NOT DROPPED FOR US YET · SPOTTED ON WOWHEAD', above the hidden name."""
+    found = ORIGIN_TEXT.get(state.origin or "")
+    return "NOT DROPPED FOR US YET" + (f" · {found.upper()}" if found else "")
 
 
 def suggestion_reply(on: bool, count: int) -> str:
@@ -355,6 +377,8 @@ def priorities_cards(states: list[ItemState], day: str, raid: str | None = None,
 
     def item_line(s: ItemState) -> str:
         name = with_emoji(s.emoji, f"**{linked(md(s.name), item_links(s)['url'])}**")
+        if not s.dropped:  # as on #loot-items: hidden for those who'd rather not see it before it drops
+            name = spoiler(name)
         return f"- {name} · {md(s.note)}" if s.note else f"- {name}"
 
     if not council:

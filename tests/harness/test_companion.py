@@ -40,7 +40,7 @@ async def test_the_built_exe_brings_decisions_in_and_uploads_the_night(guild, ru
     r = realm
     officer = guild.officers[2]
     token = await token_for(guild, officer)
-    await guild.slash(officer, "loot add", item_id=18000, name="Sash of the Unseen")
+    await guild.slash(officer, "loot add", item="18000", name="Sash of the Unseen")
     await decide(guild, 18000, "Roll")
     r.lm.wow_dir.mkdir(parents=True, exist_ok=True)
     ini = tmp_path / "companion.ini"

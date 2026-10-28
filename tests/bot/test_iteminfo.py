@@ -123,6 +123,6 @@ def test_log_awards_link_to_wowhead(store):
 def test_unknown_item_has_no_link_or_icon(store):
     store.add_item(99999, "Forever's own")
     store.save_item_info(99999, ItemInfo(found=False))
-    card = render.items_card(store.item_state(99999), TZ)
+    card = render.officer_card(store.item_state(99999), TZ)
     assert (card.url, card.emoji) == ("", "")
     assert card.head() == "### Forever's own"

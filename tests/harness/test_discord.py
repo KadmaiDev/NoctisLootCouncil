@@ -1,13 +1,17 @@
 """The real bot (discord.py, slash commands, buttons, the form) against the fake Discord."""
 from __future__ import annotations
 
+import dataclasses
+
+from bot.iteminfo import ItemInfo
 from bot.upload import parse_upload
 from bot.warcraftlogs import Fight, Report
+from harness.fake_discord import FileUpload
 
 from ..bot.conftest import RAID, sample_body
 from .conftest import start_bot, stop_bot
 
-SASH = dict(item_id=18000, name="Sash of the Unseen", slot="Waist · Cloth", source="Molten Core, Lucifron")
+SASH = dict(item="18000", name="Sash of the Unseen", slot="Waist · Cloth", source="Molten Core, Lucifron")
 
 
 async def add_sash(guild):
@@ -29,6 +33,9 @@ async def test_loot_add_posts_to_both_channels(guild, running):
     assert officer.components[0]["accent_color"] == 0xA335EE  # /loot add assumes epic
     assert items.thread is None
     assert items.button_labels == ["Suggest for council · 0"]
+    # It hasn't dropped for us: on the public post it's behind a spoiler.
+    assert ("-# NOT DROPPED FOR US YET\n[spoiler image: Sash of the Unseen]\n"
+            "-# ||Epic · Waist · Cloth · Molten Core, Lucifron||") in items.text
     # Using it again updates the posts instead of adding new ones.
     await guild.slash(guild.officers[0], "loot add", **dict(SASH, name="Sash of the Unseen Eye"))
     await guild.wait_until(lambda: "Unseen Eye" in officer.text, what="the officer post to be edited")
@@ -39,7 +46,7 @@ async def test_loot_add_posts_to_both_channels(guild, running):
 async def test_raiders_cant_use_officer_commands_or_buttons(guild, running):
     officer, _ = await add_sash(guild)
     ilsa = guild.raiders[0]
-    r = await guild.slash(ilsa, "loot add", item_id=1, name="Nope")
+    r = await guild.slash(ilsa, "loot add", item="1", name="Nope")
     assert r.ephemeral and "officers" in r.text
     r = await guild.click(ilsa, officer, "Council")
     assert r.ephemeral and "Only officers" in r.text
@@ -104,6 +111,64 @@ async def test_status_autocomplete_token_and_priorities(guild, running):
     assert "Posted" in r.text
     post = await guild.wait_until(lambda: guild.channel("loot-priorities").find("Thursday 30 Oct"))
     assert "Sash of the Unseen" in post.text
+
+
+STAFF = ItemInfo(found=True, env="forever", name="Staff of Jordan", quality=4, slot="Two-Hand · Staff")
+
+
+def fake_wowhead(bot, known):
+    """Wowhead knowing these items (without icons, so no emojis to make)."""
+    bot.config = dataclasses.replace(bot.config, wowhead=True)
+
+    async def lookup(session, item_id):
+        return known.get(item_id, ItemInfo(found=False))
+    bot.lookup = lookup
+
+
+async def test_loot_add_with_just_a_wowhead_link(guild, running):
+    fake_wowhead(running.bot, {873: STAFF})
+    r = await guild.slash(guild.officers[0], "loot add", item="https://www.wowhead.com/forever/item=873/staff-of-jordan",
+                          found="wowhead")
+    assert "Added **Staff of Jordan** (873)" in r.text
+    officer = await guild.wait_until(lambda: guild.channel("loot-officers").find("Staff of Jordan"))
+    assert "-# Not dropped for us yet · spotted on Wowhead" in officer.text
+    assert "Epic · Two-Hand · Staff · [Wowhead](https://www.wowhead.com/forever/item=873/staff-of-jordan)" in officer.text
+    items = await guild.wait_until(lambda: guild.channel("loot-items").find("Staff of Jordan"))
+    assert "NOT DROPPED FOR US YET · SPOTTED ON WOWHEAD\n[spoiler image: Staff of Jordan]" in items.text
+    r = await guild.slash(guild.officers[0], "loot add", item="99999")
+    assert "I need item 99999's name: Wowhead doesn't know it" in r.text
+    r = await guild.slash(guild.officers[0], "loot add", item="Staff of Jordan")
+    assert "That isn't an item" in r.text
+
+
+async def test_loot_import_previews_then_posts(guild, running):
+    fake_wowhead(running.bot, {873: STAFF})
+    await add_sash(guild)
+    csv = ("player,date,time,id,item,itemID,itemString,response,votes,class,instance,boss,difficultyID,mapID,"
+           "groupSize,gear1,gear2,responseID,isAwardReason,subType,equipLoc,note,owner\n"
+           "Them,2026/10/26,21:05:00,1-1,[Staff of Jordan],873,item:873,Main spec,,MAGE,Molten Core,Garr,,,,,,1,false,,,,X\n"
+           "Them,2026/10/26,21:09:00,1-2,[Lava Shard],77777,item:77777,Off spec,,MAGE,Molten Core,Garr,,,,,,3,false,,,,X\n"
+           "Them,2026/10/26,21:10:00,1-3,[Sash of the Unseen],18000,item:18000,Main spec,,MAGE,Molten Core,,,,,,,1,false,,,,X\n")
+    r = await guild.slash(guild.officers[0], "loot import", file=FileUpload("rclc.csv", csv.encode()))
+    preview = r.messages[-1]
+    assert r.ephemeral and preview.button_labels == ["Import", "Cancel"]
+    assert ("**2 new items**, seen in another guild's raid: Staff of Jordan, Lava Shard." in preview.text
+            and "1 item already on the list" in preview.text)
+    assert guild.channel("loot-officers").find("Lava Shard") is None  # nothing until Import
+    # Only the officer who asked can press it.
+    r = await guild.click(guild.officers[1], preview, "Import")
+    assert r.ephemeral and "another officer's import" in r.text
+    assert guild.channel("loot-officers").find("Lava Shard") is None
+    done = await guild.click(guild.officers[0], preview, "Import")
+    assert preview.button_labels == [] and "Imported 2 new items" in preview.text, done
+    lava = await guild.wait_until(lambda: guild.channel("loot-officers").find("Lava Shard"))
+    assert "Molten Core, Garr" in lava.text and "seen in another guild's raid" in lava.text
+    # Pasted links, cancelled.
+    r = await guild.slash(guild.officers[0], "loot import", text="16805 https://www.wowhead.com/forever/item=873/x")
+    assert "Left out, no name (Wowhead doesn't know them): 16805" in r.messages[-1].text
+    assert "1 item already on the list" in r.messages[-1].text
+    r = await guild.slash(guild.officers[0], "loot import", text="nothing here")
+    assert "couldn't find any items" in r.text
 
 
 class FakeWcl:
