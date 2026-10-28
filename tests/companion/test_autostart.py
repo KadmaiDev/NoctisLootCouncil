@@ -1,4 +1,5 @@
-"""Start with Windows, against the real registry under a test name (removed afterwards). Windows only."""
+"""Start with Windows, against the real registry but in a test key of its own, which starts out missing as the
+Run key can on a new Windows profile, and is removed afterwards. Windows only."""
 from __future__ import annotations
 
 import sys
@@ -8,15 +9,25 @@ import pytest
 from companion import autostart
 
 pytestmark = pytest.mark.skipif(autostart.winreg is None, reason="Windows only")
+TEST_PARENT = r"Software\NoctisLootCompanionTest"
+
+
+def remove_test_key():
+    for key in (TEST_PARENT + r"\Run", TEST_PARENT):
+        try:
+            autostart.winreg.DeleteKey(autostart.winreg.HKEY_CURRENT_USER, key)
+        except FileNotFoundError:
+            pass
 
 
 @pytest.fixture
 def frozen(monkeypatch):
+    remove_test_key()
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", r"C:\Games\Noctis\NoctisLootCompanion.exe")
-    monkeypatch.setattr(autostart, "NAME", "Noctis Loot companion (test)")
+    monkeypatch.setattr(autostart, "RUN_KEY", TEST_PARENT + r"\Run")
     yield
-    autostart.set_enabled(False)
+    remove_test_key()
 
 
 def test_only_the_exe_offers_it(monkeypatch):
@@ -28,7 +39,10 @@ def test_only_the_exe_offers_it(monkeypatch):
 
 def test_turns_on_and_off_and_follows_a_moved_exe(frozen, monkeypatch):
     assert autostart.enabled() is False
-    autostart.set_enabled(True)
+    autostart.set_enabled(False)  # no Run key at all: already off
+    autostart.follow_moves()
+    assert autostart.enabled() is False
+    autostart.set_enabled(True)  # creates the key
     assert autostart.enabled() and autostart._value() == r'"C:\Games\Noctis\NoctisLootCompanion.exe" --tray'
     monkeypatch.setattr(sys, "executable", r"D:\Noctis\NoctisLootCompanion.exe")
     autostart.follow_moves()

@@ -38,14 +38,15 @@ def enabled() -> bool:
 def set_enabled(on: bool) -> None:
     if not available():
         return
-    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
-        if on:
+    if on:  # a new Windows profile may not have the Run key yet
+        with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
             winreg.SetValueEx(key, NAME, 0, winreg.REG_SZ, command())
-        else:
-            try:
-                winreg.DeleteValue(key, NAME)
-            except FileNotFoundError:
-                pass
+        return
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+            winreg.DeleteValue(key, NAME)
+    except FileNotFoundError:  # no key or no value: already off
+        pass
 
 
 def follow_moves() -> None:
