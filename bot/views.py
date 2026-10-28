@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from . import render
+from . import render, titleimage
 from .checks import is_officer
 from .rules import COUNCIL
 
@@ -143,7 +143,18 @@ def card_layout(card: render.Card, item_id: int | None = None) -> discord.ui.Lay
     as in the mockups."""
     view = discord.ui.LayoutView(timeout=None)
     head, footer = card.head(), render.small(card.footer)
-    box = discord.ui.Container(discord.ui.TextDisplay(head), accent_colour=card.colour)
+    box = discord.ui.Container(accent_colour=card.colour)
+    if card.title_colour is None:
+        box.add_item(discord.ui.TextDisplay(head))
+    else:
+        # The title is the drawn picture uploaded with the post (client.title_files).
+        kicker, _, sub = card.head_parts()
+        if kicker:
+            box.add_item(discord.ui.TextDisplay(kicker))
+        box.add_item(discord.ui.MediaGallery(
+            discord.MediaGalleryItem(f"attachment://{titleimage.FILENAME}", description=card.title)))
+        if sub:
+            box.add_item(discord.ui.TextDisplay(sub))
     if card.body or footer:
         box.add_item(discord.ui.Separator())
     if card.body:

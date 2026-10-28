@@ -80,6 +80,12 @@ CREATE TABLE IF NOT EXISTS icon_emojis (
     emoji TEXT NOT NULL
 );
 
+-- Each icon's picture, for the item's name drawn in its quality colour (titleimage.py).
+CREATE TABLE IF NOT EXISTS icon_images (
+    icon  TEXT PRIMARY KEY,
+    image BLOB NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS encounters (
     id   INTEGER PRIMARY KEY,
     name TEXT NOT NULL,

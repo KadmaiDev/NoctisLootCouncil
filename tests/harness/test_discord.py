@@ -19,7 +19,9 @@ async def test_loot_add_posts_to_both_channels(guild, running):
     officer, items = await add_sash(guild)
     assert officer.thread is None  # officers start one themselves if an item needs discussing
     assert officer.button_labels == ["Council", "Roll", "Set priority"]
-    assert "### Sash of the Unseen\n-# Epic · Waist · Cloth · Molten Core, Lucifron" in officer.text
+    # The name is drawn in the quality colour and uploaded with the post.
+    assert "[image: Sash of the Unseen]\n-# Epic · Waist · Cloth · Molten Core, Lucifron" in officer.text
+    assert officer.attachments == ["title.png"] and items.attachments == ["title.png"]
     assert officer.components[0]["accent_color"] == 0xA335EE  # /loot add assumes epic
     assert items.thread is None
     assert items.button_labels == ["Suggest for council · 0"]

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import io
 import logging
 import time
 import traceback
@@ -20,7 +21,7 @@ from aiohttp import web
 from discord import app_commands
 from discord.ext import commands
 
-from . import iteminfo, render
+from . import iteminfo, render, titleimage
 from .api import create_app
 from .checks import NotOfficer
 from .config import Config
@@ -137,6 +138,12 @@ class LootBot(commands.Bot):
                 self._lookup_paused_until = time.monotonic() + LOOKUP_PAUSE_SECONDS
                 return
             self.store.save_item_info(item_id, info)
+        for icon in self.store.icons_without_image():
+            image = await self.fetch_icon(self._http, icon)
+            if image is None:
+                self._lookup_paused_until = time.monotonic() + LOOKUP_PAUSE_SECONDS
+                return
+            self.store.save_icon_image(icon, image)
         for icon in self.store.icons_without_emoji():
             if icon not in self._emoji_failed:
                 emoji = await self._icon_emoji(icon)
@@ -152,7 +159,7 @@ class LootBot(commands.Bot):
             if self._app_emojis is None:
                 self._app_emojis = {e.name: str(e) for e in await self.fetch_application_emojis()}
             if name not in self._app_emojis:
-                image = await self.fetch_icon(self._http, icon)
+                image = self.store.icon_image(icon)
                 if image is None:
                     return None
                 self._app_emojis[name] = str(await self.create_application_emoji(name=name, image=image))
@@ -206,10 +213,13 @@ class LootBot(commands.Bot):
         if channel is None:
             return False
         view = card_layout(card, item_id)
+        title_png = self._title_image(card)
         if post and post.channel_id == channel_id:
             message = channel.get_partial_message(post.message_id)
             try:
-                await message.edit(content=None, embed=None, view=view, allowed_mentions=NO_MENTIONS)
+                # The attachments replace the post's: the drawn title, or none.
+                await message.edit(content=None, embed=None, view=view, allowed_mentions=NO_MENTIONS,
+                                   attachments=title_files(title_png))
                 self.store.save_post(dataclasses.replace(post, digest=digest))
                 return True
             except discord.NotFound:
@@ -225,12 +235,19 @@ class LootBot(commands.Bot):
                 except discord.HTTPException:
                     pass
         try:
-            msg = await channel.send(view=view, allowed_mentions=NO_MENTIONS)
+            msg = await channel.send(view=view, allowed_mentions=NO_MENTIONS, files=title_files(title_png))
         except discord.HTTPException as exc:
             log.warning("Could not post %s %s: %s", kind, key, exc)
             return False
         self.store.save_post(Post(kind, key, channel.id, msg.id, None, digest))
         return True
+
+    def _title_image(self, card: render.Card) -> bytes | None:
+        """The card's title drawn in the item's quality colour, when the card asks for one."""
+        if card.title_colour is None:
+            return None
+        icon = self.store.icon_image(card.icon) if card.icon else None
+        return titleimage.render(card.title, card.title_colour, icon)
 
     async def sync_log_group(self, inst: str, night: str) -> bool:
         """One #loot-log post per raid and night, edited as more awards arrive (split if it gets long)."""
@@ -268,6 +285,11 @@ class LootBot(commands.Bot):
             log.error("Error in /%s: %s", name, "".join(traceback.format_exception(original)))
             msg = "Something went wrong; it's in the bot's log."
         await reply(interaction, msg, ephemeral=True)
+
+
+def title_files(png: bytes | None) -> list[discord.File]:
+    """A fresh File each time: discord.py reads one only once."""
+    return [discord.File(io.BytesIO(png), filename=titleimage.FILENAME)] if png else []
 
 
 async def reply(interaction: discord.Interaction, content: str | None = None, *, embed: discord.Embed | None = None,

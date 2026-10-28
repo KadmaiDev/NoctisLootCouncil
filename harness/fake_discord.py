@@ -27,6 +27,7 @@ import datetime as dt
 import itertools
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -40,6 +41,13 @@ EPHEMERAL = 64
 # Interaction response types (Discord's numbering).
 CHANNEL_MESSAGE, DEFERRED_MESSAGE, DEFERRED_UPDATE, UPDATE_MESSAGE, AUTOCOMPLETE, MODAL = 4, 5, 6, 7, 8, 9
 ALL_PERMISSIONS = str((1 << 50) - 1)
+_attachment_ids = itertools.count(1)
+
+
+def _attachment(filename: str) -> dict:
+    aid = next(_attachment_ids)
+    url = f"https://cdn.fake-discord.test/attachments/{aid}/{filename}"
+    return {"id": str(aid), "filename": filename, "size": 0, "url": url, "proxy_url": url}
 
 
 def _now() -> str:
@@ -103,8 +111,16 @@ class Message:
             parts += [f"{f.get('name')}: {f.get('value')}" for f in e.get("fields") or []]
             if e.get("footer"):
                 parts.append(e["footer"].get("text") or "")
-        parts += [c.get("content") or "" for c in self.components if c.get("type") == 10]
+        for c in self.components:
+            if c.get("type") == 10:
+                parts.append(c.get("content") or "")
+            elif c.get("type") == 12:  # a picture, by its alt text: the drawn item title
+                parts += [f"[image: {i.get('description') or ''}]" for i in c.get("items") or []]
         return "\n".join(p for p in parts if p)
+
+    @property
+    def attachments(self) -> list[str]:
+        return [a.get("filename") or "" for a in self.payload.get("attachments") or []]
 
     @property
     def buttons(self) -> list[dict]:
@@ -368,13 +384,23 @@ class FakeDiscord:
         path = "/" + request.match_info["path"]
         self.requests.append((request.method, path))
         body: Any = None
+        uploads: list[str] = []
         if request.can_read_body:
             if request.content_type.startswith("multipart/"):
                 form = await request.post()
                 body = json.loads(form.get("payload_json") or "{}")  # type: ignore[arg-type]
+                uploads = [f.filename for k, f in form.items() if k.startswith("files[")]  # type: ignore[union-attr]
             else:
                 raw = await request.read()
                 body = json.loads(raw) if raw else None
+        if isinstance(body, dict) and request.method in ("POST", "PATCH"):
+            # As Discord: a component showing attachment://x needs x uploaded with the message.
+            missing = set(re.findall(r'attachment://([^"]+)', json.dumps(body.get("components") or []))) - set(uploads)
+            if missing:
+                await self._notify()
+                return web.Response(status=400, headers={"Content-Type": "application/json"}, body=json.dumps(
+                    {"message": "Invalid Form Body", "code": 50035, "missing": sorted(missing)}).encode())
+            body["_uploads"] = uploads
         try:
             result = await self._route(request.method, path, request.query, body)
         finally:
@@ -428,7 +454,8 @@ class FakeDiscord:
             "id": str(mid), "channel_id": str(channel.id), "guild_id": str(self.guild_id),
             "author": (author or self.bot_user).user_payload(), "content": body.get("content") or "",
             "timestamp": _now(), "edited_timestamp": None, "tts": False, "mention_everyone": False,
-            "mentions": [], "mention_roles": [], "attachments": [], "embeds": body.get("embeds") or [],
+            "mentions": [], "mention_roles": [], "embeds": body.get("embeds") or [],
+            "attachments": [_attachment(f) for f in body.get("_uploads") or []],
             "pinned": False, "type": 0 if interaction is None else 20, "flags": int(body.get("flags") or 0),
             "components": body.get("components") or [],
         }
@@ -475,6 +502,10 @@ class FakeDiscord:
         for key in ("content", "embeds", "components", "flags"):
             if key in body:
                 msg.payload[key] = body[key] if body[key] is not None else ([] if key != "content" else "")
+        if "attachments" in body:  # the attachments the edit keeps, then the new uploads
+            kept = {str(a.get("id")) for a in body["attachments"] or []}
+            msg.payload["attachments"] = [a for a in msg.payload.get("attachments") or [] if a["id"] in kept] + [
+                _attachment(f) for f in body.get("_uploads") or []]
         msg.payload["edited_timestamp"] = _now()
 
     def _interaction_callback(self, token: str, body: dict) -> tuple[int, Any]:

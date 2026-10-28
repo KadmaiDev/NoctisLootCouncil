@@ -62,8 +62,19 @@ class FakeChannel:
 
 
 def text(msg: dict) -> str:
-    """What a sent layout message says."""
-    return "\n".join(c.content for c in msg["view"].walk_children() if isinstance(c, discord.ui.TextDisplay))
+    """What a sent layout message says (a picture by its alt text)."""
+    parts = []
+    for c in msg["view"].walk_children():
+        if isinstance(c, discord.ui.TextDisplay):
+            parts.append(c.content)
+        elif isinstance(c, discord.ui.MediaGallery):
+            parts += [f"[image: {i.description}]" for i in c.items]
+    return "\n".join(parts)
+
+
+def uploads(msg: dict) -> list[str]:
+    """The files sent with the message (or with its last edit)."""
+    return [f.filename for f in msg.get("attachments", msg.get("files")) or []]
 
 
 def buttons(msg: dict) -> list[str]:
@@ -218,13 +229,16 @@ async def test_posts_get_the_icon_link_and_emoji(tmp_path, channels):
     await bot.sync_pending()
     assert sorted(wowhead.asked) == [16805, 17069, 18000] and wowhead.emojis == ["inv_gauntlets_19"]
     officer = next(m for m in channels[OFFICERS].messages.values() if "Felheart" in text(m))
-    assert "### <:inv_gauntlets_19:1> Felheart Gloves\n" in text(officer)
+    # The title is drawn in the quality colour, with the icon, and uploaded with the post.
+    assert text(officer).startswith("-# NEW IN OUR RAID ON MONDAY 26 OCT\n[image: Felheart Gloves]\n"
+                                    "-# Epic · Hands · Cloth · ")
+    assert uploads(officer) == ["title.png"]
     assert "[Wowhead](https://www.wowhead.com/forever/item=16805/felheart-gloves)" in text(officer)
     log_text = text(next(iter(channels[LOG].messages.values())))
     assert "<:inv_gauntlets_19:1> Felheart Gloves → **Corvin Dusk**" in log_text
     # Items Wowhead doesn't know go without, and nothing is asked again on the next pass.
     sash = next(m for m in channels[OFFICERS].messages.values() if "Sash" in text(m))
-    assert "### Sash of the Unseen" in text(sash)
+    assert "[image: Sash of the Unseen]" in text(sash)  # drawn without an icon
     bot.store.mark_all_dirty()
     await bot.sync_pending()
     assert len(wowhead.asked) == 3 and channels[OFFICERS].edits == 0
@@ -237,6 +251,7 @@ async def test_wowhead_down_posts_without_icons_and_pauses_lookups(tmp_path, cha
     bot.store.add_item(16805, "Felheart Gloves")
     await bot.sync_pending()
     assert channels[ITEMS].sends == 1 and "### Felheart Gloves" in text(next(iter(channels[ITEMS].messages.values())))
+    # (No quality known yet, so the plain heading: the drawn title needs the item's colour.)
     bot.store.toggle_suggestion(16805, 5)
     await bot.sync_pending()
     assert wowhead.asked == [16805]  # paused, not asked on every change

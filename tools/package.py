@@ -84,12 +84,12 @@ def package_companion():
 
 
 def bot_files():
-    """(name in the zip's bot folder, source path): BOT_FILES and the bot/ package's .py files."""
+    """(name in the zip's bot folder, source path): BOT_FILES and the bot/ package's .py files and assets."""
     files = [(name, os.path.join(REPO, src)) for name, src in BOT_FILES.items()]
     for folder, dirs, names in os.walk(os.path.join(REPO, "bot")):
         dirs[:] = sorted(d for d in dirs if d != "__pycache__")
         for name in sorted(names):
-            if name.endswith(".py"):
+            if name.endswith(".py") or os.path.basename(folder) == "assets":
                 path = os.path.join(folder, name)
                 files.append((os.path.relpath(path, REPO).replace("\\", "/"), path))
     missing = [name for name, path in files if not os.path.isfile(path)]

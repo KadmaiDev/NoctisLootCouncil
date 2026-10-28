@@ -56,17 +56,24 @@ class Card:
     buttons: list[Button] = field(default_factory=list)
     url: str = ""
     emoji: str = ""
+    # Set for items: the title is drawn as a picture in this colour (titleimage.py), with the icon
+    # `icon` (its picture is stored) before it, instead of the white markdown heading.
+    title_colour: int | None = None
+    icon: str = ""
 
     def digest(self) -> str:
         return hashlib.sha256(json.dumps(asdict(self), sort_keys=True).encode()).hexdigest()
 
-    def head(self) -> str:
+    def head_parts(self) -> tuple[str, str, str]:
+        """The kicker, the heading and the subtitle, as markdown."""
         # The icon as a small emoji before the name, like an item link in game (Discord draws a
         # Section thumbnail at a fixed, much larger size). The name itself isn't a link: Discord
         # colours links blue, which reads as a Rare item to a WoW player.
-        title = with_emoji(self.emoji, self.title)
         sub = " · ".join(p for p in (self.subtitle, f"[Wowhead]({self.url})" if self.url else "") if p)
-        return "\n".join(p for p in (small(self.kicker), f"### {title}", small(sub)) if p)
+        return small(self.kicker), f"### {with_emoji(self.emoji, self.title)}", small(sub)
+
+    def head(self) -> str:
+        return "\n".join(p for p in self.head_parts() if p)
 
     def text(self) -> str:
         """Everything the post says, as Discord markdown (views.py splits it into its parts)."""
@@ -100,9 +107,12 @@ def subtitle(state: ItemState) -> str:
 
 
 def item_links(state: ItemState) -> dict[str, str]:
-    """The card's link to Wowhead and its icon, when Wowhead knows the item."""
+    """The card's link to Wowhead and its icon, when Wowhead knows the item, and its title drawn in
+    the quality colour once the quality is known."""
     return {"url": iteminfo.page_url(state.id, state.wowhead[1], state.wowhead[0]) if state.wowhead else "",
-            "emoji": state.emoji or ""}
+            "emoji": state.emoji or "",
+            "title_colour": QUALITY_COLOURS.get(state.quality) if state.quality is not None else None,
+            "icon": state.icon if state.icon and state.icon_image else ""}
 
 
 def with_emoji(emoji: str | None, text: str) -> str:

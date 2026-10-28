@@ -143,8 +143,9 @@ class Store:
         lasts = [t for t in (drops["last"], aw["last"]) if t is not None]
         suggesters = [r["user_name"] for r in self.conn.execute(
             "SELECT user_name FROM suggestions WHERE item_id = ? ORDER BY at, user_id", (item_id,))]
-        info = self.conn.execute("SELECT ii.*, e.emoji FROM item_info ii "
-                                 "LEFT JOIN icon_emojis e ON e.icon = ii.icon WHERE ii.item_id = ?",
+        info = self.conn.execute("SELECT ii.*, e.emoji, im.icon IS NOT NULL AS has_image FROM item_info ii "
+                                 "LEFT JOIN icon_emojis e ON e.icon = ii.icon "
+                                 "LEFT JOIN icon_images im ON im.icon = ii.icon WHERE ii.item_id = ?",
                                  (item_id,)).fetchone()
         # Quality: the game's once an upload has it, else Wowhead's Forever data, else /loot add's.
         quality = row["quality"]
@@ -152,7 +153,7 @@ class Store:
             quality = info["quality"]
         return ItemState(
             id=row["id"], name=row["name"], quality=quality, slot=row["slot"] or (info and info["slot"]),
-            icon=info and info["icon"], emoji=info and info["emoji"],
+            icon=info and info["icon"], emoji=info and info["emoji"], icon_image=bool(info and info["has_image"]),
             wowhead=(info["env"], info["name"] or row["name"]) if info and info["found"] and info["env"] else None,
             source_text=self._source_text(row), raid=self._raid_name(row),
             tally=rules.tally(self._votes(item_id), self.votes_to_decide),
@@ -411,6 +412,23 @@ class Store:
             self.conn.execute(
                 "UPDATE log_groups SET dirty = dirty + 1 WHERE EXISTS (SELECT 1 FROM awards a WHERE a.item_id = ? "
                 "AND COALESCE(a.inst, '') = log_groups.inst AND a.night = log_groups.night)", (item_id,))
+
+    def icons_without_image(self) -> list[str]:
+        return [r["icon"] for r in self.conn.execute(
+            "SELECT DISTINCT icon FROM item_info WHERE found = 1 AND icon IS NOT NULL "
+            "AND icon NOT IN (SELECT icon FROM icon_images) ORDER BY icon")]
+
+    def icon_image(self, icon: str) -> bytes | None:
+        r = self.conn.execute("SELECT image FROM icon_images WHERE icon = ?", (icon,)).fetchone()
+        return bytes(r["image"]) if r else None
+
+    def save_icon_image(self, icon: str, image: bytes) -> None:
+        """A new picture: the posts of items with that icon are marked for editing (their title has it)."""
+        with self.conn:
+            self.conn.execute("INSERT INTO icon_images(icon, image) VALUES(?, ?) "
+                              "ON CONFLICT(icon) DO UPDATE SET image = excluded.image", (icon, image))
+            self.conn.execute("UPDATE items SET dirty = dirty + 1 WHERE id IN "
+                              "(SELECT item_id FROM item_info WHERE icon = ?)", (icon,))
 
     def icons_without_emoji(self) -> list[str]:
         return [r["icon"] for r in self.conn.execute(

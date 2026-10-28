@@ -124,8 +124,13 @@ def test_layout_spaces_the_footer_from_the_body():
     card = render.officer_card(state(priority="Warlock priority", priority_by="Seren", suggestions=1), TZ)
     box = card_layout(card, 18000).children[0]
     kinds = [(type(c).__name__, getattr(c, "visible", None)) for c in box.children]
-    assert kinds == [("TextDisplay", None), ("Separator", True), ("TextDisplay", None), ("Separator", False),
-                     ("TextDisplay", None)]
+    assert kinds == [("MediaGallery", None), ("TextDisplay", None), ("Separator", True), ("TextDisplay", None),
+                     ("Separator", False), ("TextDisplay", None)]
+    assert box.children[0].items[0].media.url == "attachment://title.png"
+    assert box.children[0].items[0].description == "Sash of the Unseen"
+    # Without a known quality there's no colour to draw in: the plain heading.
+    plain = card_layout(render.officer_card(state(quality=None), TZ), 18000).children[0]
+    assert plain.children[0].content.startswith("### Sash of the Unseen")
     assert box.children[-1].content.startswith("-# No drops yet")
     assert isinstance(box, discord.ui.Container)
 

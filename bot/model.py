@@ -49,6 +49,7 @@ class ItemState:
     first_award: AwardInfo | None = None
     icon: str | None = None            # Wowhead's icon name, e.g. inv_staff_13
     emoji: str | None = None           # that icon as the bot's emoji
+    icon_image: bool = False           # the icon's picture is stored, for the drawn title
     wowhead: tuple[str, str] | None = None  # (database, name) when Wowhead has the item: link to it
 
     @property
