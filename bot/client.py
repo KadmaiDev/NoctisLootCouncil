@@ -21,7 +21,7 @@ from aiohttp import web
 from discord import app_commands
 from discord.ext import commands
 
-from . import iteminfo, render, titleimage
+from . import iteminfo, render, titleimage, warcraftlogs
 from .api import create_app
 from .checks import NotOfficer
 from .config import Config
@@ -62,6 +62,9 @@ class LootBot(commands.Bot):
         self._lookup_paused_until = 0.0
         self._app_emojis: dict[str, str] | None = None
         self._emoji_failed: set[str] = set()
+        # Warcraft Logs (warcraftlogs.py), for /loot wcl: None until its client is in .env. Tests swap it.
+        self.wcl = (warcraftlogs.Api(config.wcl_client_id, config.wcl_client_secret)
+                    if config.wcl_client_id and config.wcl_client_secret else None)
 
     # ---- lifecycle ---------------------------------------------------------
 
@@ -125,21 +128,42 @@ class LootBot(commands.Bot):
             if await self.sync_log_group(inst, night):
                 self.store.clear_log_dirty(inst, night, generation)
 
+    def _session(self) -> aiohttp.ClientSession:
+        """The bot's own web session (Wowhead, Warcraft Logs), made when first needed."""
+        if self._http is None:
+            self._http = aiohttp.ClientSession(headers={"User-Agent": "NoctisLootBot (guild loot bot)"})
+        return self._http
+
+    async def link_report(self, link: str, by: str) -> tuple[warcraftlogs.Report, list[tuple[str, str]]]:
+        """/loot wcl: fetch a Warcraft Logs report and keep it. Returns it and the #loot-log posts
+        (raid, night) that now link to it; they're edited by the poster."""
+        parsed = warcraftlogs.parse_link(link)
+        if parsed is None:
+            raise UserError("That isn't a Warcraft Logs report link; they look like "
+                            "https://classic.warcraftlogs.com/reports/AbCd1234EfGh5678.")
+        if self.wcl is None:
+            raise UserError("Warcraft Logs isn't set up: add WCL_CLIENT_ID and WCL_CLIENT_SECRET to the bot's .env.")
+        try:
+            report = await self.wcl.report(self._session(), *parsed)
+        except warcraftlogs.WclError as exc:
+            raise UserError(str(exc)) from exc
+        linked = self.store.save_report(report, by)
+        self.notify()
+        return report, linked
+
     async def look_up_items(self) -> None:
         """Icons, slots and links from Wowhead for the items about to be posted, and the icons as
         the bot's emojis for list lines. Done before posting, so the posts go out with them."""
         if not self.config.wowhead or time.monotonic() < self._lookup_paused_until:
             return
-        if self._http is None:
-            self._http = aiohttp.ClientSession(headers={"User-Agent": "NoctisLootBot (guild loot bot)"})
         for item_id in self.store.items_to_look_up():
-            info = await self.lookup(self._http, item_id)
+            info = await self.lookup(self._session(), item_id)
             if info is None:  # Wowhead or the network is down
                 self._lookup_paused_until = time.monotonic() + LOOKUP_PAUSE_SECONDS
                 return
             self.store.save_item_info(item_id, info)
         for icon in self.store.icons_without_image():
-            image = await self.fetch_icon(self._http, icon)
+            image = await self.fetch_icon(self._session(), icon)
             if image is None:
                 self._lookup_paused_until = time.monotonic() + LOOKUP_PAUSE_SECONDS
                 return

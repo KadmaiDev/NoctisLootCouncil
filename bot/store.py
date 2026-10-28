@@ -4,18 +4,29 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import re
 import secrets
 import sqlite3
 import time
 from typing import Callable
 from zoneinfo import ZoneInfo
 
-from . import iteminfo, rules
+from . import iteminfo, rules, warcraftlogs
 from .model import AwardInfo, ItemState, LogGroup, Post, UploadResult
 from .rules import COUNCIL, HANDLINGS, Vote
 from .upload import Upload, UploadItem, name_from_link
 
 TOKEN_PREFIX = "nlc_"
+# Loot counts as in a Warcraft Logs report from an hour before it starts (logging switched on late)
+# to two hours after it ends (logging stopped before the last loot went out).
+REPORT_SLACK_BEFORE, REPORT_SLACK_AFTER = 3600, 7200
+# The game's clock and the log's can disagree a little: a kill this soon after the loot still counts as before it.
+FIGHT_SLACK = 120
+
+
+def _boss_key(name: str) -> str:
+    """Boss names compared as the game and Warcraft Logs may spell them ('Majordomo Executus')."""
+    return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
 def _hash_token(token: str) -> str:
@@ -382,7 +393,70 @@ class Store:
             url = (iteminfo.page_url(r["item_id"], r["wh_name"] or name, r["wh_env"])
                    if r["wh_found"] and r["wh_env"] else None)
             awards.append(dataclasses.replace(self._award_info(r, name, new_item), emoji=r["emoji"], url=url))
-        return LogGroup(inst=inst, night=night, awards=awards)
+        report = self._report_for(night, [a.at for a in awards])
+        if report is None:
+            return LogGroup(inst=inst, night=night, awards=awards)
+        return LogGroup(inst=inst, night=night, awards=awards,
+                        report_url=warcraftlogs.report_url(report["host"], report["code"]),
+                        fight_urls=self._fight_urls(report, awards))
+
+    # ---- Warcraft Logs (warcraftlogs.py) -------------------------------------
+
+    def save_report(self, report: warcraftlogs.Report, by: str | None = None) -> list[tuple[str, str]]:
+        """Keep a report and its boss kills. Returns the #loot-log posts (raid, night) that now link to it."""
+        first, last = (rules.night_of(t, self.tz).isoformat() for t in (report.start_at, report.end_at))
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO wcl_reports(code, host, title, start_at, end_at, first_night, last_night, added_at, "
+                "added_by) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(code) DO UPDATE SET host = excluded.host, "
+                "title = excluded.title, start_at = excluded.start_at, end_at = excluded.end_at, "
+                "first_night = excluded.first_night, last_night = excluded.last_night, "
+                "added_at = excluded.added_at, added_by = excluded.added_by",
+                (report.code, report.host, report.title, report.start_at, report.end_at, first, last, self.now(), by))
+            self.conn.execute("DELETE FROM wcl_fights WHERE code = ?", (report.code,))
+            self.conn.executemany("INSERT INTO wcl_fights(code, id, name, end_at) VALUES(?, ?, ?, ?)",
+                                  [(report.code, f.id, f.name, f.end_at) for f in report.fights])
+            self.conn.execute("UPDATE log_groups SET dirty = dirty + 1 WHERE night BETWEEN ? AND ?", (first, last))
+        groups = self.conn.execute("SELECT inst, night FROM log_groups WHERE night BETWEEN ? AND ? "
+                                   "ORDER BY night, inst", (first, last)).fetchall()
+        linked = []
+        for g in groups:
+            times = [r["at"] for r in self.conn.execute(
+                "SELECT at FROM awards WHERE COALESCE(inst, '') = ? AND night = ?", (g["inst"], g["night"]))]
+            chosen = self._report_for(g["night"], times)
+            if chosen is not None and chosen["code"] == report.code:
+                linked.append((g["inst"], g["night"]))
+        return linked
+
+    def _report_for(self, night: str, times: list[int]) -> sqlite3.Row | None:
+        """Of the reports on this night, the one whose span holds the most of the loot (the latest
+        linked on a tie: an officer correcting a link). One holding none of it is another raid's."""
+        rows = self.conn.execute("SELECT * FROM wcl_reports WHERE ? BETWEEN first_night AND last_night",
+                                 (night,)).fetchall()
+
+        def covered(r: sqlite3.Row) -> int:
+            return sum(r["start_at"] - REPORT_SLACK_BEFORE <= t <= r["end_at"] + REPORT_SLACK_AFTER for t in times)
+        scored = [(covered(r), r["added_at"], r["code"], r) for r in rows]
+        return max((s for s in scored if s[0]), key=lambda s: s[:3], default=(None,) * 4)[3]
+
+    def _fight_urls(self, report: sqlite3.Row, awards: list[AwardInfo]) -> dict[str, str]:
+        """Each boss's kill: the last one before its loot was handed out (or the nearest, if the
+        clocks disagree)."""
+        fights = self.conn.execute("SELECT id, name, end_at FROM wcl_fights WHERE code = ?",
+                                   (report["code"],)).fetchall()
+        first_loot: dict[str, int] = {}
+        for a in awards:
+            if a.boss:
+                first_loot.setdefault(a.boss, a.at)
+        urls = {}
+        for boss, at in first_loot.items():
+            kills = [f for f in fights if _boss_key(f["name"]) == _boss_key(boss)]
+            if not kills:
+                continue
+            before = [f for f in kills if f["end_at"] <= at + FIGHT_SLACK]
+            kill = max(before, key=lambda f: f["end_at"]) if before else min(kills, key=lambda f: abs(f["end_at"] - at))
+            urls[boss] = warcraftlogs.fight_url(report["host"], report["code"], kill["id"])
+        return urls
 
     # ---- item info (iteminfo.py) ---------------------------------------------
 

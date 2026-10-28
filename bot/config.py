@@ -22,6 +22,8 @@ class Config:
     db_path: pathlib.Path
     timezone: str
     wowhead: bool = True  # look items up on Wowhead for icons and links (iteminfo.py)
+    wcl_client_id: str = ""  # Warcraft Logs API client, for /loot wcl (warcraftlogs.py)
+    wcl_client_secret: str = ""
 
 
 def _int(name: str, default: int = 0) -> int:
@@ -50,6 +52,8 @@ def load(require_discord: bool = True) -> Config:
         db_path=ROOT / os.getenv("DB_PATH", "data/noctis-loot.db").strip(),
         timezone=os.getenv("TIMEZONE", "Europe/London").strip() or "Europe/London",
         wowhead=os.getenv("WOWHEAD_LOOKUP", "1").strip().lower() not in ("0", "no", "off", "false"),
+        wcl_client_id=os.getenv("WCL_CLIENT_ID", "").strip(),
+        wcl_client_secret=os.getenv("WCL_CLIENT_SECRET", "").strip(),
     )
     if require_discord:
         missing = [name for name, value in (

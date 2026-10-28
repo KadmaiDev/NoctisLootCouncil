@@ -312,11 +312,13 @@ def split_cards(title: str, subtitle: str, lines: list[str], footer: str, colour
             for i, part in enumerate(parts)]
 
 
-def log_lines(awards: list[AwardInfo]) -> list[str]:
+def log_lines(awards: list[AwardInfo], fight_urls: dict[str, str] | None = None) -> list[str]:
     """A line per award, under its boss's name in the order they were killed (loot from no boss
-    last). A heading travels with its first line, so a long night is never split between them."""
+    last). A heading travels with its first line, so a long night is never split between them.
+    A boss with a kill in the night's Warcraft Logs report links to it."""
     if not any(a.boss for a in awards):
         return [award_line(a) for a in awards]
+    fight_urls = fight_urls or {}
     by_boss: dict[str | None, list[AwardInfo]] = {}
     for a in sorted(awards, key=lambda a: a.at):
         by_boss.setdefault(a.boss or None, []).append(a)
@@ -324,16 +326,21 @@ def log_lines(awards: list[AwardInfo]) -> list[str]:
     for boss in sorted(by_boss, key=lambda b: b is None):  # stable: kill order, then the rest
         first, *rest = [award_line(a) for a in by_boss[boss]]
         gap = "\n" if lines else ""
-        lines.append(f"{gap}__{md(boss or 'Other loot')}__\n{first}")
+        heading = linked(md(boss), fight_urls.get(boss)) if boss else "Other loot"
+        lines.append(f"{gap}__{heading}__\n{first}")
         lines.extend(rest)
     return lines
 
 
 def log_cards(group: LogGroup) -> list[Card]:
-    """One raid night in one instance: 'Molten Core · Monday 27 Oct', '6 items', then the awards by boss."""
+    """One raid night in one instance: 'Molten Core · Monday 27 Oct', '6 items' (and its Warcraft Logs
+    report), then the awards by boss."""
     day = rules.day_label(dt.date.fromisoformat(group.night))
-    return split_cards(f"{md(group.inst or 'Raid')} · {day}", plural(len(group.awards), "item"),
-                       log_lines(group.awards), LOG_FOOTER)
+    subtitle = plural(len(group.awards), "item")
+    if group.report_url:
+        subtitle += f" · [Warcraft Logs]({group.report_url})"
+    return split_cards(f"{md(group.inst or 'Raid')} · {day}", subtitle,
+                       log_lines(group.awards, group.fight_urls), LOG_FOOTER)
 
 
 # ---- #loot-priorities -------------------------------------------------------

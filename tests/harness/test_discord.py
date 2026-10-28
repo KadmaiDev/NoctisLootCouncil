@@ -1,6 +1,10 @@
 """The real bot (discord.py, slash commands, buttons, the form) against the fake Discord."""
 from __future__ import annotations
 
+from bot.upload import parse_upload
+from bot.warcraftlogs import Fight, Report
+
+from ..bot.conftest import RAID, sample_body
 from .conftest import start_bot, stop_bot
 
 SASH = dict(item_id=18000, name="Sash of the Unseen", slot="Waist · Cloth", source="Molten Core, Lucifron")
@@ -100,6 +104,30 @@ async def test_status_autocomplete_token_and_priorities(guild, running):
     assert "Posted" in r.text
     post = await guild.wait_until(lambda: guild.channel("loot-priorities").find("Thursday 30 Oct"))
     assert "Sash of the Unseen" in post.text
+
+
+class FakeWcl:
+    """Warcraft Logs, knowing one report: Lucifron killed just before the sample night's loot."""
+
+    async def report(self, session, host, code):
+        return Report(host=host, code=code, title="MC", start_at=RAID - 600, end_at=RAID + 3 * 3600,
+                      fights=(Fight(5, "Lucifron", RAID + 650),))
+
+
+async def test_wcl_links_the_report_on_the_loot_log(guild, running):
+    running.bot.wcl = FakeWcl()
+    running.bot.store.apply_upload(parse_upload(sample_body()), "discord:1", "Kadmai")
+    running.bot.notify()
+    log = await guild.wait_until(lambda: guild.channel("loot-log").find("Molten Core"))
+    link = "https://classic.warcraftlogs.com/reports/8Td6NXf7AyhbpMWL"
+    r = await guild.slash(guild.raiders[0], "loot wcl", link=link)
+    assert "officers" in r.text
+    r = await guild.slash(guild.officers[0], "loot wcl", link="https://example.com/reports/x")
+    assert r.ephemeral and "isn't a Warcraft Logs report link" in r.text
+    r = await guild.slash(guild.officers[0], "loot wcl", link=link)
+    assert r.ephemeral and "Linked **MC** (1 boss kill) to [Molten Core · Monday 26 Oct](" in r.text
+    await guild.wait_until(lambda: f"[Warcraft Logs]({link})" in log.text, what="the log post to link the report")
+    assert f"__[Lucifron]({link}#fight=5)__" in log.text
 
 
 async def test_a_restart_edits_instead_of_reposting_and_a_deleted_post_comes_back(guild, running, tmp_path):

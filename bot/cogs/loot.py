@@ -78,6 +78,27 @@ class LootCog(commands.Cog):
         await self.bot.post_priorities(day or rules.day_label(today), raid)
         await reply(interaction, f"Posted to {self.bot.channel_mention(self.bot.config.ch_priorities)}.", ephemeral=True)
 
+    @loot.command(name="wcl", description="Link a Warcraft Logs report to its night's #loot-log post")
+    @app_commands.describe(link="The report's link, e.g. https://classic.warcraftlogs.com/reports/AbCd1234EfGh5678")
+    @officer_only()
+    async def wcl(self, interaction: discord.Interaction, link: app_commands.Range[str, 1, 200]) -> None:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        report, linked = await self.bot.link_report(link, interaction.user.display_name)
+        title = f"**{render.md(report.title or report.code)}**"
+        kills = render.plural(len(report.fights), "boss kill")
+        if not linked:
+            day = rules.day_label(rules.night_of(report.start_at, self.bot.tz))
+            text = (f"Saved {title} ({day}, {kills}). It goes on {self.bot.channel_mention(self.bot.config.ch_log)} "
+                    "once that night's loot is uploaded.")
+        else:
+            posts = []
+            for inst, night in linked:
+                label = f"{render.md(inst or 'Raid')} · {rules.day_label(dt.date.fromisoformat(night))}"
+                url = self.bot.jump_url("log", f"{inst}|{night}|0")
+                posts.append(f"[{label}]({url})" if url else label)
+            text = f"Linked {title} ({kills}) to {', '.join(posts)}."
+        await reply(interaction, text, ephemeral=True)
+
     @loot.command(name="status", description="What's decided: council items and their priorities")
     @app_commands.describe(item="One item (default: the whole list)")
     @app_commands.autocomplete(item=item_autocomplete)

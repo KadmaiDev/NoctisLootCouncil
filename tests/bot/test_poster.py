@@ -272,4 +272,4 @@ async def test_cog_loads_with_the_commands(tmp_path, channels):
     bot = make_bot(tmp_path, channels)
     await bot.load_extension("bot.cogs.loot")
     group = bot.tree.get_command("loot")
-    assert sorted(c.name for c in group.commands) == ["add", "priorities", "status", "token"]
+    assert sorted(c.name for c in group.commands) == ["add", "priorities", "status", "token", "wcl"]

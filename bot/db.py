@@ -138,6 +138,28 @@ CREATE TABLE IF NOT EXISTS log_groups (
     PRIMARY KEY (inst, night)
 );
 
+-- Warcraft Logs reports officers linked (/loot wcl, warcraftlogs.py), and their boss kills. A #loot-log
+-- post takes the report for its night (first_night..last_night) that best covers its loot.
+CREATE TABLE IF NOT EXISTS wcl_reports (
+    code        TEXT PRIMARY KEY,
+    host        TEXT NOT NULL,                   -- the site, e.g. classic.warcraftlogs.com
+    title       TEXT NOT NULL,
+    start_at    INTEGER NOT NULL,
+    end_at      INTEGER NOT NULL,
+    first_night TEXT NOT NULL,
+    last_night  TEXT NOT NULL,
+    added_at    INTEGER NOT NULL,
+    added_by    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS wcl_fights (
+    code   TEXT NOT NULL REFERENCES wcl_reports(code),
+    id     INTEGER NOT NULL,
+    name   TEXT NOT NULL,                        -- the boss, as Warcraft Logs names it
+    end_at INTEGER NOT NULL,
+    PRIMARY KEY (code, id)
+);
+
 -- Every message the bot owns, so restarts edit instead of reposting.
 CREATE TABLE IF NOT EXISTS posts (
     kind       TEXT NOT NULL,                    -- officer, items, log

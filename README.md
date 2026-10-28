@@ -61,6 +61,7 @@ Copy `.env.example` to `.env` and fill it in. Turn on Developer Mode in Discord 
 | `API_HOST`, `API_PORT` | where the API listens (default `127.0.0.1:8080`) |
 | `VOTES_TO_DECIDE` | votes an option needs (default 3) |
 | `DB_PATH` | the SQLite database (default `data/noctis-loot.db`) |
+| `WCL_CLIENT_ID`, `WCL_CLIENT_SECRET` | optional, for `/loot wcl`: a client from warcraftlogs.com → API clients (any redirect URL, not a public client) |
 | `TIMEZONE` | for raid nights and dates in posts (default `Europe/London`; a raid night runs until 06:00) |
 
 ### 4. Run it
@@ -148,6 +149,7 @@ Everything is in the one SQLite file. A consistent copy while the bot runs: `sql
 | `/loot priorities [raid] [day]` | officers | Posts the council items and priorities to #loot-priorities, then the paragraph about everything else being rolled. `day` is the heading ("Thursday 30 Oct"; default today). |
 | `/loot status [item]` | everyone | Just for you: what's decided, or one item. |
 | `/loot token` | officers | Just for you: a token for the companion app. Running it again replaces the old one. |
+| `/loot wcl <link>` | officers | Links a Warcraft Logs report to its night's #loot-log post: "Warcraft Logs" under the heading, and each boss heading to that boss's kill (the last one before its loot went out). The post that takes it is the one on the report's night whose loot falls in the report's time; a report linked before the upload is used once the loot comes. Linking another report that holds that night's loot replaces it. The report must be public or unlisted. Needs `WCL_CLIENT_ID` and `WCL_CLIENT_SECRET`. |
 
 The posts are edited in place as votes, priorities, suggestions and uploads change things; restarting the bot never reposts. If a post is deleted, the bot posts it again on the next change.
 

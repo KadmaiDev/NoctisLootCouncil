@@ -75,6 +75,8 @@ class LogGroup:
     inst: str  # raid name ('' when the addon didn't know it)
     night: str  # ISO date
     awards: list[AwardInfo]
+    report_url: str | None = None  # the night's Warcraft Logs report
+    fight_urls: dict[str, str] = field(default_factory=dict)  # boss -> its kill in the report
 
 
 @dataclass(frozen=True)
