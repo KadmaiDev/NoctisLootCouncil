@@ -1,0 +1,7 @@
+# The companion's window: pywebview (shows companion/page.html in Windows' WebView2, through pythonnet),
+# pystray (the tray icon) and Pillow (the icon's picture). Only companion/ui.py imports them; without them
+# `python -m companion` runs in the console. Pinned, so the released .exe is built from known versions.
+pywebview==6.2.1
+pythonnet==3.2.1
+pystray==0.19.5
+pillow==12.3.0

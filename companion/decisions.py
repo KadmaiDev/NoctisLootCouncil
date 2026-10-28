@@ -105,11 +105,17 @@ def current_at(folder: Path) -> int | None:
     return None
 
 
-def summary(decisions: dict) -> str:
-    """'Decisions from 27 Oct, 18:40: 34 council, 112 roll.', as the addon says it."""
+def counts(decisions: dict) -> tuple[str, int, int]:
+    """(when they're from, e.g. '27 Oct, 18:40', how many council items, how many roll items)."""
     items = (decisions.get("items") or {}).values()
     council = sum(1 for d in items if isinstance(d, dict) and d.get("handling") == "council")
     roll = sum(1 for d in items if isinstance(d, dict) and d.get("handling") == "roll")
     at = int(decisions.get("at") or 0)
     when = time.strftime("%d %b, %H:%M", time.localtime(at)).lstrip("0") if at else "never"
+    return when, council, roll
+
+
+def summary(decisions: dict) -> str:
+    """'Decisions from 27 Oct, 18:40: 34 council, 112 roll.', as the addon says it."""
+    when, council, roll = counts(decisions)
     return f"Decisions from {when}: {council} council, {roll} roll."

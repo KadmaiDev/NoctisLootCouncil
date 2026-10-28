@@ -132,12 +132,16 @@ def wow_candidates() -> list[Path]:
     return out
 
 
+def looks_like_wow(path: Path) -> bool:
+    return (path / "WTF").is_dir() or (path / "Interface").is_dir()
+
+
 def detect_wow_dir(candidates: list[Path] | None = None) -> Path | None:
     """The first candidate that looks like a WoW: Forever folder (has WTF or Interface), else any that exists."""
     candidates = wow_candidates() if candidates is None else candidates
     existing = [p for p in candidates if p.is_dir()]
     for p in existing:
-        if (p / "WTF").is_dir() or (p / "Interface").is_dir():
+        if looks_like_wow(p):
             return p
     return existing[0] if existing else None
 

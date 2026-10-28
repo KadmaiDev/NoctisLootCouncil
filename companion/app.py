@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import logging
+import sys
 import time
+from dataclasses import dataclass
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Callable
@@ -19,9 +21,10 @@ def setup_logging(log_file: Path | None) -> None:
     root = logging.getLogger("companion")
     root.setLevel(logging.INFO)
     root.handlers.clear()
-    console = logging.StreamHandler()
-    console.setFormatter(fmt)
-    root.addHandler(console)
+    if sys.stderr is not None:  # the windowed .exe has none
+        console = logging.StreamHandler()
+        console.setFormatter(fmt)
+        root.addHandler(console)
     if log_file is not None:
         log_file.parent.mkdir(parents=True, exist_ok=True)
         fh = RotatingFileHandler(log_file, maxBytes=1_000_000, backupCount=2, encoding="utf-8")
@@ -29,27 +32,62 @@ def setup_logging(log_file: Path | None) -> None:
         root.addHandler(fh)
 
 
+@dataclass
+class Status:
+    """What the window shows: how the last talk with the bot went, and what's been uploaded and written."""
+    connected: bool | None = None  # None until the bot has answered or failed once
+    checked_at: float | None = None
+    problem: str | None = None
+    token_refused: bool = False
+    uploaded_at: float | None = None
+    new_awards: int = 0  # in the last upload
+    new_items: int = 0
+    decisions: tuple[str, int, int] | None = None  # decisions.counts() of the latest the bot sent
+
+
+def _count(answer: dict, key: str) -> int:
+    value = answer.get(key)
+    return value if isinstance(value, int) else 0
+
+
 class Companion:
     def __init__(self, settings: Settings,
                  upload: Callable[[str, str, dict], dict] = client.post_upload,
-                 fetch: Callable[[str, str], dict] = client.get_decisions):
+                 fetch: Callable[[str, str], dict] = client.get_decisions,
+                 clock: Callable[[], float] = time.time):
         self.settings = settings
         self._upload = upload
         self._fetch = fetch
+        self._clock = clock
         self._uploaded: dict[Path, tuple[int, int]] = {}  # file -> (mtime_ns, size) last uploaded
         self._last_problem: str | None = None
+        self.status = Status()
 
     def _problem(self, message: str) -> None:
         # A bot that's down would otherwise log the same line every 30 seconds.
         if message != self._last_problem:
             log.warning(message)
         self._last_problem = message
+        self.status.problem = message
+
+    def _cleared(self) -> None:
+        self._last_problem = None
+        self.status.problem = None
+
+    def _answered(self, ok: bool) -> None:
+        self.status.connected = ok
+        self.status.checked_at = self._clock()
+
+    def _refused(self) -> None:
+        self._answered(False)
+        self.status.token_refused = True
 
     def _label(self, path: Path) -> str:
         return f"{path.parent.parent.name}/{path.name}"  # the account folder, not the whole path
 
-    def upload_changed(self) -> int:
-        """Upload every saved file whose modification time or size changed. Returns how many went up."""
+    def upload_changed(self, force: bool = False) -> int:
+        """Upload every saved file whose modification time or size changed (every one, with `force`;
+        the bot ignores what it already has). Returns how many went up."""
         done = 0
         for path in savedfile.find_saved_files(self.settings.wow_dir):
             try:
@@ -57,7 +95,7 @@ class Companion:
             except OSError:
                 continue
             signature = (st.st_mtime_ns, st.st_size)
-            if self._uploaded.get(path) == signature:
+            if self._uploaded.get(path) == signature and not force:
                 continue
             try:
                 body = savedfile.build_upload(savedfile.read_saved_file(path))
@@ -68,12 +106,18 @@ class Companion:
             try:
                 answer = self._upload(self.settings.bot_url, self.settings.token, body)
             except client.TokenRefused:
+                self._refused()
                 raise
             except client.BotError as exc:
+                self._answered(False)
                 self._problem(f"Upload of {self._label(path)} failed: {exc}. Trying again shortly.")
                 continue
             self._uploaded[path] = signature
-            self._last_problem = None
+            self._answered(True)
+            self._cleared()
+            self.status.uploaded_at = self._clock()
+            self.status.new_awards = _count(answer, "new_awards")
+            self.status.new_items = _count(answer, "new_items")
             log.info("Uploaded %s (%s): %s new items, %s new awards.", self._label(path),
                      body.get("uploader") or "unknown character", answer.get("new_items", "?"),
                      answer.get("new_awards", "?"))
@@ -85,19 +129,24 @@ class Companion:
         try:
             answer = self._fetch(self.settings.bot_url, self.settings.token)
         except client.TokenRefused:
+            self._refused()
             raise
         except client.BotError as exc:
+            self._answered(False)
             self._problem(f"Couldn't fetch decisions: {exc}. Trying again shortly.")
             return False
+        self._answered(True)
         at = answer.get("at")
         if not isinstance(at, int) or not isinstance(answer.get("items"), dict):
             self._problem("The bot's decisions answer didn't look right; trying again shortly.")
             return False
+        self.status.decisions = decisions.counts(answer)
         folder = decisions.addon_dir(self.settings.wow_dir)
         if decisions.current_at(folder) == at and all((folder / n).is_file() for n in decisions.TOC_NAMES):
+            self._cleared()
             return False
         decisions.write_addon(folder, answer)
-        self._last_problem = None
+        self._cleared()
         log.info("Wrote %s In game after the next /reload or login.", decisions.summary(answer))
         return True
 

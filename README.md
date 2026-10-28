@@ -5,21 +5,59 @@ The Noctis guild's loot system for WoW: Forever: loot rolls and a loot council i
 | | Folder | Who gets it | How |
 |---|---|---|---|
 | **Noctis Loot Council**, the addon (`/nlc`) | [`addon/`](addon/README.md) | everyone in the raid | CurseForge zip: `python tools/package.py addon` |
-| **The companion app** | `companion/` | officers, on their Windows PCs | `NoctisLootCompanion.exe`: `python tools/package.py companion` |
+| **The companion app** | `companion/` | officers, on their Windows PCs | `NoctisLootCompanion.exe` from [Releases](../../releases), built by GitHub Actions |
 | **The loot bot** | `bot/` | the server | `docker compose up -d --build` (below) |
 
 - The **addon** runs the rolls and the council in game and keeps the list of raid drops; its README is the player's guide.
 - The **loot bot**, always on, keeps the official item list, runs the officers' votes in Discord and posts the loot log. It also serves a small HTTP API.
-- The **companion app** uploads what the addon saw in the raid and writes the latest decisions where the game can load them.
+- The **companion app**, a small window and a tray icon, uploads what the addon saw in the raid and writes the latest decisions where the game can load them.
 
-The game can't reach the internet, so data moves through files:
+### How it hangs together
 
+The game can't reach the internet, so data moves through files: the companion app carries it between the addon's files and the bot, and the bot keeps the official list and talks to Discord.
+
+```mermaid
+flowchart LR
+  subgraph game["In the game · WoW: Forever"]
+    raiders["<b>Raiders' addons</b><br/>Main spec / Off spec / Pass pop-up;<br/>tags and a note on council items"]
+    lm["<b>Loot master's addon</b><br/>drop list · rolls · council window · loot log"]
+    saved[("<b>Saved file</b><br/>drops, awards, interest, bid tags")]
+    decided[("<b>NoctisLootDecisions</b><br/>council / roll list and priorities")]
+  end
+  subgraph pc["Officers' PCs"]
+    companion["<b>Companion app</b><br/>watches the saved file, uploads what's new,<br/>writes the latest decisions"]
+  end
+  subgraph server["Server"]
+    bot["<b>Loot bot</b> · always on<br/>the official item list, officers' votes,<br/>raiders' suggestions, every officer's<br/>uploads merged, the loot log"]
+  end
+  subgraph discord["Discord"]
+    officers["<b>loot-officers</b> (private)<br/>votes, priority"]
+    items["<b>loot-items</b> (public)<br/>status, suggestions"]
+    log["<b>loot-log</b><br/>every award, with the reason"]
+    prio["<b>loot-priorities</b><br/>council items, before each raid"]
+  end
+  oxm["<b>oxm.gg</b><br/>loot history and roster"]
+
+  raiders -- "rolls in raid chat; bids and notes" --> lm
+  lm -- "roll call, results, pop-up" --> raiders
+  lm -- "/reload or logout" --> saved
+  decided -- "loaded at login" --> lm
+  saved -- reads --> companion
+  companion -- writes --> decided
+  companion -- "POST /api/upload" --> bot
+  bot -- "GET /api/decisions" --> companion
+  bot -- "items" --> officers
+  bot -- "items" --> items
+  officers -- "votes, priority" --> bot
+  items -- "suggestions" --> bot
+  bot -- "awards" --> log
+  bot -- "priorities" --> prio
+  lm -. "/nlc export, RCLootCouncil CSV" .-> oxm
 ```
-addon ──saved file──▶ companion app ──POST /api/upload──▶ bot ──▶ Discord
-addon ◀─NoctisLootDecisions addon── companion app ◀──GET /api/decisions── bot
-```
 
-The exact formats are in [`docs/sync-format.md`](docs/sync-format.md). A change to them changes the addon and the bot together, in one commit.
+Rolls work from raid chat alone: raiders without the addon type `/roll` or `/roll 99`, and the pop-up is a shortcut on top. Bid tags and notes need the addon and go only to the loot master and the council.
+
+The exact file and API formats are in [`docs/sync-format.md`](docs/sync-format.md). A change to them changes the addon and the bot together, in one commit.
 
 ### The weekly flow
 
@@ -160,21 +198,23 @@ An item that hasn't dropped for us yet is behind a spoiler on #loot-items and #l
 
 ## For officers: the companion app
 
-It runs in a console window while you play (or all the time), checks the saved file every 30 seconds, uploads it when it changes, and keeps the decisions addon up to date.
+A small window, and an owl in the tray by the clock. It checks the addon's saved file every 30 seconds, uploads it when it changes, and keeps the decisions addon up to date. Closing the window keeps it running in the tray; **Quit** is in the tray icon's menu.
 
-**Install:** download `NoctisLootCompanion.exe` from this repository's Releases page and run it (see [Checking the .exe](#checking-the-exe)). Or run it from the code, with nothing built: install Python 3.11 from python.org, download this project, and in its folder run
+**Install:** download `NoctisLootCompanion.exe` from the [latest release](../../releases/latest), put it in a folder of its own (its settings and log go beside it) and run it. It needs Windows 10 or 11: the window is Windows' own WebView2. The `.exe` isn't code-signed, so Windows may say it "protected your PC": **More info**, then **Run anyway**. [Checking the .exe](#checking-the-exe) shows how to make sure it's the one built from this code.
 
-```
-python -m companion
-```
+The first run asks for three things, then **Connect** checks them with the bot before saving:
 
-The first run asks for:
-
-1. **The WoW: Forever folder.** It suggests one it found, usually `C:\Program Files (x86)\World of Warcraft\_forever_`.
-2. **The bot address**, e.g. `https://loot.example.org` (ask whoever runs the bot). Your guild's .exe may already fill it in: press Enter to keep it.
+1. **The WoW: Forever folder.** It suggests one it found, usually `C:\Program Files (x86)\World of Warcraft\_forever_`; **Browse…** picks another.
+2. **The bot address**, e.g. `https://loot.example.org`. Your guild's release fills it in; otherwise ask whoever runs the bot.
 3. **Your token**: type `/loot token` in Discord and paste it.
 
-It saves them in `companion.ini` next to the app (or in `%APPDATA%\NoctisLoot\` if that folder isn't writable) and logs to `companion.log` beside it. `python -m companion --setup` asks again; `--once` does one pass and exits.
+**Start with Windows**, on unless you untick it, starts it in the tray when you sign in.
+
+The window then shows whether it's connected to the bot, the last upload, which decisions the game has, the folder it watches and what it's done lately. **Upload now** sends the saved file again straight away, and the gear opens the settings. The tray icon pops up a notification when it uploads something new, when it writes new decisions, and when it needs a new token. If `/loot token` is used again for your Discord account, the old token stops working: the window turns red and asks for the new one. Uploads wait until then; nothing is lost.
+
+It keeps its settings and token in `companion.ini`, and its log in `companion.log`, next to the app (or in `%APPDATA%\NoctisLoot\` if that folder isn't writable). Starting it again while it runs brings up the window of the copy that's running.
+
+**From the code:** install Python 3.11 from python.org, download this project, and in its folder run `python -m pip install -r requirements-companion.txt`, then `python -m companion`. Without those packages, or with `--console`, it runs in the console instead and asks its questions there; `--setup` asks them again, and `--once` does one pass and exits.
 
 What it does each pass:
 
@@ -183,7 +223,12 @@ What it does each pass:
 
 ### What it reads, writes and sends
 
-All of it is in two short files: `companion/savedfile.py` (what it takes from the saved file) and `companion/client.py` (the only part that talks to the network). A test, `tests/companion/test_what_it_touches.py`, fails if any other part of the app imports networking, if the app uses anything outside Python's standard library, or if it starts other programs or runs code it's given.
+All of it is in a few short files: `companion/savedfile.py` (what it takes from the saved file), `companion/client.py` (the only part that talks to the network), and `companion/ui.py` with `companion/page.html` (the window). A test, `tests/companion/test_what_it_touches.py`, fails if:
+
+- any part but `client.py` imports networking;
+- any part but `ui.py` uses code from outside Python's standard library (the window uses pywebview, pystray and Pillow, at the versions pinned in `requirements-companion.txt`);
+- it starts other programs or runs code it's given;
+- the window's page could load anything from the internet.
 
 It **reads**:
 
@@ -193,7 +238,8 @@ It **reads**:
 It **writes**:
 
 - `Interface\AddOns\NoctisLootDecisions\` (two `.toc` files and `Decisions.lua`). Nothing else in the game folder.
-- `companion.ini` (your settings and token) and `companion.log`, next to the app or in `%APPDATA%\NoctisLoot\`.
+- `companion.ini` (your settings and token) and `companion.log`, next to the app or in `%APPDATA%\NoctisLoot\`, with `companion.lock` and `companion.show` beside them, which keep it to one copy.
+- With **Start with Windows** on: one value, `Noctis Loot companion`, under `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`, which starts it in the tray at sign-in. Turning it off removes the value.
 
 It **talks to** the bot address in `companion.ini`, and nowhere else:
 
@@ -202,16 +248,16 @@ It **talks to** the bot address in `companion.ini`, and nowhere else:
 
 Both carry your token. It tells the bot the upload is yours, and does nothing else: the bot accepts it for those two requests only, and it gives no access to your Discord or Battle.net account. `/loot token` replaces it.
 
-There's no auto-update and no analytics. A new version is a new download, when you choose. To see the connections for yourself, Resource Monitor's Network tab (or Sysinternals TCPView) shows it connecting to the bot alone.
+The window loads nothing: its page, pictures and font are inside the app, shown by WebView2 in private mode (no cookies or history kept), and the page's Content-Security-Policy refuses to load anything from anywhere. There's no auto-update and no analytics. A new version is a new download, when you choose. To see the connections for yourself, Resource Monitor's Network tab (or Sysinternals TCPView) shows it connecting to the bot alone.
 
 ### Checking the .exe
 
 The released `.exe` isn't built on anyone's PC. GitHub Actions builds it from the commit a release's tag points at, after the companion's tests pass (`.github/workflows/companion-release.yml`), and publishes it on the Releases page. Two checks:
 
 - **Your download is the released file.** In PowerShell, in the folder you saved it to, `Get-FileHash NoctisLootCompanion.exe` should print the SHA-256 shown on the release (also in its `SHA256SUMS.txt`).
-- **The released file was built from this code.** GitHub signs a build provenance for each `.exe`, naming the repository, the commit and the workflow. With the [GitHub CLI](https://cli.github.com), `gh attestation verify NoctisLootCompanion.exe -R <owner>/<repository>` (as in this repository's address) prints them, and fails if the file was changed after GitHub built it. The release notes give the exact command. GitHub only signs these for public repositories, so releases made while this one was private have the hash but no provenance.
+- **The released file was built from this code.** GitHub signs a build provenance for each `.exe`, naming the repository, the commit and the workflow. With the [GitHub CLI](https://cli.github.com), `gh attestation verify NoctisLootCompanion.exe -R <owner>/<repository>` (as in this repository's address) prints them, and fails if the file was changed after GitHub built it. The release notes give the exact command.
 
-The one thing in the `.exe` that isn't in the code is the bot address it fills in at setup, from the repository's `COMPANION_BOT_URL` setting. Setup shows it, and you can change it.
+The one thing in the `.exe` that isn't in the code is the bot address it fills in at setup, if the repository's `COMPANION_BOT_URL` setting has one. Setup shows it, and you can change it.
 
 **Building it yourself:** `python -m pip install -r requirements-dev.txt`, then `python tools/package.py companion` builds `dist\NoctisLootCompanion.exe`. To fill in your bot's address for your officers (they can still change it), first create `companion\_guild.py` with one line, `BOT_URL = "https://loot.example.org"`; git ignores that file.
 
@@ -222,7 +268,7 @@ The one thing in the `.exe` that isn't in the code is the bot address it fills i
 ```
 python -m bot --new-token "Test"     # prints a token
 python -m bot --api-only             # just the API on 127.0.0.1:8080
-python -m companion --setup          # bot address http://127.0.0.1:8080, the token above
+python -m companion                  # bot address http://127.0.0.1:8080, the token above
 ```
 
 ## Development
@@ -237,7 +283,7 @@ python addon/tools/install_dev.py "<WoW>\_forever_"   # a dev copy of the addon 
 
 **Releasing the companion:** set `__version__` in `companion/__init__.py`, commit and push, then `git tag companion-v<version>` and `git push origin companion-v<version>`. The workflow refuses a tag that doesn't match the version. Set the repository variable `COMPANION_BOT_URL` (Settings, Secrets and variables, Actions, Variables) to prefill your bot's address.
 
-The rules (vote tally, upload merge and de-duplication, post wording) are plain modules with no Discord import (`bot/rules.py`, `bot/upload.py`, `bot/store.py`, `bot/render.py`) and are tested directly; the API is tested with aiohttp's test client against a temporary database; the poster against fake channels; the companion end to end against the real API.
+The rules (vote tally, upload merge and de-duplication, post wording) are plain modules with no Discord import (`bot/rules.py`, `bot/upload.py`, `bot/store.py`, `bot/render.py`) and are tested directly; the API is tested with aiohttp's test client against a temporary database; the poster against fake channels; the companion end to end against the real API, and what its window shows and does without a window (`tests/companion/test_controller.py`).
 
 ### The test harness
 
@@ -252,8 +298,8 @@ The realm needs LuaJIT on the PATH (or in `LUAJIT`); without it those tests are 
 
 ## Not done yet
 
-- Nothing has run against Discord or the real game: no bot token yet. The three programs run together in the test harness, against a fake Discord and the fake game client.
+- Nothing has run in the real game yet: WoW: Forever hasn't launched. The bot runs on the guild's Discord, and the companion app talks to it; the addon has run only against the fake game client, in the tests and the harness.
 - No way to remove an item from the list or revoke a token other than issuing a new one (`/loot token` replaces the old one; deleting a row from the `tokens` table revokes it).
 - Only the winner's bid tags (BIS, Sidegrade...) reach the bot, with the award; the other bidders' tags stay in game. "NEW IN OUR RAID" posts show how many wanted an item, not what they tagged.
-- The CSV export for oxm.gg from the bot (the system map's "later") isn't built.
-- No release yet: the addon zip builds (`python tools/package.py addon`) but hasn't been published, and the companion's release workflow hasn't been run.
+- The CSV export for oxm.gg from the bot isn't built; the addon's `/nlc export` makes it for now.
+- The addon zip builds (`python tools/package.py addon`) but isn't on CurseForge yet.

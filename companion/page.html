@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- Loaded as text by companion/ui.py, which fills in the owl and the font. Nothing here may come from the
+     internet, and this policy makes sure of it: no requests, scripts or styles from anywhere else. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>Noctis Loot</title>
+<style>
+@font-face { font-family: "Philosopher"; font-weight: 700; src: url(data:font/ttf;base64,{{FONT}}) format("truetype"); }
+:root {
+  --bg: #0D1017; --surface: #161B25; --raised: #1D2330; --line: #2A3142; --rule: #232A38;
+  --text: #ECEEF3; --muted: #A3ABBD; --amber: #FBBF24; --amber-hover: #FCD34D; --on-amber: #1B1405;
+  --green: #4ADE80; --green-text: #86EFAC; --red: #F87171; --red-bg: #2A1416; --red-line: #7F1D1D;
+  --red-title: #FECACA; --red-text: #F3D4D4; --red-field: #FCA5A5;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+  font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; user-select: none; }
+input { user-select: text; }
+button, input { font-family: inherit; }
+[hidden] { display: none !important; }
+.view { display: none; height: 100%; flex-direction: column; }
+.view.on { display: flex; }
+
+.bar { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--rule); flex: none; }
+.owl { border-radius: 50%; border: 2px solid var(--line); flex: none; }
+.brand { display: flex; flex-direction: column; flex: 1; }
+.brand b { font: 700 22px "Philosopher", Georgia, serif; letter-spacing: .3px; }
+.brand span { font-size: 12px; color: var(--muted); }
+.icon-btn { width: 40px; height: 40px; border: 0; border-radius: 10px; background: transparent; color: var(--muted);
+  cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.icon-btn:hover, .icon-btn:focus-visible { background: var(--raised); color: var(--text); }
+
+main { flex: 1; overflow-y: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.link { display: flex; align-items: center; gap: 14px; padding: 16px; }
+.dot { width: 12px; height: 12px; border-radius: 50%; flex: none; background: var(--muted); }
+.dot.ok { background: var(--green); box-shadow: 0 0 0 4px rgba(74, 222, 128, .18); }
+.dot.down { background: var(--red); box-shadow: 0 0 0 4px rgba(248, 113, 113, .18); }
+.dot.checking { background: var(--amber); }
+.big { font-weight: 600; font-size: 16px; }
+.row { display: flex; gap: 12px; padding: 14px 16px; border-top: 1px solid var(--rule); }
+.row:first-child { border-top: 0; }
+.row svg { flex: none; margin-top: 2px; }
+.row > div { min-width: 0; }
+.label { font-size: 12px; color: var(--muted); }
+.value { font-weight: 500; overflow-wrap: anywhere; }
+.hint { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.note { padding: 12px 14px; border-radius: 10px; background: #2A2312; border: 1px solid #6B4F12; color: #FDE68A; font-size: 13px; }
+
+.btn { height: 46px; padding: 0 18px; border: 0; border-radius: 10px; background: var(--amber); color: var(--on-amber);
+  font-size: 15px; font-weight: 600; cursor: pointer; }
+.btn:hover, .btn:focus-visible { background: var(--amber-hover); }
+.btn:disabled { opacity: .65; cursor: default; background: var(--amber); }
+.quiet { height: 44px; padding: 0 14px; background: var(--raised); border: 1px solid var(--line); border-radius: 8px;
+  color: var(--text); font-size: 14px; font-weight: 500; cursor: pointer; }
+.quiet:hover, .quiet:focus-visible { border-color: var(--muted); }
+.text-btn { border: 0; background: none; color: var(--amber); font-size: 14px; cursor: pointer; padding: 6px; }
+.text-btn:hover { color: var(--amber-hover); }
+
+.caps { font-size: 12px; font-weight: 600; letter-spacing: .6px; color: var(--muted); margin-bottom: 8px; }
+.activity { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.activity li { display: flex; gap: 12px; }
+.activity time { width: 44px; flex: none; color: var(--muted); font-size: 13px; }
+.activity span { overflow-wrap: anywhere; }
+.activity .empty { color: var(--muted); }
+
+.foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px;
+  border-top: 1px solid var(--rule); font-size: 13px; color: var(--muted); flex: none; }
+.check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--amber); }
+
+/* Setup */
+.intro { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 24px 24px 8px; text-align: center; flex: none; }
+.intro h1 { margin: 0; font: 700 26px "Philosopher", Georgia, serif; }
+.intro p { margin: 0; color: var(--muted); }
+form { display: flex; flex-direction: column; gap: 18px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label { font-weight: 600; }
+.field .pair { display: flex; gap: 8px; }
+.field .pair input { flex: 1; }
+.field input[type=text], .field input[type=password] { min-width: 0; height: 44px; flex-shrink: 0; padding: 0 12px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; color: var(--text); font-size: 13px; }
+.field input:focus { outline: 2px solid var(--amber); outline-offset: -1px; border-color: transparent; }
+.field input.bad { border-color: var(--red); }
+.found { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--green-text); }
+.found.no { color: var(--muted); }
+.error { font-size: 12px; color: var(--red-field); }
+code { font-family: Consolas, monospace; background: var(--raised); color: var(--text); padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
+.actions { display: flex; flex-direction: column; gap: 8px; padding: 14px 24px 20px; border-top: 1px solid var(--rule); flex: none; }
+.actions .btn { width: 100%; }
+.actions .text-btn { align-self: center; }
+
+/* Not connected */
+.alarm { display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--red-bg);
+  border: 1px solid var(--red-line); border-radius: 12px; }
+.alarm .title { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; color: var(--red-title); }
+.alarm p { margin: 0; color: var(--red-text); }
+.alarm code { background: #3A1C1F; color: var(--red-text); }
+.alarm .pair { display: flex; gap: 8px; }
+.alarm input { flex: 1; min-width: 0; height: 44px; padding: 0 12px; background: var(--bg); border: 1px solid var(--red-line);
+  border-radius: 8px; color: var(--text); font-size: 13px; }
+.alarm input:focus { outline: 2px solid var(--amber); outline-offset: -1px; }
+</style>
+</head>
+<body>
+
+<section class="view" id="status" aria-label="Status">
+  <header class="bar">
+    <img class="owl" src="data:image/png;base64,{{OWL}}" width="44" height="44" alt="">
+    <div class="brand"><b>Noctis Loot</b><span>Companion</span></div>
+    <button class="icon-btn" id="gear" type="button" title="Settings" aria-label="Settings">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+  </header>
+  <main>
+    <div class="card link" role="status">
+      <span class="dot" id="dot"></span>
+      <div><div class="big" id="linkTitle"></div><div class="hint" id="linkDetail"></div></div>
+    </div>
+    <div class="note" id="note" hidden></div>
+    <div class="card">
+      <div class="row">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FBBF24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M5 20h14"/></svg>
+        <div><div class="label">Last upload</div><div class="value" id="upload"></div></div>
+      </div>
+      <div class="row">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FBBF24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>
+        <div><div class="label">Decisions in the game</div><div class="value" id="decisions"></div><div class="hint">The game loads them at your next /reload or login</div></div>
+      </div>
+      <div class="row">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FBBF24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        <div><div class="label">Watching</div><div class="value" id="wow"></div><div class="hint" id="poll"></div></div>
+      </div>
+    </div>
+    <button class="btn" id="uploadNow" type="button">Upload now</button>
+    <section aria-label="Activity">
+      <div class="caps">ACTIVITY</div>
+      <ol class="activity"></ol>
+    </section>
+  </main>
+  <footer class="foot">
+    <label class="check autostart"><input type="checkbox"><span>Start with Windows</span></label>
+    <span>Closing keeps it in the tray</span>
+  </footer>
+</section>
+
+<section class="view" id="token" aria-label="Not connected">
+  <header class="bar">
+    <img class="owl" src="data:image/png;base64,{{OWL}}" width="44" height="44" alt="">
+    <div class="brand"><b>Noctis Loot</b><span>Companion</span></div>
+  </header>
+  <main>
+    <div class="alarm" role="alert">
+      <div class="title">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FCA5A5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9.5 17h-19z"/><path d="M12 10v4"/><path d="M12 17.5v.01"/></svg>
+        <span>Not connected: your token was replaced</span>
+      </div>
+      <p>The bot didn't accept your token. That happens when <code>/loot token</code> is used again for your Discord account. Type it in Discord and paste the new token here.</p>
+      <div class="pair">
+        <input id="newToken" type="password" placeholder="Paste your new token" aria-label="New token" autocomplete="off">
+        <button class="btn" id="reconnect" type="button">Reconnect</button>
+      </div>
+      <div class="error" id="reconnectError" hidden></div>
+    </div>
+    <p class="hint">Uploads wait until you reconnect. Nothing is lost: the game's saved file stays on your PC.</p>
+    <section aria-label="Activity">
+      <div class="caps">ACTIVITY</div>
+      <ol class="activity"></ol>
+    </section>
+  </main>
+  <footer class="foot">
+    <label class="check autostart"><input type="checkbox"><span>Start with Windows</span></label>
+    <span>Closing keeps it in the tray</span>
+  </footer>
+</section>
+
+<section class="view" id="setup" aria-label="Setup">
+  <div class="intro">
+    <img class="owl" src="data:image/png;base64,{{OWL}}" width="72" height="72" alt="">
+    <h1 id="setupTitle">Set up Noctis Loot</h1>
+    <p id="setupIntro">Three things and you're done. It uploads your loot after each raid and keeps the officers' decisions in your game.</p>
+  </div>
+  <main>
+    <form id="setupForm" autocomplete="off">
+      <div class="field">
+        <label for="wowInput">1. Your WoW: Forever folder</label>
+        <div class="pair">
+          <input id="wowInput" type="text" spellcheck="false">
+          <button class="quiet" id="browse" type="button">Browse…</button>
+        </div>
+        <span class="found" id="found"></span>
+        <span class="error" data-for="wow" hidden></span>
+      </div>
+      <div class="field">
+        <label for="urlInput">2. The bot's address</label>
+        <input id="urlInput" type="text" spellcheck="false" placeholder="https://loot.example.org">
+        <span class="hint" id="urlHint"></span>
+        <span class="error" data-for="url" hidden></span>
+      </div>
+      <div class="field">
+        <label for="tokenInput">3. Your token</label>
+        <input id="tokenInput" type="password" autocomplete="off">
+        <span class="hint">In Discord, type <code>/loot token</code> and paste what it gives you. Keep it to yourself.</span>
+        <span class="error" data-for="token" hidden></span>
+      </div>
+      <label class="check" id="setupAutoWrap"><input type="checkbox" id="setupAuto" checked><span>Start with Windows</span></label>
+    </form>
+  </main>
+  <div class="actions">
+    <button class="btn" id="connect" type="button">Connect</button>
+    <span class="hint" style="text-align: center">It checks the address and token with the bot before saving them.</span>
+    <button class="text-btn" id="cancel" type="button" hidden>Back</button>
+  </div>
+</section>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const api = () => window.pywebview.api;
+let shown = null;      // the view on screen
+let editing = false;   // settings opened from the gear
+let last = null;       // the last state from the app
+
+function show(name) {
+  document.querySelectorAll(".view").forEach((v) => v.classList.toggle("on", v.id === name));
+  shown = name;
+}
+
+function fillActivity(items) {
+  document.querySelectorAll(".activity").forEach((list) => {
+    list.replaceChildren();
+    if (!items.length) {
+      const li = document.createElement("li");
+      li.className = "empty";
+      li.textContent = "Nothing yet.";
+      list.append(li);
+    }
+    for (const item of items) {
+      const li = document.createElement("li");
+      const time = document.createElement("time");
+      const text = document.createElement("span");
+      time.textContent = item.time;
+      text.textContent = item.text;
+      li.append(time, text);
+      list.append(li);
+    }
+  });
+}
+
+function fillAutostart(auto) {
+  document.querySelectorAll(".autostart").forEach((label) => {
+    label.hidden = !auto.available;
+    label.querySelector("input").checked = auto.on;
+  });
+}
+
+function setFound(ok) {
+  const found = $("found");
+  found.className = ok ? "found" : "found no";
+  found.textContent = ok ? "✓ Found the game here" : "That doesn't look like the _forever_ folder yet.";
+}
+
+function clearErrors() {
+  document.querySelectorAll("#setup .error").forEach((e) => { e.hidden = true; e.textContent = ""; });
+  document.querySelectorAll("#setup input").forEach((i) => i.classList.remove("bad"));
+}
+
+function fillSetup(setup, auto) {
+  clearErrors();
+  $("wowInput").value = setup.wow;
+  setFound(setup.wowFound);
+  $("urlInput").value = setup.url;
+  $("urlHint").textContent = setup.url ? "Filled in for your guild. Leave it as it is." : "Ask whoever runs the bot.";
+  $("tokenInput").value = "";
+  $("tokenInput").placeholder = setup.hasToken ? "Leave empty to keep your token" : "Paste your token";
+  $("setupAutoWrap").hidden = !auto.available;
+  $("setupAuto").checked = setup.canCancel ? auto.on : true;
+  $("cancel").hidden = !setup.canCancel;
+  $("setupTitle").textContent = setup.canCancel ? "Settings" : "Set up Noctis Loot";
+  $("setupIntro").hidden = setup.canCancel;
+  $("connect").textContent = connectLabel();
+}
+
+function connectLabel() { return $("cancel").hidden ? "Connect" : "Save"; }
+
+function render(state) {
+  last = state;
+  const want = state.view === "setup" || editing ? "setup" : state.view;
+  if (want !== shown) {
+    if (want === "setup") fillSetup(state.setup, state.autostart);
+    if (want === "token") { $("newToken").value = ""; $("reconnectError").hidden = true; }
+    show(want);
+  }
+  if (state.view === "setup") return;
+  fillAutostart(state.autostart);
+  fillActivity(state.activity);
+  $("dot").className = "dot " + state.link.state;
+  $("linkTitle").textContent = state.link.title;
+  $("linkDetail").textContent = state.link.detail;
+  $("note").hidden = !state.note;
+  $("note").textContent = state.note || "";
+  $("upload").textContent = state.upload;
+  $("decisions").textContent = state.decisions;
+  $("wow").textContent = state.wow;
+  $("poll").textContent = `Checks for new loot every ${state.pollSeconds} seconds`;
+}
+
+async function refresh() {
+  try { render(await api().state()); } catch (e) { /* the app is busy or closing: next time */ }
+}
+
+async function poll() {
+  await refresh();
+  setTimeout(poll, 1500);
+}
+
+$("gear").addEventListener("click", () => { editing = true; shown = null; render(last); });
+$("cancel").addEventListener("click", () => { editing = false; shown = null; render(last); });
+
+$("uploadNow").addEventListener("click", async () => {
+  const button = $("uploadNow");
+  button.disabled = true;
+  button.textContent = "Uploading…";
+  await api().upload_now();
+  setTimeout(async () => { await refresh(); button.disabled = false; button.textContent = "Upload now"; }, 1500);
+});
+
+document.querySelectorAll(".autostart input").forEach((box) => box.addEventListener("change", async () => {
+  box.checked = await api().set_autostart(box.checked);
+}));
+
+$("browse").addEventListener("click", async () => {
+  const picked = await api().browse($("wowInput").value);
+  if (picked) { $("wowInput").value = picked; setFound(await api().check_wow(picked)); }
+});
+$("wowInput").addEventListener("change", async () => setFound(await api().check_wow($("wowInput").value)));
+
+async function connect() {
+  const button = $("connect");
+  clearErrors();
+  button.disabled = true;
+  button.textContent = "Checking…";
+  const auto = $("setupAutoWrap").hidden ? null : $("setupAuto").checked;
+  const result = await api().save_setup($("wowInput").value, $("urlInput").value, $("tokenInput").value, auto);
+  button.disabled = false;
+  button.textContent = connectLabel();
+  if (result.ok) { editing = false; shown = null; await refresh(); return; }
+  const error = document.querySelector(`#setup .error[data-for="${result.field}"]`);
+  error.textContent = result.error;
+  error.hidden = false;
+  const input = { wow: "wowInput", url: "urlInput", token: "tokenInput" }[result.field];
+  $(input).classList.add("bad");
+  $(input).focus();
+}
+$("connect").addEventListener("click", connect);
+$("setupForm").addEventListener("submit", (e) => { e.preventDefault(); connect(); });
+$("setupForm").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); connect(); } });
+
+async function reconnect() {
+  const button = $("reconnect");
+  button.disabled = true;
+  button.textContent = "Checking…";
+  const result = await api().reconnect($("newToken").value);
+  button.disabled = false;
+  button.textContent = "Reconnect";
+  if (result.ok) { shown = null; await refresh(); return; }
+  $("reconnectError").textContent = result.error;
+  $("reconnectError").hidden = false;
+}
+$("reconnect").addEventListener("click", reconnect);
+$("newToken").addEventListener("keydown", (e) => { if (e.key === "Enter") reconnect(); });
+
+window.addEventListener("pywebviewready", poll);
+</script>
+</body>
+</html>

@@ -1,12 +1,14 @@
-"""Keeps the README's "What it reads, writes and sends" true, so officers can check the app by reading two files.
+"""Keeps the README's "What it reads, writes and sends" true, so officers can check the app by reading a few files.
 
-- Python's standard library only: no third-party code ends up inside the .exe.
+- Python's standard library only, except the window: ui.py alone may use pywebview, pystray and Pillow.
 - Only client.py imports anything that can reach the network.
 - Nothing starts other programs, loads native code or runs code it's given.
+- The window's page can't load anything from the internet.
 """
 from __future__ import annotations
 
 import ast
+import re
 import sys
 from pathlib import Path
 
@@ -15,6 +17,9 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 SOURCES = sorted((ROOT / "companion").rglob("*.py")) + [ROOT / "packaging" / "companion_entry.py"]
 NETWORK_FILE = ROOT / "companion" / "client.py"
+UI_FILE = ROOT / "companion" / "ui.py"
+UI_LIBRARIES = {"webview", "pystray", "PIL"}
+PAGE = ROOT / "companion" / "page.html"
 
 NETWORK = {"urllib", "http", "socket", "socketserver", "ssl", "asyncio", "ftplib", "smtplib", "poplib",
            "imaplib", "xmlrpc", "webbrowser"}
@@ -45,7 +50,23 @@ def label(path: Path) -> str:
 
 @pytest.mark.parametrize("path", SOURCES, ids=label)
 def test_standard_library_only(path):
-    assert imported(tree(path)) - set(sys.stdlib_module_names) == set()
+    outside = imported(tree(path)) - set(sys.stdlib_module_names)
+    if path == UI_FILE:
+        assert outside == UI_LIBRARIES
+    else:
+        assert outside == set()
+
+
+def test_the_page_loads_nothing_from_the_internet():
+    html = PAGE.read_text(encoding="utf-8")
+    policy = re.search(r'http-equiv="Content-Security-Policy" content="([^"]+)"', html).group(1)
+    rules = dict(rule.strip().split(" ", 1) for rule in policy.split(";"))
+    assert rules["default-src"] == "'none'"
+    assert rules["img-src"] == rules["font-src"] == "data:"
+    assert rules["style-src"] == rules["script-src"] == "'unsafe-inline'"
+    assert set(rules) == {"default-src", "img-src", "font-src", "style-src", "script-src"}
+    assert not re.search(r"(src|href)\s*=\s*[\"']?(https?:)?//", html)
+    assert "connect-src" not in policy and "fetch(" not in html and "XMLHttpRequest" not in html
 
 
 @pytest.mark.parametrize("path", SOURCES, ids=label)
