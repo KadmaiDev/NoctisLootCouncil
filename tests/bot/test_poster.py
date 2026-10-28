@@ -91,7 +91,7 @@ async def test_upload_posts_once_and_survives_restart(tmp_path, channels):
     await bot.sync_pending()
     assert channels[OFFICERS].sends == 3 and channels[ITEMS].sends == 3
     assert channels[LOG].sends == 1
-    assert sorted(channels[OFFICERS].threads) == ["Felheart Gloves", "Item 17069", "Sash of the Unseen"]
+    assert channels[OFFICERS].threads == []
     log_text = text(next(iter(channels[LOG].messages.values())))
     assert log_text.startswith("### Molten Core · Monday 26 Oct\n-# 2 items")
 
@@ -218,8 +218,8 @@ async def test_posts_get_the_icon_link_and_emoji(tmp_path, channels):
     await bot.sync_pending()
     assert sorted(wowhead.asked) == [16805, 17069, 18000] and wowhead.emojis == ["inv_gauntlets_19"]
     officer = next(m for m in channels[OFFICERS].messages.values() if "Felheart" in text(m))
-    assert ("### <:inv_gauntlets_19:1> [Felheart Gloves](https://www.wowhead.com/forever/item=16805/felheart-gloves)"
-            in text(officer))
+    assert "### <:inv_gauntlets_19:1> Felheart Gloves\n" in text(officer)
+    assert "[Wowhead](https://www.wowhead.com/forever/item=16805/felheart-gloves)" in text(officer)
     log_text = text(next(iter(channels[LOG].messages.values())))
     assert "<:inv_gauntlets_19:1> Felheart Gloves → **Corvin Dusk**" in log_text
     # Items Wowhead doesn't know go without, and nothing is asked again on the next pass.

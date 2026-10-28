@@ -138,14 +138,20 @@ def card_button(b: render.Button, item_id: int) -> discord.ui.Item:
 
 
 def card_layout(card: render.Card, item_id: int | None = None) -> discord.ui.LayoutView:
-    """The card as a Discord layout message: a container in the card's colour holding the heading
-    and, below a divider, the body; the buttons in a row under the container, as in the mockups."""
+    """The card as a Discord layout message: a container in the card's colour holding the heading,
+    a divider, the body, a little space and the footer; the buttons in a row under the container,
+    as in the mockups."""
     view = discord.ui.LayoutView(timeout=None)
-    head, tail = card.head(), card.tail()
+    head, footer = card.head(), render.small(card.footer)
     box = discord.ui.Container(discord.ui.TextDisplay(head), accent_colour=card.colour)
-    if tail:
+    if card.body or footer:
         box.add_item(discord.ui.Separator())
-        box.add_item(discord.ui.TextDisplay(tail[: 4000 - len(head)]))
+    if card.body:
+        box.add_item(discord.ui.TextDisplay(card.body[: 4000 - len(head) - len(footer)]))
+    if footer:
+        if card.body:  # space, no line: the footer's grey facts apart from the body's grey details
+            box.add_item(discord.ui.Separator(visible=False))
+        box.add_item(discord.ui.TextDisplay(footer))
     view.add_item(box)
     if card.buttons and item_id is not None:
         view.add_item(discord.ui.ActionRow(*(card_button(b, item_id) for b in card.buttons)))

@@ -45,8 +45,8 @@ class Button:
 @dataclass(frozen=True)
 class Card:
     """One post: kicker (small capitals above the title), title (a heading, after the item's icon
-    `emoji` and linked to `url`), subtitle (grey, under it), then below a divider the body
-    (markdown) and footer (grey), then the buttons."""
+    `emoji`), subtitle (grey, under it, ending in a Wowhead link if there's a `url`), then below a
+    divider the body (markdown), a little space and the footer (grey), then the buttons."""
     title: str
     colour: int
     subtitle: str = ""
@@ -61,17 +61,16 @@ class Card:
         return hashlib.sha256(json.dumps(asdict(self), sort_keys=True).encode()).hexdigest()
 
     def head(self) -> str:
-        # The icon as a small emoji before the name, like an item link in game: Discord draws a
-        # Section thumbnail at a fixed, much larger size.
-        title = with_emoji(self.emoji, f"[{self.title}]({self.url})" if self.url else self.title)
-        return "\n".join(p for p in (small(self.kicker), f"### {title}", small(self.subtitle)) if p)
-
-    def tail(self) -> str:
-        return "\n".join(p for p in (self.body, small(self.footer)) if p)
+        # The icon as a small emoji before the name, like an item link in game (Discord draws a
+        # Section thumbnail at a fixed, much larger size). The name itself isn't a link: Discord
+        # colours links blue, which reads as a Rare item to a WoW player.
+        title = with_emoji(self.emoji, self.title)
+        sub = " · ".join(p for p in (self.subtitle, f"[Wowhead]({self.url})" if self.url else "") if p)
+        return "\n".join(p for p in (small(self.kicker), f"### {title}", small(sub)) if p)
 
     def text(self) -> str:
         """Everything the post says, as Discord markdown (views.py splits it into its parts)."""
-        return "\n".join(p for p in (self.head(), self.tail()) if p)
+        return "\n".join(p for p in (self.head(), self.body, small(self.footer)) if p)
 
 
 def small(text: str) -> str:
@@ -224,7 +223,7 @@ def items_card(state: ItemState, tz: ZoneInfo) -> Card:
     """The public #loot-items post: status, priority, and Suggest for council (not on council items)."""
     lines = [f"**{status_badge(state)}**"]
     if state.note:
-        lines.append(f"Priority: **{md(state.note)}**")
+        lines.append(f"**Priority:** {md(state.note)}")
     footer: list[str] = []
     if state.new_in_raid and state.first_drop_at is not None:
         footer.append(f"First seen {seen_phrase(state.first_drop_at, state.created_at, tz)}.")

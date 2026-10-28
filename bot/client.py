@@ -189,14 +189,15 @@ class LootBot(commands.Bot):
             if state is None:
                 return True
             officer = render.officer_card(state, self.tz, self.channel_mention(self.config.ch_items))
-            ok = await self._upsert_card("officer", str(item_id), self.config.ch_officers, officer, item_id,
-                                         thread_name=state.name)
+            ok = await self._upsert_card("officer", str(item_id), self.config.ch_officers, officer, item_id)
             ok &= await self._upsert_card("items", str(item_id), self.config.ch_items,
                                           render.items_card(state, self.tz), item_id)
             return ok
 
-    async def _upsert_card(self, kind: str, key: str, channel_id: int, card: render.Card, item_id: int | None = None,
-                           thread_name: str | None = None) -> bool:
+    async def _upsert_card(self, kind: str, key: str, channel_id: int, card: render.Card,
+                           item_id: int | None = None) -> bool:
+        # No thread per post (they were dropped 2026-10-28 as clutter): officers start one with
+        # Discord's own Create Thread when an item needs discussing.
         digest = card.digest()
         post = self.store.get_post(kind, key)
         if post and post.channel_id == channel_id and post.digest == digest:
@@ -228,14 +229,7 @@ class LootBot(commands.Bot):
         except discord.HTTPException as exc:
             log.warning("Could not post %s %s: %s", kind, key, exc)
             return False
-        thread_id = None
-        if thread_name:
-            try:
-                thread = await msg.create_thread(name=thread_name[:100], auto_archive_duration=10080)
-                thread_id = thread.id
-            except discord.HTTPException as exc:
-                log.warning("Could not open a thread for %s: %s", key, exc)
-        self.store.save_post(Post(kind, key, channel.id, msg.id, thread_id, digest))
+        self.store.save_post(Post(kind, key, channel.id, msg.id, None, digest))
         return True
 
     async def sync_log_group(self, inst: str, night: str) -> bool:

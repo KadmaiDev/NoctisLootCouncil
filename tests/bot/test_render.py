@@ -85,7 +85,7 @@ def test_items_card_council():
     s = state(tally=tally(MOCKUP_VOTES, 3), decision=COUNCIL, priority="Warlock priority")
     card = render.items_card(s, TZ)
     assert card.subtitle == "Epic · Waist · Cloth · Molten Core, Gehennas"
-    assert card.body == "**Council item**\nPriority: **Warlock priority**"
+    assert card.body == "**Council item**\n**Priority:** Warlock priority"  # labelled as on the officer post
     assert card.footer == "Decided by the officers, 3 of 4."
     assert card.buttons == []  # council items show no button
 
@@ -115,6 +115,19 @@ def test_card_text_puts_small_lines_around_the_heading():
                        body="**Votes:** none yet", footer="one\ntwo")
     assert card.text().splitlines() == ["-# NEW IN OUR RAID LAST NIGHT", "### Felheart Gloves", "-# Epic",
                                         "**Votes:** none yet", "-# one", "-# two"]
+
+
+def test_layout_spaces_the_footer_from_the_body():
+    import discord
+
+    from bot.views import card_layout
+    card = render.officer_card(state(priority="Warlock priority", priority_by="Seren", suggestions=1), TZ)
+    box = card_layout(card, 18000).children[0]
+    kinds = [(type(c).__name__, getattr(c, "visible", None)) for c in box.children]
+    assert kinds == [("TextDisplay", None), ("Separator", True), ("TextDisplay", None), ("Separator", False),
+                     ("TextDisplay", None)]
+    assert box.children[-1].content.startswith("-# No drops yet")
+    assert isinstance(box, discord.ui.Container)
 
 
 def test_card_digest_changes_with_content():

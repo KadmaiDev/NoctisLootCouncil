@@ -87,8 +87,8 @@ def test_item_state_gets_the_icon_slot_quality_and_link(store):
     assert (s.icon, s.emoji, s.quality, s.slot) == ("inv_staff_13", "<:inv_staff_13:42>", 4, "Two-Hand · Staff")
     assert store.icons_without_emoji() == []
     card = render.officer_card(s, TZ)
-    assert card.head().startswith(
-        "### <:inv_staff_13:42> [Staff of Jordan](https://www.wowhead.com/forever/item=873/staff-of-jordan)")
+    assert card.head() == ("### <:inv_staff_13:42> Staff of Jordan\n"
+                           "-# Epic · Two-Hand · Staff · [Wowhead](https://www.wowhead.com/forever/item=873/staff-of-jordan)")
     assert card.colour == 0xA335EE
     # A slot typed in with /loot add wins over Wowhead's.
     store.add_item(873, "Staff of Jordan", slot="Two-Hand · Staff (Forever)")

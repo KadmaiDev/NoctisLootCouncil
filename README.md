@@ -23,7 +23,7 @@ The exact formats are in [`docs/sync-format.md`](docs/sync-format.md). A change 
 
 ### The weekly flow
 
-1. **Between raids, in Discord.** An officer posts a known item with `/loot add`. In the private **#loot-officers** channel officers vote **Council** or **Roll** and set a priority ("Warlock priority"); an option wins once it has 3 votes (and more than the other). Each item post has a thread for discussion. In the public **#loot-items** channel raiders see every item's status and can press **Suggest for council**; officers see the count, and it never changes anything by itself.
+1. **Between raids, in Discord.** An officer posts a known item with `/loot add`. In the private **#loot-officers** channel officers vote **Council** or **Roll** and set a priority ("Warlock priority"); an option wins once it has 3 votes (and more than the other). To discuss an item, an officer starts a thread on its post (Discord's own Create Thread). In the public **#loot-items** channel raiders see every item's status and can press **Suggest for council**; officers see who suggested it, and it never changes anything by itself. Each post shows the item's icon and links to its Wowhead page (Forever's when Wowhead has it).
 2. **Before the raid.** An officer runs `/loot priorities`: the council items and their priorities go to **#loot-priorities**. The companion app has already written the latest decisions into the game's AddOns folder; the loot master types `/reload` and the addon says "Decisions from 27 Oct, 18:40: 34 council, 112 roll."
 3. **In the raid.** The addon applies the decisions. Items nobody has decided are rolled.
 4. **After the raid.** The loot master logs out or types `/reload`. The companion app uploads the night. The bot posts the awards to **#loot-log** (one post per raid and night) and every item that dropped for the first time to **#loot-officers** ("NEW IN OUR RAID LAST NIGHT", who won it, how many wanted it) and **#loot-items**, for a vote.
@@ -38,12 +38,12 @@ Decisions made in Discord always win. A decision set in game (`/nlc council ...`
 
 1. Go to https://discord.com/developers/applications, **New Application**, name it "Noctis Loot".
 2. **Bot** tab: **Reset Token** and copy the token (it goes in `.env` as `DISCORD_TOKEN`). No privileged intents are needed.
-3. **OAuth2 → URL Generator**: scopes **`bot`** and **`applications.commands`**; bot permissions **View Channels, Send Messages, Embed Links, Create Public Threads, Read Message History**. (Manage Messages isn't needed: the bot only edits its own posts.) Open the generated link and add the bot to the server. The same link by hand, with your application ID:
-   `https://discord.com/oauth2/authorize?client_id=APPLICATION_ID&scope=bot+applications.commands&permissions=34359823360`
+3. **OAuth2 → URL Generator**: scopes **`bot`** and **`applications.commands`**; bot permissions **View Channels, Send Messages, Embed Links, Read Message History**. (Manage Messages isn't needed: the bot only edits its own posts.) Open the generated link and add the bot to the server. The same link by hand, with your application ID:
+   `https://discord.com/oauth2/authorize?client_id=APPLICATION_ID&scope=bot+applications.commands&permissions=84992`
 
 ### 2. Channels and the officer role
 
-- Create **#loot-officers** (private: officers only), **#loot-items**, **#loot-priorities** and **#loot-log**. Give the bot access to the private channel (channel settings → Permissions → add the bot's role with View Channel, Send Messages, Embed Links, Create Public Threads, Read Message History).
+- Create **#loot-officers** (private: officers only), **#loot-items**, **#loot-priorities** and **#loot-log**. Give the bot access to the private channel (channel settings → Permissions → add the bot's role with View Channel, Send Messages, Embed Links, Read Message History).
 - Only members with the officer role can vote, set priorities and use the officer commands (server admins without the role can't vote).
 - Suggested pinned post for #loot-items (post and pin it yourself), from the mockup:
   > The officers decide which items are council items. If you think a roll item matters enough to be councilled, press **Suggest for council**. It's counted for the officers' next look at the list and never changes anything during a raid.

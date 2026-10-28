@@ -13,11 +13,11 @@ async def add_sash(guild):
     return officer, items
 
 
-async def test_loot_add_posts_to_both_channels_with_a_thread(guild, running):
+async def test_loot_add_posts_to_both_channels(guild, running):
     r = await guild.slash(guild.officers[0], "loot add", **SASH)
     assert r.ephemeral
     officer, items = await add_sash(guild)
-    assert officer.thread is not None and officer.thread.name == "Sash of the Unseen"
+    assert officer.thread is None  # officers start one themselves if an item needs discussing
     assert officer.button_labels == ["Council", "Roll", "Set priority"]
     assert "### Sash of the Unseen\n-# Epic · Waist · Cloth · Molten Core, Lucifron" in officer.text
     assert officer.components[0]["accent_color"] == 0xA335EE  # /loot add assumes epic
