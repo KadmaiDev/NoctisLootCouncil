@@ -1,6 +1,7 @@
 """All reads and writes of the bot's database. No Discord here: the API and the cogs both call this."""
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import secrets
@@ -9,7 +10,7 @@ import time
 from typing import Callable
 from zoneinfo import ZoneInfo
 
-from . import rules
+from . import iteminfo, rules
 from .model import AwardInfo, ItemState, LogGroup, Post, UploadResult
 from .rules import COUNCIL, HANDLINGS, Vote
 from .upload import Upload, UploadItem, name_from_link
@@ -142,8 +143,12 @@ class Store:
         lasts = [t for t in (drops["last"], aw["last"]) if t is not None]
         suggesters = [r["user_name"] for r in self.conn.execute(
             "SELECT user_name FROM suggestions WHERE item_id = ? ORDER BY at, user_id", (item_id,))]
+        info = self.conn.execute("SELECT ii.found, ii.icon, ii.slot, e.emoji FROM item_info ii "
+                                 "LEFT JOIN icon_emojis e ON e.icon = ii.icon WHERE ii.item_id = ?",
+                                 (item_id,)).fetchone()
         return ItemState(
-            id=row["id"], name=row["name"], quality=row["quality"], slot=row["slot"],
+            id=row["id"], name=row["name"], quality=row["quality"], slot=row["slot"] or (info and info["slot"]),
+            icon=info and info["icon"], emoji=info and info["emoji"], on_wowhead=bool(info and info["found"]),
             source_text=self._source_text(row), raid=self._raid_name(row),
             tally=rules.tally(self._votes(item_id), self.votes_to_decide),
             decision=row["decision"], game_handling=row["game_handling"], game_note=row["game_note"],
@@ -356,7 +361,10 @@ class Store:
         return rules.night_of(row["t"], self.tz).isoformat() if row["t"] is not None else None
 
     def log_group(self, inst: str, night: str) -> LogGroup:
-        rows = self.conn.execute("SELECT a.*, i.name AS item_name FROM awards a LEFT JOIN items i ON i.id = a.item_id "
+        rows = self.conn.execute("SELECT a.*, i.name AS item_name, e.emoji FROM awards a "
+                                 "LEFT JOIN items i ON i.id = a.item_id "
+                                 "LEFT JOIN item_info ii ON ii.item_id = a.item_id "
+                                 "LEFT JOIN icon_emojis e ON e.icon = ii.icon "
                                  "WHERE COALESCE(a.inst, '') = ? AND a.night = ? ORDER BY a.at, a.who_key",
                                  (inst, night)).fetchall()
         awards = []
@@ -364,8 +372,53 @@ class Store:
             name = r["item_name"] or name_from_link(r["link"]) or f"Item {r['item_id']}"
             # "new item": rolled on its first night in our raids (council items were decided, so not new).
             new_item = r["how"] != COUNCIL and self._first_night(r["item_id"]) == night
-            awards.append(self._award_info(r, name, new_item))
+            awards.append(dataclasses.replace(self._award_info(r, name, new_item), emoji=r["emoji"]))
         return LogGroup(inst=inst, night=night, awards=awards)
+
+    # ---- item info (iteminfo.py) ---------------------------------------------
+
+    def items_to_look_up(self, limit: int = 25) -> list[int]:
+        """Items due a Wowhead lookup: first those about to be posted (dirty, or in a dirty log post),
+        then any other, a few at a time so a long list doesn't flood Wowhead."""
+        soon = {r["id"] for r in self.conn.execute("SELECT id FROM items WHERE dirty > 0")}
+        soon |= {r["item_id"] for r in self.conn.execute(
+            "SELECT DISTINCT a.item_id FROM awards a JOIN log_groups g "
+            "ON COALESCE(a.inst, '') = g.inst AND a.night = g.night WHERE g.dirty > 0")}
+        rest = {r["id"] for r in self.conn.execute("SELECT id FROM items")} - soon
+        due = [i for i in (*sorted(soon), *sorted(rest)) if self.item_info_due(i)]
+        return due[:limit]
+
+    def item_info_due(self, item_id: int) -> bool:
+        """Never looked up, or Wowhead didn't know it a day or more ago."""
+        r = self.conn.execute("SELECT found, fetched_at FROM item_info WHERE item_id = ?", (item_id,)).fetchone()
+        return r is None or (not r["found"] and self.now() - r["fetched_at"] >= iteminfo.RETRY_SECONDS)
+
+    def save_item_info(self, item_id: int, info: iteminfo.ItemInfo) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO item_info(item_id, found, icon, slot, fetched_at) VALUES(?, ?, ?, ?, ?) "
+                "ON CONFLICT(item_id) DO UPDATE SET found = excluded.found, icon = excluded.icon, "
+                "slot = excluded.slot, fetched_at = excluded.fetched_at",
+                (item_id, int(info.found), info.icon, info.slot, self.now()))
+            self._mark_dirty(item_id)
+            self.conn.execute(
+                "UPDATE log_groups SET dirty = dirty + 1 WHERE EXISTS (SELECT 1 FROM awards a WHERE a.item_id = ? "
+                "AND COALESCE(a.inst, '') = log_groups.inst AND a.night = log_groups.night)", (item_id,))
+
+    def icons_without_emoji(self) -> list[str]:
+        return [r["icon"] for r in self.conn.execute(
+            "SELECT DISTINCT icon FROM item_info WHERE found = 1 AND icon IS NOT NULL "
+            "AND icon NOT IN (SELECT icon FROM icon_emojis) ORDER BY icon")]
+
+    def save_icon_emoji(self, icon: str, emoji: str) -> None:
+        """A new emoji: every list line with that icon changes, so their posts are marked for editing."""
+        with self.conn:
+            self.conn.execute("INSERT INTO icon_emojis(icon, emoji) VALUES(?, ?) "
+                              "ON CONFLICT(icon) DO UPDATE SET emoji = excluded.emoji", (icon, emoji))
+            self.conn.execute(
+                "UPDATE log_groups SET dirty = dirty + 1 WHERE EXISTS (SELECT 1 FROM awards a "
+                "JOIN item_info ii ON ii.item_id = a.item_id WHERE ii.icon = ? "
+                "AND COALESCE(a.inst, '') = log_groups.inst AND a.night = log_groups.night)", (icon,))
 
     # ---- dirty queues ------------------------------------------------------
 

@@ -35,7 +35,8 @@ def make_config(fake: FakeDiscord, db_path) -> Config:
     return Config(token="fake-token", guild_id=fake.guild_id, officer_role_id=fake.officer_role,
                   ch_officers=fake.channel("loot-officers").id, ch_items=fake.channel("loot-items").id,
                   ch_priorities=fake.channel("loot-priorities").id, ch_log=fake.channel("loot-log").id,
-                  api_host="127.0.0.1", api_port=0, votes_to_decide=3, db_path=db_path, timezone="Europe/London")
+                  api_host="127.0.0.1", api_port=0, votes_to_decide=3, db_path=db_path, timezone="Europe/London",
+                  wowhead=False)
 
 
 async def start_bot(fake: FakeDiscord, db_path) -> RunningBot:

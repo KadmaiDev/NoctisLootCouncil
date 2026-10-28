@@ -1,6 +1,7 @@
 """The Discord-facing poster, against fake channels: no network, no token."""
 from __future__ import annotations
 
+import dataclasses
 import itertools
 import re
 from types import SimpleNamespace
@@ -10,6 +11,7 @@ import pytest
 
 from bot.client import LootBot
 from bot.config import Config
+from bot.iteminfo import ItemInfo
 from bot.rules import COUNCIL
 from bot.upload import parse_upload
 from bot.views import DYNAMIC_ITEMS, PriorityButton, SuggestButton, VoteButton
@@ -72,7 +74,7 @@ def buttons(msg: dict) -> list[str]:
 def make_bot(tmp_path, channels) -> LootBot:
     cfg = Config(token="x", guild_id=1, officer_role_id=2, ch_officers=OFFICERS, ch_items=ITEMS,
                  ch_priorities=PRIORITIES, ch_log=LOG, api_host="127.0.0.1", api_port=0, votes_to_decide=3,
-                 db_path=tmp_path / "loot.db", timezone="Europe/London")
+                 db_path=tmp_path / "loot.db", timezone="Europe/London", wowhead=False)
     bot = LootBot(cfg)
     bot._text_channel = lambda cid: channels.get(cid)  # type: ignore[method-assign]
     return bot
@@ -175,6 +177,71 @@ async def test_priorities_post(tmp_path, channels):
     post = text(next(iter(channels[PRIORITIES].messages.values())))
     assert post.splitlines()[:3] == ["### Molten Core · Thursday 29 Oct", "-# Council items",
                                      "- **Sash of the Unseen** · Warlock priority"]
+
+
+class FakeWowhead:
+    """Stands in for Wowhead and the bot's application emojis."""
+
+    def __init__(self, known: dict[int, ItemInfo], up: bool = True):
+        self.known, self.up = known, up
+        self.asked: list[int] = []
+        self.emojis: list[str] = []
+
+    def install(self, bot: LootBot) -> None:
+        bot.config = dataclasses.replace(bot.config, wowhead=True)
+        bot.lookup = self.lookup
+        bot.fetch_icon = self.fetch_icon
+        bot.fetch_application_emojis = self.fetch_application_emojis
+        bot.create_application_emoji = self.create_application_emoji
+
+    async def lookup(self, session, item_id):
+        self.asked.append(item_id)
+        return self.known.get(item_id, ItemInfo(found=False)) if self.up else None
+
+    async def fetch_icon(self, session, icon):
+        return b"jpeg"
+
+    async def fetch_application_emojis(self):
+        return []
+
+    async def create_application_emoji(self, *, name, image):
+        self.emojis.append(name)
+        return f"<:{name}:{len(self.emojis)}>"
+
+
+async def test_posts_get_the_icon_link_and_emoji(tmp_path, channels):
+    bot = make_bot(tmp_path, channels)
+    wowhead = FakeWowhead({16805: ItemInfo(found=True, icon="inv_gauntlets_19", slot="Hands · Cloth")})
+    wowhead.install(bot)
+    bot.store.apply_upload(parse_upload(sample_body()), "discord:1", "Kadmai")
+    await bot.sync_pending()
+    assert sorted(wowhead.asked) == [16805, 17069, 18000] and wowhead.emojis == ["inv_gauntlets_19"]
+    officer = next(m for m in channels[OFFICERS].messages.values() if "Felheart" in text(m))
+    thumbs = [c for c in officer["view"].walk_children() if isinstance(c, discord.ui.Thumbnail)]
+    assert [t.media.url for t in thumbs] == ["https://wow.zamimg.com/images/wow/icons/large/inv_gauntlets_19.jpg"]
+    assert "### [Felheart Gloves](https://www.wowhead.com/classic/item=16805)" in text(officer)
+    log_text = text(next(iter(channels[LOG].messages.values())))
+    assert "<:inv_gauntlets_19:1> Felheart Gloves → **Corvin Dusk**" in log_text
+    # Items Wowhead doesn't know go without, and nothing is asked again on the next pass.
+    sash = next(m for m in channels[OFFICERS].messages.values() if "Sash" in text(m))
+    assert "### Sash of the Unseen" in text(sash)
+    assert not [c for c in sash["view"].walk_children() if isinstance(c, discord.ui.Thumbnail)]
+    bot.store.mark_all_dirty()
+    await bot.sync_pending()
+    assert len(wowhead.asked) == 3 and channels[OFFICERS].edits == 0
+
+
+async def test_wowhead_down_posts_without_icons_and_pauses_lookups(tmp_path, channels):
+    bot = make_bot(tmp_path, channels)
+    wowhead = FakeWowhead({}, up=False)
+    wowhead.install(bot)
+    bot.store.add_item(16805, "Felheart Gloves")
+    await bot.sync_pending()
+    assert channels[ITEMS].sends == 1 and "### Felheart Gloves" in text(next(iter(channels[ITEMS].messages.values())))
+    bot.store.toggle_suggestion(16805, 5)
+    await bot.sync_pending()
+    assert wowhead.asked == [16805]  # paused, not asked on every change
+    assert bot.store.items_to_look_up() == [16805]  # still owed a lookup
 
 
 def test_button_custom_ids_round_trip():

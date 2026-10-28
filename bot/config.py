@@ -21,6 +21,7 @@ class Config:
     votes_to_decide: int
     db_path: pathlib.Path
     timezone: str
+    wowhead: bool = True  # look items up on Wowhead for icons and links (iteminfo.py)
 
 
 def _int(name: str, default: int = 0) -> int:
@@ -48,6 +49,7 @@ def load(require_discord: bool = True) -> Config:
         votes_to_decide=max(1, _int("VOTES_TO_DECIDE", 3)),
         db_path=ROOT / os.getenv("DB_PATH", "data/noctis-loot.db").strip(),
         timezone=os.getenv("TIMEZONE", "Europe/London").strip() or "Europe/London",
+        wowhead=os.getenv("WOWHEAD_LOOKUP", "1").strip().lower() not in ("0", "no", "off", "false"),
     )
     if require_discord:
         missing = [name for name, value in (

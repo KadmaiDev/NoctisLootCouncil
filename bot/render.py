@@ -15,7 +15,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from zoneinfo import ZoneInfo
 
-from . import rules
+from . import iteminfo, rules
 from .model import AwardInfo, ItemState, LogGroup
 from .rules import COUNCIL, ROLL
 
@@ -44,8 +44,9 @@ class Button:
 
 @dataclass(frozen=True)
 class Card:
-    """One post: kicker (small capitals above the title), title (a heading), subtitle (grey, under
-    it), then below a divider the body (markdown) and footer (grey), then the buttons."""
+    """One post: kicker (small capitals above the title), title (a heading, linked to `url`),
+    subtitle (grey, under it), the item's icon beside them, then below a divider the body (markdown)
+    and footer (grey), then the buttons."""
     title: str
     colour: int
     subtitle: str = ""
@@ -53,14 +54,22 @@ class Card:
     footer: str = ""
     kicker: str = ""
     buttons: list[Button] = field(default_factory=list)
+    url: str = ""
+    icon_url: str = ""
 
     def digest(self) -> str:
         return hashlib.sha256(json.dumps(asdict(self), sort_keys=True).encode()).hexdigest()
 
+    def head(self) -> str:
+        title = f"[{self.title}]({self.url})" if self.url else self.title
+        return "\n".join(p for p in (small(self.kicker), f"### {title}", small(self.subtitle)) if p)
+
+    def tail(self) -> str:
+        return "\n".join(p for p in (self.body, small(self.footer)) if p)
+
     def text(self) -> str:
         """Everything the post says, as Discord markdown (views.py splits it into its parts)."""
-        head = [small(self.kicker), f"### {self.title}", small(self.subtitle)]
-        return "\n".join(p for p in (*head, self.body, small(self.footer)) if p)
+        return "\n".join(p for p in (self.head(), self.tail()) if p)
 
 
 def small(text: str) -> str:
@@ -87,6 +96,16 @@ def colour(state: ItemState) -> int:
 def subtitle(state: ItemState) -> str:
     """'Epic · Waist · Cloth · Molten Core, Gehennas'."""
     return " · ".join(p for p in (QUALITY_NAMES.get(state.quality), state.slot, state.source_text) if p)
+
+
+def item_links(state: ItemState) -> dict[str, str]:
+    """The card's link to Wowhead and its icon, when Wowhead knows the item."""
+    return {"url": iteminfo.page_url(state.id) if state.on_wowhead else "",
+            "icon_url": iteminfo.icon_url(state.icon) if state.icon else ""}
+
+
+def with_emoji(emoji: str | None, text: str) -> str:
+    return f"{emoji} {text}" if emoji else text
 
 
 def _night(ts: int, tz: ZoneInfo) -> dt.date:
@@ -187,7 +206,8 @@ def officer_card(state: ItemState, tz: ZoneInfo, items_channel: str = "#loot-ite
     buttons = [Button("council", "Council", "success"), Button("roll", "Roll", "secondary"),
                Button("priority", "Set priority", "secondary")]
     return Card(title=state.name, colour=colour(state), subtitle=subtitle(state), kicker=kicker,
-                body="\n".join(p for p in lines if p), footer="\n".join(p for p in footer if p), buttons=buttons)
+                body="\n".join(p for p in lines if p), footer="\n".join(p for p in footer if p), buttons=buttons,
+                **item_links(state))
 
 
 def status_badge(state: ItemState) -> str:
@@ -218,7 +238,7 @@ def items_card(state: ItemState, tz: ZoneInfo) -> Card:
     buttons = [] if state.handling == COUNCIL else [
         Button("suggest", f"Suggest for council · {state.suggestions}", "primary")]
     return Card(title=state.name, colour=colour(state), subtitle=subtitle(state), body="\n".join(lines),
-                footer="\n".join(footer), buttons=buttons)
+                footer="\n".join(footer), buttons=buttons, **item_links(state))
 
 
 def suggestion_reply(on: bool, count: int) -> str:
@@ -231,8 +251,9 @@ def suggestion_reply(on: bool, count: int) -> str:
 
 def award_line(a: AwardInfo) -> str:
     """'Felheart Gloves → **Corvin Dusk** · main-spec roll, 77 · new item'."""
+    item = with_emoji(a.emoji, md(a.item_name))
     if a.how == COUNCIL:
-        line = f"{md(a.item_name)} → **{md(a.who)}** · council"
+        line = f"{item} → **{md(a.who)}** · council"
         if a.note:
             line += f'\n> "{md(a.note)}"'
         return line
@@ -243,7 +264,7 @@ def award_line(a: AwardInfo) -> str:
         how += " (nobody else wanted it)"
     if a.new_item:
         how += " · new item"
-    return f"{md(a.item_name)} → **{md(a.who)}** · {how}"
+    return f"{item} → **{md(a.who)}** · {how}"
 
 
 def chunk(lines: list[str], limit: int = MESSAGE_LIMIT) -> list[str]:
@@ -290,7 +311,8 @@ def priorities_cards(states: list[ItemState], day: str, raid: str | None = None,
     lines: list[str] = []
 
     def item_line(s: ItemState) -> str:
-        return f"- **{md(s.name)}** · {md(s.note)}" if s.note else f"- **{md(s.name)}**"
+        name = with_emoji(s.emoji, f"**{md(s.name)}**")
+        return f"- {name} · {md(s.note)}" if s.note else f"- {name}"
 
     if not council:
         lines.append("No council items yet.")

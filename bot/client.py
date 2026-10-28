@@ -9,16 +9,18 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
+import time
 import traceback
 from collections import defaultdict
 from zoneinfo import ZoneInfo
 
+import aiohttp
 import discord
 from aiohttp import web
 from discord import app_commands
 from discord.ext import commands
 
-from . import render
+from . import iteminfo, render
 from .api import create_app
 from .checks import NotOfficer
 from .config import Config
@@ -31,6 +33,8 @@ log = logging.getLogger("noctis")
 
 # How often the poster retries work that failed (a missing channel, Discord down) without a new event.
 RETRY_SECONDS = 300
+# After a failed Wowhead lookup, posts go out without icons for this long rather than wait on it each time.
+LOOKUP_PAUSE_SECONDS = 600
 NO_MENTIONS = discord.AllowedMentions.none()
 
 
@@ -50,6 +54,13 @@ class LootBot(commands.Bot):
         self._runner: web.AppRunner | None = None
         self._poster_task: asyncio.Task | None = None
         self._missing_channels: set[int] = set()
+        # Item icons and links (iteminfo.py); tests swap these for fakes.
+        self.lookup = iteminfo.fetch
+        self.fetch_icon = iteminfo.fetch_icon
+        self._http: aiohttp.ClientSession | None = None
+        self._lookup_paused_until = 0.0
+        self._app_emojis: dict[str, str] | None = None
+        self._emoji_failed: set[str] = set()
 
     # ---- lifecycle ---------------------------------------------------------
 
@@ -74,6 +85,8 @@ class LootBot(commands.Bot):
             self._poster_task.cancel()
         if self._runner:
             await self._runner.cleanup()
+        if self._http:
+            await self._http.close()
         await super().close()
 
     async def on_ready(self) -> None:
@@ -100,12 +113,53 @@ class LootBot(commands.Bot):
             self._wake.clear()
 
     async def sync_pending(self) -> None:
+        try:
+            await self.look_up_items()
+        except Exception:  # noqa: BLE001 - icons are a nicety: post without them
+            log.exception("Item lookup failed")
         for item_id, generation in self.store.dirty_items():
             if await self.sync_item(item_id):
                 self.store.clear_item_dirty(item_id, generation)
         for inst, night, generation in self.store.dirty_log_groups():
             if await self.sync_log_group(inst, night):
                 self.store.clear_log_dirty(inst, night, generation)
+
+    async def look_up_items(self) -> None:
+        """Icons, slots and links from Wowhead for the items about to be posted, and the icons as
+        the bot's emojis for list lines. Done before posting, so the posts go out with them."""
+        if not self.config.wowhead or time.monotonic() < self._lookup_paused_until:
+            return
+        if self._http is None:
+            self._http = aiohttp.ClientSession(headers={"User-Agent": "NoctisLootBot (guild loot bot)"})
+        for item_id in self.store.items_to_look_up():
+            info = await self.lookup(self._http, item_id)
+            if info is None:  # Wowhead or the network is down
+                self._lookup_paused_until = time.monotonic() + LOOKUP_PAUSE_SECONDS
+                return
+            self.store.save_item_info(item_id, info)
+        for icon in self.store.icons_without_emoji():
+            if icon not in self._emoji_failed:
+                emoji = await self._icon_emoji(icon)
+                if emoji:
+                    self.store.save_icon_emoji(icon, emoji)
+                else:
+                    self._emoji_failed.add(icon)  # not again until a restart
+
+    async def _icon_emoji(self, icon: str) -> str | None:
+        """The bot's own (application) emoji for an icon, uploading it the first time."""
+        name = icon[:32]
+        try:
+            if self._app_emojis is None:
+                self._app_emojis = {e.name: str(e) for e in await self.fetch_application_emojis()}
+            if name not in self._app_emojis:
+                image = await self.fetch_icon(self._http, icon)
+                if image is None:
+                    return None
+                self._app_emojis[name] = str(await self.create_application_emoji(name=name, image=image))
+        except discord.HTTPException as exc:
+            log.warning("Could not make an emoji for %s: %s", icon, exc)
+            return None
+        return self._app_emojis[name]
 
     def _text_channel(self, channel_id: int) -> discord.TextChannel | None:
         ch = self.get_channel(channel_id)

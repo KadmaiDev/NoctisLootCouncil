@@ -61,6 +61,22 @@ CREATE TABLE IF NOT EXISTS suggestions (
     PRIMARY KEY (item_id, user_id)
 );
 
+-- What Wowhead's Classic database says about an item (iteminfo.py): looked up once, or again a
+-- day later if it didn't know the item.
+CREATE TABLE IF NOT EXISTS item_info (
+    item_id    INTEGER PRIMARY KEY,
+    found      INTEGER NOT NULL,
+    icon       TEXT,
+    slot       TEXT,
+    fetched_at INTEGER NOT NULL
+);
+
+-- The bot's own emoji for each icon, '<:inv_staff_13:123>', for item lines in lists.
+CREATE TABLE IF NOT EXISTS icon_emojis (
+    icon  TEXT PRIMARY KEY,
+    emoji TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS encounters (
     id   INTEGER PRIMARY KEY,
     name TEXT NOT NULL,

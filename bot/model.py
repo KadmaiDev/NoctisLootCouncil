@@ -21,6 +21,7 @@ class AwardInfo:
     nos: int | None = None
     tags: str | None = None
     new_item: bool = False  # the item's first night in our raids
+    emoji: str | None = None  # the item's icon as the bot's emoji
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,9 @@ class ItemState:
     new_in_raid: bool = False
     created_at: int = 0
     first_award: AwardInfo | None = None
+    icon: str | None = None            # Wowhead's icon name, e.g. inv_staff_13
+    emoji: str | None = None           # that icon as the bot's emoji
+    on_wowhead: bool = False           # Wowhead's Classic database has the item: link to it
 
     @property
     def handling(self) -> str | None:
