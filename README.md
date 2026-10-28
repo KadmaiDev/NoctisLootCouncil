@@ -162,7 +162,7 @@ An item that hasn't dropped for us yet is behind a spoiler on #loot-items and #l
 
 It runs in a console window while you play (or all the time), checks the saved file every 30 seconds, uploads it when it changes, and keeps the decisions addon up to date.
 
-**Install** (until there's an .exe): install Python 3.11 from python.org, download this project, and in its folder run
+**Install:** download `NoctisLootCompanion.exe` from this repository's Releases page and run it (see [Checking the .exe](#checking-the-exe)). Or run it from the code, with nothing built: install Python 3.11 from python.org, download this project, and in its folder run
 
 ```
 python -m companion
@@ -181,7 +181,39 @@ What it does each pass:
 - For every `WTF\Account\*\SavedVariables\NoctisLootCouncil.lua` that changed since it last uploaded: reads it and sends it to the bot. (The game writes it at `/reload` and logout.)
 - Fetches the decisions, and if they changed, writes `Interface\AddOns\NoctisLootDecisions\` (two `.toc` files and `Decisions.lua`). The game loads it at the next `/reload` or login. It shows in the AddOns list as "Noctis Loot Decisions"; leave it enabled.
 
-**Single .exe:** `python -m pip install -r requirements-dev.txt`, then `python tools/package.py companion` builds `dist\NoctisLootCompanion.exe`. To fill in your bot's address for your officers (they can still change it), first create `companion\_guild.py` with one line, `BOT_URL = "https://loot.example.org"`; git ignores that file.
+### What it reads, writes and sends
+
+All of it is in two short files: `companion/savedfile.py` (what it takes from the saved file) and `companion/client.py` (the only part that talks to the network). A test, `tests/companion/test_what_it_touches.py`, fails if any other part of the app imports networking, if the app uses anything outside Python's standard library, or if it starts other programs or runs code it's given.
+
+It **reads**:
+
+- `WTF\Account\*\SavedVariables\NoctisLootCouncil.lua`, the addon's saved file, for each account on the PC. Nothing else in the game folder.
+- At setup only: whether WoW is in the usual folders, and where Battle.net installed it (from the registry), to suggest the `_forever_` folder.
+
+It **writes**:
+
+- `Interface\AddOns\NoctisLootDecisions\` (two `.toc` files and `Decisions.lua`). Nothing else in the game folder.
+- `companion.ini` (your settings and token) and `companion.log`, next to the app or in `%APPDATA%\NoctisLoot\`.
+
+It **talks to** the bot address in `companion.ini`, and nowhere else:
+
+- `POST /api/upload`, with what the saved file holds about raid loot: the items (name, link, quality, where and when they dropped, the decision and note), the drops it saw and the awards (who won what, their class, how, the roll, the note and bid tags), and the name of the character that uploaded. The account folder's name stays on your PC.
+- `GET /api/decisions`: the council and roll decisions.
+
+Both carry your token. It tells the bot the upload is yours, and does nothing else: the bot accepts it for those two requests only, and it gives no access to your Discord or Battle.net account. `/loot token` replaces it.
+
+There's no auto-update and no analytics. A new version is a new download, when you choose. To see the connections for yourself, Resource Monitor's Network tab (or Sysinternals TCPView) shows it connecting to the bot alone.
+
+### Checking the .exe
+
+The released `.exe` isn't built on anyone's PC. GitHub Actions builds it from the commit a release's tag points at, after the companion's tests pass (`.github/workflows/companion-release.yml`), and publishes it on the Releases page. Two checks:
+
+- **Your download is the released file.** In PowerShell, in the folder you saved it to, `Get-FileHash NoctisLootCompanion.exe` should print the SHA-256 shown on the release (also in its `SHA256SUMS.txt`).
+- **The released file was built from this code.** GitHub signs a build provenance for each `.exe`, naming the repository, the commit and the workflow. With the [GitHub CLI](https://cli.github.com), `gh attestation verify NoctisLootCompanion.exe -R <owner>/<repository>` (as in this repository's address) prints them, and fails if the file was changed after GitHub built it. The release notes give the exact command. GitHub only signs these for public repositories, so releases made while this one was private have the hash but no provenance.
+
+The one thing in the `.exe` that isn't in the code is the bot address it fills in at setup, from the repository's `COMPANION_BOT_URL` setting. Setup shows it, and you can change it.
+
+**Building it yourself:** `python -m pip install -r requirements-dev.txt`, then `python tools/package.py companion` builds `dist\NoctisLootCompanion.exe`. To fill in your bot's address for your officers (they can still change it), first create `companion\_guild.py` with one line, `BOT_URL = "https://loot.example.org"`; git ignores that file.
 
 ---
 
@@ -203,6 +235,8 @@ python tools/package.py all               # dist/: the addon zip, NoctisLootComp
 python addon/tools/install_dev.py "<WoW>\_forever_"   # a dev copy of the addon in game
 ```
 
+**Releasing the companion:** set `__version__` in `companion/__init__.py`, commit and push, then `git tag companion-v<version>` and `git push origin companion-v<version>`. The workflow refuses a tag that doesn't match the version. Set the repository variable `COMPANION_BOT_URL` (Settings, Secrets and variables, Actions, Variables) to prefill your bot's address.
+
 The rules (vote tally, upload merge and de-duplication, post wording) are plain modules with no Discord import (`bot/rules.py`, `bot/upload.py`, `bot/store.py`, `bot/render.py`) and are tested directly; the API is tested with aiohttp's test client against a temporary database; the poster against fake channels; the companion end to end against the real API.
 
 ### The test harness
@@ -222,4 +256,4 @@ The realm needs LuaJIT on the PATH (or in `LUAJIT`); without it those tests are 
 - No way to remove an item from the list or revoke a token other than issuing a new one (`/loot token` replaces the old one; deleting a row from the `tokens` table revokes it).
 - Only the winner's bid tags (BIS, Sidegrade...) reach the bot, with the award; the other bidders' tags stay in game. "NEW IN OUR RAID" posts show how many wanted an item, not what they tagged.
 - The CSV export for oxm.gg from the bot (the system map's "later") isn't built.
-- No release yet: the addon zip and the companion .exe build (`python tools/package.py`) but haven't been published.
+- No release yet: the addon zip builds (`python tools/package.py addon`) but hasn't been published, and the companion's release workflow hasn't been run.

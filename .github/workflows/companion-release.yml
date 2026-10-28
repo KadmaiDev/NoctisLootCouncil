@@ -1,0 +1,99 @@
+# Builds NoctisLootCompanion.exe on GitHub's machines from a tagged commit and publishes it as a
+# GitHub Release with its SHA-256 and, once the repository is public, a build provenance signed by
+# GitHub, so officers can check the .exe they run was built from this code and nothing else.
+#
+# To release: set __version__ in companion/__init__.py, commit and push, then
+#   git tag companion-v0.1.0 && git push origin companion-v0.1.0
+# The repository variable COMPANION_BOT_URL (Settings > Secrets and variables > Actions > Variables)
+# prefills the bot address, as companion/_guild.py does for a local build.
+name: Companion release
+
+on:
+  push:
+    tags: ["companion-v*"]
+
+permissions:
+  contents: write      # the release
+  id-token: write      # signing the provenance
+  attestations: write  # storing it
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Install the build tools
+        run: python -m pip install -r requirements-dev.txt pyinstaller==6.22.3
+
+      - name: Check the tag matches the app's version
+        shell: bash
+        run: |
+          version=$(python -c "import companion; print(companion.__version__)")
+          if [ "$TAG" != "companion-v$version" ]; then
+            echo "::error::The tag is $TAG but companion/__init__.py says $version"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Test the companion
+        run: python -m pytest tests/companion
+
+      - name: Prefill the bot address
+        if: vars.COMPANION_BOT_URL != ''
+        shell: bash
+        env:
+          BOT_URL: ${{ vars.COMPANION_BOT_URL }}
+        run: python -c "import json, os; open('companion/_guild.py', 'w', encoding='utf-8').write('BOT_URL = ' + json.dumps(os.environ['BOT_URL']) + '\n')"
+
+      - name: Build
+        run: python tools/package.py companion
+
+      - name: Checksum
+        shell: bash
+        run: |
+          python -c "import hashlib; print(hashlib.sha256(open('dist/NoctisLootCompanion.exe', 'rb').read()).hexdigest() + '  NoctisLootCompanion.exe')" > dist/SHA256SUMS.txt
+          cat dist/SHA256SUMS.txt
+
+      # GitHub signs provenance for public repositories only (private ones need Enterprise Cloud).
+      - name: Sign the build provenance
+        if: ${{ !github.event.repository.private }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
+        with:
+          subject-path: dist/NoctisLootCompanion.exe
+
+      - name: Publish the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIGNED: ${{ !github.event.repository.private }}
+        run: |
+          sha=$(cut -d' ' -f1 dist/SHA256SUMS.txt)
+          {
+            echo "The officers' companion app, version $VERSION, built by GitHub Actions from commit $GITHUB_SHA after its tests passed."
+            echo
+            echo "SHA-256 of NoctisLootCompanion.exe: \`$sha\`"
+            echo
+            echo "**Check your download.** In PowerShell, in the folder you saved it to, \`Get-FileHash NoctisLootCompanion.exe\` should print the hash above."
+            if [ "$SIGNED" = "true" ]; then
+              echo
+              echo "**Check it was built from this code.** With the [GitHub CLI](https://cli.github.com):"
+              echo
+              echo '```'
+              echo "gh attestation verify NoctisLootCompanion.exe -R $GITHUB_REPOSITORY"
+              echo '```'
+              echo
+              echo "It names the commit and workflow that built the file, and fails if the file was changed afterwards."
+            fi
+            echo
+            echo "What the app reads, writes and sends is in the README, under \"What it reads, writes and sends\"."
+          } > notes.md
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" dist/NoctisLootCompanion.exe dist/SHA256SUMS.txt --title "Companion $VERSION" --notes-file notes.md
