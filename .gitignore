@@ -26,6 +26,7 @@ compose.override.yaml
 data/
 companion.ini
 companion-state.json
+companion/_guild.py
 *.log
 
 # Python

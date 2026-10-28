@@ -43,15 +43,34 @@ def test_first_run_prompt(tmp_path, capsys):
     wow = tmp_path / "_forever_"
     wow.mkdir()
     answers = iter([str(tmp_path / "nope"), "", "loot.example.org", "https://loot.example.org/"])
-    s = config.prompt(None, ask=lambda _: next(answers), ask_secret=lambda _: "  nlc_token  ", detected=wow)
+    s = config.prompt(None, ask=lambda _: next(answers), ask_secret=lambda _: "  nlc_token  ", detected=wow,
+                      default_url="")
     assert s == Settings(wow_dir=wow, bot_url="https://loot.example.org", token="nlc_token")
     out = capsys.readouterr().out
     assert "Can't find" in out and "https://" in out
+
+
+def test_guild_build_prefills_the_bot_address(tmp_path):
+    wow = tmp_path / "_forever_"
+    wow.mkdir()
+    asked = []
+
+    def ask(question):
+        asked.append(question)
+        return ""
+    s = config.prompt(None, ask=ask, ask_secret=lambda _: "nlc_t", detected=wow, default_url="https://loot.example.org/")
+    assert s.bot_url == "https://loot.example.org"
+    assert asked[1] == "Bot address [https://loot.example.org]: "
+    # It can still be changed.
+    answers = iter(["", "https://other.example.org"])
+    s = config.prompt(None, ask=lambda _: next(answers), ask_secret=lambda _: "nlc_t", detected=wow,
+                      default_url="https://loot.example.org")
+    assert s.bot_url == "https://other.example.org"
 
 
 def test_prompt_keeps_existing_values(tmp_path):
     wow = tmp_path / "_forever_"
     wow.mkdir()
     old = Settings(wow_dir=wow, bot_url="https://loot.example.org", token="nlc_old", poll_seconds=60)
-    s = config.prompt(old, ask=lambda _: "", ask_secret=lambda _: "")
-    assert s == old
+    s = config.prompt(old, ask=lambda _: "", ask_secret=lambda _: "", default_url="https://guild.example.org")
+    assert s == old  # an address already set wins over the build's

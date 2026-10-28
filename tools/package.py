@@ -70,6 +70,10 @@ def package_addon():
 
 
 def package_companion():
+    if os.path.isfile(os.path.join(REPO, "companion", "_guild.py")):
+        print("companion: prefilling the bot address from companion/_guild.py")
+    else:
+        print("companion: no companion/_guild.py, so officers type the bot address in themselves")
     spec = os.path.join(REPO, "packaging", "companion.spec")
     build = os.path.join(REPO, "build")
     subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--distpath", DIST,

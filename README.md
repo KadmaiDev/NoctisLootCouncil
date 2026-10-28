@@ -107,7 +107,9 @@ location /api/ {
 
 Check it from outside: `https://loot.example.org/api/health` should answer `{"ok": true}`. The companion app's "bot address" is then `https://loot.example.org`.
 
-**No reverse proxy yet, or your ISP blocks incoming 80 and 443** (some home connections do): run Caddy next to the bot in a `docker-compose.override.yml`, on another port, and get the certificate by Let's Encrypt's DNS challenge, which needs no incoming connection. If your DNS host has no API Caddy supports, delegate just the challenge to Duck DNS: build Caddy with `xcaddy build --with github.com/caddy-dns/duckdns`, add a CNAME from `_acme-challenge.loot.example.org` to a free `something.duckdns.org`, forward the router's port 8443 to the host's 443, and use:
+**No reverse proxy yet, and 443 reaches the host** (even if 80 is taken or blocked): run the stock `caddy` image next to the bot in a `docker-compose.override.yml`, publishing 443, with the Caddyfile below minus the `dns` and `propagation_*` lines and with `issuer acme { disable_http_challenge }` in the `tls` block. Let's Encrypt then checks the host on 443 itself (the TLS-ALPN challenge), and the bot address is `https://loot.example.org`.
+
+**Your ISP blocks incoming 80 and 443** (some home connections do): run Caddy next to the bot in a `docker-compose.override.yml`, on another port, and get the certificate by Let's Encrypt's DNS challenge, which needs no incoming connection. If your DNS host has no API Caddy supports, delegate just the challenge to Duck DNS: build Caddy with `xcaddy build --with github.com/caddy-dns/duckdns`, add a CNAME from `_acme-challenge.loot.example.org` to a free `something.duckdns.org`, forward the router's port 8443 to the host's 443, and use:
 
 ```
 loot.example.org {
@@ -164,7 +166,7 @@ python -m companion
 The first run asks for:
 
 1. **The WoW: Forever folder.** It suggests one it found, usually `C:\Program Files (x86)\World of Warcraft\_forever_`.
-2. **The bot address**, e.g. `https://loot.example.org` (ask whoever runs the bot).
+2. **The bot address**, e.g. `https://loot.example.org` (ask whoever runs the bot). Your guild's .exe may already fill it in: press Enter to keep it.
 3. **Your token**: type `/loot token` in Discord and paste it.
 
 It saves them in `companion.ini` next to the app (or in `%APPDATA%\NoctisLoot\` if that folder isn't writable) and logs to `companion.log` beside it. `python -m companion --setup` asks again; `--once` does one pass and exits.
@@ -174,7 +176,7 @@ What it does each pass:
 - For every `WTF\Account\*\SavedVariables\NoctisLootCouncil.lua` that changed since it last uploaded: reads it and sends it to the bot. (The game writes it at `/reload` and logout.)
 - Fetches the decisions, and if they changed, writes `Interface\AddOns\NoctisLootDecisions\` (two `.toc` files and `Decisions.lua`). The game loads it at the next `/reload` or login. It shows in the AddOns list as "Noctis Loot Decisions"; leave it enabled.
 
-**Single .exe:** `python -m pip install -r requirements-dev.txt`, then `python tools/package.py companion` builds `dist\NoctisLootCompanion.exe`.
+**Single .exe:** `python -m pip install -r requirements-dev.txt`, then `python tools/package.py companion` builds `dist\NoctisLootCompanion.exe`. To fill in your bot's address for your officers (they can still change it), first create `companion\_guild.py` with one line, `BOT_URL = "https://loot.example.org"`; git ignores that file.
 
 ---
 

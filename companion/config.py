@@ -14,6 +14,11 @@ SECTION = "companion"
 DEFAULT_WOW = Path(r"C:\Program Files (x86)\World of Warcraft\_forever_")
 POLL_SECONDS = 30
 
+try:  # a guild's own build prefills its bot address: a git-ignored companion/_guild.py with BOT_URL = "https://..."
+    from ._guild import BOT_URL as GUILD_BOT_URL
+except ImportError:
+    GUILD_BOT_URL = ""
+
 
 @dataclass
 class Settings:
@@ -138,7 +143,8 @@ def detect_wow_dir(candidates: list[Path] | None = None) -> Path | None:
 
 
 def prompt(existing: Settings | None, ask: Callable[[str], str] = input,
-           ask_secret: Callable[[str], str] = getpass.getpass, detected: Path | None = None) -> Settings:
+           ask_secret: Callable[[str], str] = getpass.getpass, detected: Path | None = None,
+           default_url: str = GUILD_BOT_URL) -> Settings:
     """Ask for anything missing, in the console. Enter keeps the value shown in brackets."""
     print("Noctis Loot companion: setup. Press Enter to keep the value in brackets.")
     wow_default = existing.wow_dir if existing and str(existing.wow_dir).strip() else (detected or DEFAULT_WOW)
@@ -147,9 +153,9 @@ def prompt(existing: Settings | None, ask: Callable[[str], str] = input,
         if Path(wow).is_dir():
             break
         print(f"  Can't find {wow}. It's the _forever_ folder inside your World of Warcraft folder.")
-    url_default = existing.bot_url if existing else ""
+    url_default = (existing.bot_url if existing else "") or default_url.rstrip("/")
     while True:
-        url = ask(f"Bot address, e.g. https://loot.example.org{f' [{url_default}]' if url_default else ''}: ").strip()
+        url = ask(f"Bot address [{url_default}]: " if url_default else "Bot address, e.g. https://loot.example.org: ").strip()
         url = (url or url_default).rstrip("/")
         if url.startswith(("http://", "https://")):
             break
