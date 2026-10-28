@@ -17,8 +17,9 @@ The Noctis guild's loot system for WoW: Forever: loot rolls and a loot council i
 The game can't reach the internet, so data moves through files: the companion app carries it between the addon's files and the bot, and the bot keeps the official list and talks to Discord.
 
 ```mermaid
-flowchart LR
+flowchart TB
   subgraph game["In the game · WoW: Forever"]
+    direction LR
     raiders["<b>Raiders' addons</b><br/>Main spec / Off spec / Pass pop-up;<br/>tags and a note on council items"]
     lm["<b>Loot master's addon</b><br/>drop list · rolls · council window · loot log"]
     saved[("<b>Saved file</b><br/>drops, awards, interest, bid tags")]
@@ -31,6 +32,7 @@ flowchart LR
     bot["<b>Loot bot</b> · always on<br/>the official item list, officers' votes,<br/>raiders' suggestions, every officer's<br/>uploads merged, the loot log"]
   end
   subgraph discord["Discord"]
+    direction LR
     officers["<b>loot-officers</b> (private)<br/>votes, priority"]
     items["<b>loot-items</b> (public)<br/>status, suggestions"]
     log["<b>loot-log</b><br/>every award, with the reason"]
@@ -66,7 +68,7 @@ The exact file and API formats are in [`docs/sync-format.md`](docs/sync-format.m
 3. **In the raid.** The addon applies the decisions. Items nobody has decided are rolled.
 4. **After the raid.** The loot master logs out or types `/reload`. The companion app uploads the night. The bot posts the awards to **#loot-log** (one post per raid and night) and every item that dropped for the first time to **#loot-officers** ("NEW IN OUR RAID LAST NIGHT", who won it, how many wanted it) and **#loot-items**, for a vote.
 
-Decisions made in Discord always win. A decision set in game (`/nlc council ...`) is used only for items Discord hasn't decided, and is shown as "Set in game by <character>".
+Decisions made in Discord always win. A decision set in game (`/nlc council ...`) is used only for items Discord hasn't decided, and is shown as "Set in game by *character*".
 
 ---
 
