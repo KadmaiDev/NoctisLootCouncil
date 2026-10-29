@@ -4,7 +4,7 @@ The Noctis guild's loot system for WoW: Forever: loot rolls and a loot council i
 
 | | Folder | Who gets it | How |
 |---|---|---|---|
-| **Noctis Loot Council**, the addon (`/nlc`) | [`addon/`](addon/README.md) | everyone in the raid | CurseForge zip: `python tools/package.py addon` |
+| **Noctis Loot Council**, the addon (`/nlc`) | [`addon/`](addon/README.md) | everyone in the raid | CurseForge (a beta, once approved), or the zip on [Releases](../../releases) |
 | **The companion app** | `companion/` | officers, on their Windows PCs | `NoctisLootCompanion.exe` from [Releases](../../releases), built by GitHub Actions |
 | **The loot bot** | `bot/` | the server | `docker compose up -d --build` (below) |
 
@@ -283,6 +283,8 @@ python tools/package.py all               # dist/: the addon zip, NoctisLootComp
 python addon/tools/install_dev.py "<WoW>\_forever_"   # a dev copy of the addon in game
 ```
 
+**Releasing the addon:** bump `## Version` in both `.toc` files, put a `## Noctis Loot Council <version>` section at the top of `addon/CHANGELOG.md`, commit and push, then `python tools/release_addon.py --upload`. It runs the addon's tests, builds the zip (only the `.toc` and `.lua` files, the LICENSE and the icon: CurseForge rejects scripts), uploads it to CurseForge for WoW Forever as a beta, then tags `addon-v<version>` and makes a GitHub release with the same zip and that changelog section. It needs the CurseForge API token in `CURSE_API_KEY` and refuses unless everything is committed and pushed. `--versions` lists CurseForge's Forever game versions, for when the live client gets its own.
+
 **Releasing the companion:** set `__version__` in `companion/__init__.py`, commit and push, then `git tag companion-v<version>` and `git push origin companion-v<version>`. The workflow refuses a tag that doesn't match the version. Set the repository variable `COMPANION_BOT_URL` (Settings, Secrets and variables, Actions, Variables) to prefill your bot's address.
 
 The rules (vote tally, upload merge and de-duplication, post wording) are plain modules with no Discord import (`bot/rules.py`, `bot/upload.py`, `bot/store.py`, `bot/render.py`) and are tested directly; the API is tested with aiohttp's test client against a temporary database; the poster against fake channels; the companion end to end against the real API, and what its window shows and does without a window (`tests/companion/test_controller.py`).
@@ -304,4 +306,4 @@ The realm needs LuaJIT on the PATH (or in `LUAJIT`); without it those tests are 
 - No way to remove an item from the list or revoke a token other than issuing a new one (`/loot token` replaces the old one; deleting a row from the `tokens` table revokes it).
 - Only the winner's bid tags (BIS, Sidegrade...) reach the bot, with the award; the other bidders' tags stay in game. "NEW IN OUR RAID" posts show how many wanted an item, not what they tagged.
 - The CSV export for oxm.gg from the bot isn't built; the addon's `/nlc export` makes it for now.
-- The addon zip builds (`python tools/package.py addon`) but isn't on CurseForge yet.
+- The addon isn't on CurseForge yet: the project is being set up, and the first file goes up as a beta.

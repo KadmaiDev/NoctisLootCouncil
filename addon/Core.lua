@@ -79,7 +79,7 @@ end)
 --   popupOff = true|nil,                -- no Main spec / Off spec / Pass pop-up (Popup.lua)
 --   autoOpenOff = true|nil,             -- the loot master's window doesn't open by itself (LootWindow.lua)
 -- }
--- The companion app reads this file; its format is in NoctisLootBot's docs/sync-format.md.
+-- The companion app reads this file; its format is in the repository's docs/sync-format.md.
 -- Each field's type, so a damaged save is repaired at load instead of breaking things.
 local DB_FIELDS = { v = "number", items = "table", encounters = "table", bossSources = "table",
     instances = "table", minQuality = "number", dungeons = "boolean", log = "table", night = "number",

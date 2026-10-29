@@ -2,7 +2,7 @@
 
 Loot rolls and loot council for the Noctis guild on **World of Warcraft: Forever**. Type `/nlc`.
 
-Work in progress. What it does so far:
+Work in progress: 0.1.0 is a beta that hasn't been used in a real raid yet ([changelog](CHANGELOG.md)). Install it from CurseForge, or unzip `NoctisLootCouncil-<version>.zip` from the repository's Releases into `<WoW>\_forever_\Interface\AddOns` (the folder must be named `NoctisLootCouncil`). What it does so far:
 
 ## The list of raid drops
 

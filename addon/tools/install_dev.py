@@ -16,7 +16,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # the addon 
 REPO = os.path.dirname(ROOT)
 TOCS = ["NoctisLootCouncil.toc", "NoctisLootCouncil_Camelot.toc"]
 # Files shipped that the .toc doesn't list: name in the addon -> source.
-EXTRA = {"LICENSE": os.path.join(REPO, "LICENSE")}  # add media/icon.tga etc. once there is artwork
+EXTRA = {"LICENSE": os.path.join(REPO, "LICENSE"),
+         "media/icon.tga": os.path.join(ROOT, "media", "icon.tga")}  # the owl in the AddOns list
 
 
 def toc_files(text):

@@ -5,8 +5,9 @@ r"""Builds what each kind of user downloads, into dist/:
     python tools/package.py bot          NoctisLootBot.zip, for the server (Docker builds it there)
     python tools/package.py all          all three
 
-The addon zip holds one folder, NoctisLootCouncil, with the two .toc files, the files they list
-and the LICENSE, which is what CurseForge expects. Its version is the .toc's `## Version:`.
+The addon zip holds one folder, NoctisLootCouncil, with the two .toc files, the files they list,
+the LICENSE and the icon, which is what CurseForge expects. Its version is the .toc's `## Version:`.
+tools/release_addon.py builds the same zip and publishes it.
 
 The bot zip holds one folder, NoctisLootBot: what `docker compose up -d --build` needs, the
 .env.example and a README. It never holds a .env, so unpacking it over a running copy keeps
@@ -23,7 +24,8 @@ ADDON = os.path.join(REPO, "addon")
 DIST = os.path.join(REPO, "dist")
 NAME = "NoctisLootCouncil"
 TOCS = [NAME + ".toc", NAME + "_Camelot.toc"]
-EXTRA = {"LICENSE": os.path.join(REPO, "LICENSE")}  # name in the addon -> source
+EXTRA = {"LICENSE": os.path.join(REPO, "LICENSE"),  # name in the addon -> source
+         "media/icon.tga": os.path.join(ADDON, "media", "icon.tga")}  # the owl in the AddOns list
 BOT = "NoctisLootBot"
 BOT_FILES = {  # name in the bot folder -> source
     "Dockerfile": "Dockerfile",
