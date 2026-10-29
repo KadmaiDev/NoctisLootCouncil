@@ -124,12 +124,16 @@ function ns.MayRunLoot(unit)
     if not (UnitIsGroupLeader or UnitIsGroupAssistant) then return true end
     if UnitIsGroupLeader and UnitIsGroupLeader(unit) then return true end
     if UnitIsGroupAssistant and UnitIsGroupAssistant(unit) then return true end
-    if GetLootMethod and UnitIsUnit then
-        local ok, method, partyMaster, raidMaster = pcall(GetLootMethod)
-        if ok and method == "master" then
-            local master = raidMaster and "raid" .. raidMaster
-                or partyMaster and (partyMaster == 0 and "player" or "party" .. partyMaster)
-            if master and UnitIsUnit(unit, master) then return true end
+    -- Forever: method, masterLootPartyID (0 = us), masterLooterRaidID.
+    local GetMethod = C_PartyInfo and C_PartyInfo.GetLootMethod
+    local masterMethod = Enum and Enum.LootMethod and Enum.LootMethod.Masterlooter
+    if GetMethod and masterMethod then
+        local ok, method, partyID, raidID = pcall(GetMethod)
+        if ok and Plain(method) and method == masterMethod then
+            local master = Plain(raidID) and raidID and "raid" .. raidID
+                or Plain(partyID) and partyID and (partyID == 0 and "player" or "party" .. partyID)
+            local key = master and ns.NameKey(ns.PlayerName(master))
+            if key and key == ns.NameKey(ns.PlayerName(unit)) then return true end
         end
     end
     return false

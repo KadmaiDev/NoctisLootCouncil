@@ -132,7 +132,14 @@ function M.load(files, addonName)
     GetInventoryItemLink = function(unit, slot) if unit == "player" then return M.gear[slot] end end
     RANDOM_ROLL_RESULT = "%s rolls %d (%d-%d)"
     SlashCmdList = {}
-    Enum = { LootSlotType = { None = 0, Item = 1, Money = 2, Currency = 3 } }
+    Enum = { LootSlotType = { None = 0, Item = 1, Money = 2, Currency = 3 }, LootMethod = { Freeforall = 0, Masterlooter = 2 } }
+    -- The master looter: M.masterLooter = { party = n } or { raid = n } (Forever's IDs).
+    M.masterLooter = nil
+    C_PartyInfo = { GetLootMethod = function()
+        local ml = M.masterLooter
+        if not ml then return Enum.LootMethod.Freeforall end
+        return Enum.LootMethod.Masterlooter, ml.party, ml.raid
+    end }
     ITEM_QUALITY3_DESC, ITEM_QUALITY4_DESC = "Rare", "Epic"
     LOOT_ITEM = "%s receives loot: %s."
     LOOT_ITEM_MULTIPLE = "%s receives loot: %sx%d."

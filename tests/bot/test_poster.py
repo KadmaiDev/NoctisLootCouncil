@@ -29,6 +29,7 @@ class FakeChannel:
         self.sends = 0
         self.edits = 0
         self.threads: list[str] = []
+        self.fail_deletes: set[int] = set()  # these messages' next delete fails, as Discord sometimes does
 
     async def send(self, content=None, **kwargs):
         self.sends += 1
@@ -57,6 +58,9 @@ class FakeChannel:
                 channel.messages[mid].update(kwargs)
 
             async def delete(self):
+                if mid in channel.fail_deletes:
+                    channel.fail_deletes.discard(mid)
+                    raise discord.HTTPException(SimpleNamespace(status=500, reason="Server Error"), "try again")
                 channel.messages.pop(mid, None)
         return Partial()
 
@@ -178,6 +182,29 @@ async def test_awards_taken_back_in_game_edit_the_nights_log_post_or_delete_it(t
     await bot.sync_pending()
     assert channels[LOG].messages == {} and bot.store.get_post("log", "Molten Core|2026-10-26|0") is None
     assert not bot.store.dirty_log_groups()
+
+
+async def test_log_parts_left_after_a_failed_delete_go_on_the_next_pass(tmp_path, channels):
+    bot = make_bot(tmp_path, channels)
+    body = sample_body()
+    award = body["awards"][1]
+    body["awards"] = [dict(award, at=award["at"] + i, who=f"Raider{i:02} With A Rather Long Name Indeed",
+                           ) for i in range(150)]
+    bot.store.apply_upload(parse_upload(body), "discord:1", "Kadmai")
+    await bot.sync_pending()
+    keys = bot.store.post_keys("log", "Molten Core|2026-10-26|")
+    assert len(keys) >= 3, keys
+    last = bot.store.get_post("log", keys[-1]).message_id
+    channels[LOG].fail_deletes.add(last)  # the last part's delete fails once
+    body["undone"] = [{k: a[k] for k in ("id", "who", "at")} for a in body["awards"][1:]]  # all but one
+    body["awards"] = body["awards"][:1]
+    bot.store.apply_upload(parse_upload(body), "discord:1", "Kadmai")
+    await bot.sync_pending()
+    assert bot.store.post_keys("log", "Molten Core|2026-10-26|") == ["Molten Core|2026-10-26|0", keys[-1]]
+    assert bot.store.dirty_log_groups(), "left to try again"
+    await bot.sync_pending()
+    assert bot.store.post_keys("log", "Molten Core|2026-10-26|") == ["Molten Core|2026-10-26|0"]
+    assert len(channels[LOG].messages) == 1 and not bot.store.dirty_log_groups()
 
 
 async def test_deleted_post_is_posted_again(tmp_path, channels):

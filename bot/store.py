@@ -165,7 +165,8 @@ class Store:
         row = self.conn.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
         if row is None:
             return None
-        drops = self.conn.execute("SELECT COALESCE(SUM(n), 0) AS n, MIN(at) AS first, MAX(at) AS last "
+        drops = self.conn.execute("SELECT COALESCE(SUM(n), 0) AS n, MIN(at) AS first, "
+                                  "MAX(COALESCE(last_at, at)) AS last "
                                   "FROM drops WHERE item_id = ?", (item_id,)).fetchone()
         aw = self.conn.execute("SELECT MIN(at) AS first, MAX(at) AS last FROM awards WHERE item_id = ?",
                                (item_id,)).fetchone()
@@ -378,7 +379,9 @@ class Store:
         are one report with n = 2, while another officer sees two chat lines, two reports with n = 1.
         So copies are reconciled, not rows: an upload's reports of an item and source close together
         in time (rules.same_drop, chained) are one drop with their copies added up, and the bot keeps
-        the most copies any one upload saw of it, across however many rows hold it."""
+        the most copies any one upload saw of it, across however many rows hold it. A row keeps the
+        time span of the reports it stands for (at..last_at), since a chain of reports can run longer
+        than the window, and a later upload of only its last copies must still find it."""
         window = rules.DROP_WINDOW_SECONDS
         by_source: dict[tuple[int, str], list[UploadDrop]] = {}
         for d in sorted(drops, key=lambda d: d.at):
@@ -394,18 +397,21 @@ class Store:
             for group in groups:
                 first, last = group[0].at, group[-1].at
                 rows = [r for r in self.conn.execute(
-                    "SELECT id, n FROM drops WHERE item_id = ? AND src = ? AND at BETWEEN ? AND ? "
-                    "ORDER BY ABS(at - ?), id", (item_id, src, first - window, last + window, first))
+                    "SELECT id, n FROM drops WHERE item_id = ? AND src = ? AND at <= ? "
+                    "AND COALESCE(last_at, at) >= ? ORDER BY ABS(at - ?), id",
+                    (item_id, src, last + window, first - window, first))
                     if r["id"] not in claimed]
                 claimed.update(r["id"] for r in rows)
                 copies, known = sum(d.n for d in group), sum(r["n"] for r in rows)
+                if rows:  # the drop's span grows to take in this upload's reports
+                    self.conn.execute("UPDATE drops SET n = n + ?, at = MIN(at, ?), "
+                                      "last_at = MAX(COALESCE(last_at, at), ?) WHERE id = ?",
+                                      (max(copies - known, 0), first, last, rows[0]["id"]))
+                else:
+                    self.conn.execute("INSERT INTO drops(item_id, src, at, last_at, inst, n) VALUES(?, ?, ?, ?, ?, ?)",
+                                      (item_id, src, first, last, group[0].inst, copies))
                 if copies <= known:
                     continue
-                if rows:
-                    self.conn.execute("UPDATE drops SET n = n + ? WHERE id = ?", (copies - known, rows[0]["id"]))
-                else:
-                    self.conn.execute("INSERT INTO drops(item_id, src, at, inst, n) VALUES(?, ?, ?, ?, ?)",
-                                      (item_id, src, first, group[0].inst, copies))
                 if self.item_exists(item_id):
                     self._mark_dirty(item_id)
 
@@ -617,6 +623,12 @@ class Store:
                 "ON CONFLICT(kind, key) DO UPDATE SET channel_id = excluded.channel_id, "
                 "message_id = excluded.message_id, thread_id = excluded.thread_id, digest = excluded.digest",
                 (post.kind, post.key, post.channel_id, post.message_id, post.thread_id, post.digest))
+
+    def post_keys(self, kind: str, prefix: str) -> list[str]:
+        """The keys of the stored posts of this kind that start with prefix."""
+        rows = self.conn.execute("SELECT key FROM posts WHERE kind = ? AND substr(key, 1, ?) = ? ORDER BY key",
+                                 (kind, len(prefix), prefix))
+        return [r["key"] for r in rows]
 
     def forget_post(self, kind: str, key: str) -> None:
         with self.conn:

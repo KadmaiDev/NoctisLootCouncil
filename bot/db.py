@@ -204,7 +204,8 @@ CREATE TABLE IF NOT EXISTS uploads (
 
 # Columns added after the first release: CREATE TABLE IF NOT EXISTS leaves an older table as it was.
 ADDED_COLUMNS = {("suggestions", "user_name"): "TEXT", ("item_info", "env"): "TEXT", ("item_info", "name"): "TEXT",
-                 ("item_info", "quality"): "INTEGER", ("items", "origin"): "TEXT"}
+                 ("item_info", "quality"): "INTEGER", ("items", "origin"): "TEXT",
+                 ("drops", "last_at"): "INTEGER"}  # a drop's reports span at..last_at (NULL: just at)
 
 
 def connect(path: pathlib.Path | str) -> sqlite3.Connection:

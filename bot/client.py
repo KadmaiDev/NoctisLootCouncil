@@ -322,12 +322,14 @@ class LootBot(commands.Bot):
             for i, card in enumerate(parts):
                 if not await self._upsert_card("log", f"{inst}|{night}|{i}", self.config.ch_log, card):
                     return False
-            i = len(parts)
-            while self.store.get_post("log", f"{inst}|{night}|{i}") is not None:
-                if not await self._delete_post("log", f"{inst}|{night}|{i}"):
-                    return False
-                i += 1
-            return True
+            # Every stored part past the last one needed, gaps and all (an earlier pass may have
+            # deleted some before one failed); a failure leaves the group to try again.
+            prefix, ok = f"{inst}|{night}|", True
+            for key in self.store.post_keys("log", prefix):
+                part = key[len(prefix):]
+                if part.isdigit() and int(part) >= len(parts):
+                    ok &= await self._delete_post("log", key)
+            return ok
 
     async def _delete_post(self, kind: str, key: str) -> bool:
         post = self.store.get_post(kind, key)

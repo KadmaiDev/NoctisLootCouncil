@@ -212,3 +212,16 @@ test("a council item without its link: the cached link if the client has it, els
     wow.itemLoads(18000, "Sash of the Unseen", 4)
     assert(popup().item:GetText():find("[Sash of the Unseen]", 1, true), popup().item:GetText())
 end)
+
+test("an appointed master looter who neither leads nor assists runs the loot too", function()
+    raider()
+    wow.message("Doran Pike", "RAID", "S", 101, HELM, "roll", 30)
+    assert(not popup() or not popup():IsShown(), "not before Doran is master looter")
+    wow.masterLooter = { raid = 3 } -- raid1 is the player, raid2 Seren, raid3 Doran
+    wow.message("Doran Pike", "RAID", "S", 102, HELM, "roll", 30)
+    assert(popup():IsShown())
+    popup().pass:Click()
+    wow.message("Doran Pike", "RAID", "S", 201, 18000, "council", 30, "Doran Pike", "Doran Pike", SASH)
+    assert(popup():IsShown())
+    eq(popup().title:GetText(), "Council item")
+end)

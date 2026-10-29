@@ -122,6 +122,29 @@ def test_copies_seen_in_the_window_and_in_chat_count_once(store, first, second):
     assert store.item_state(16805).drops == 2
 
 
+# Three copies seen in chat 800 seconds apart: one chain, longer than the window from end to end.
+CHAIN = [{"id": 16805, "at": RAID + 900 + i * 800, "src": "e663", "inst": 409, "n": 1} for i in range(3)]
+LATE = [dict(CHAIN[-1])]  # an officer who only saw the last copy
+
+
+@pytest.mark.parametrize("first, second", [(CHAIN, LATE), (LATE, CHAIN)], ids=["chain first", "late copy first"])
+def test_a_chain_longer_than_the_window_still_matches_its_late_copies(store, first, second):
+    for owner, drops in ((("discord:1", "Kadmai"), first), (("discord:2", "Seren"), second)):
+        body = sample_body(owner[1])
+        body["drops"] = copy.deepcopy(drops)
+        upload(store, body, owner)
+    assert store.item_state(16805).drops == 3
+    for owner, drops in ((("discord:1", "Kadmai"), first), (("discord:2", "Seren"), second)):
+        body = sample_body(owner[1])
+        body["drops"] = copy.deepcopy(drops)
+        upload(store, body, owner)  # both uploaded again: still three
+    assert store.item_state(16805).drops == 3
+    early = sample_body("Doran")
+    early["drops"] = [dict(CHAIN[0])]  # and one who only saw the first copy
+    upload(store, early, ("discord:3", "Doran"))
+    assert store.item_state(16805).drops == 3
+
+
 def test_an_officer_who_saw_fewer_copies_doesnt_lower_the_count(store):
     body = sample_body()
     body["drops"] = copy.deepcopy(CHAT)
