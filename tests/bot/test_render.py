@@ -186,7 +186,7 @@ def test_log_post_matches_mockup():
     group = LogGroup("Molten Core", "2026-10-26", [
         aw("Choker of Enlightenment", "Vespera Ashward", "ms", 91, nms=3, nos=0),
         aw("Sash of the Unseen", "Ilsa Marrow", "council",
-           note="Warlock priority; biggest upgrade over raid gear; one item in two weeks"),
+           note='council vote, 3 of 4: biggest upgrade, less loot so far; bid: BIS "first upgrade in weeks"'),
         aw("Felheart Gloves", "Corvin Dusk", "ms", 77, nms=4, nos=1, new=True),
         aw("Helm of Might", "Tarnia Moonwhisper", "ms", 90),
         aw("Robe of Volatile Power", "Bran Holloway", "os", 64),
@@ -196,8 +196,8 @@ def test_log_post_matches_mockup():
     assert (card.title, card.subtitle, card.footer) == ("Molten Core · Monday 26 Oct", "6 items", render.LOG_FOOTER)
     assert card.body.splitlines() == [
         "Choker of Enlightenment → **Vespera Ashward** · main-spec roll, 91",
-        "Sash of the Unseen → **Ilsa Marrow** · council",
-        '> "Warlock priority; biggest upgrade over raid gear; one item in two weeks"',
+        "Sash of the Unseen → **Ilsa Marrow** · council, 3 of 4 votes · biggest upgrade, less loot so far",
+        '-# bid: BIS "first upgrade in weeks"',
         "Felheart Gloves → **Corvin Dusk** · main-spec roll, 77 · new item",
         "Helm of Might → **Tarnia Moonwhisper** · main-spec roll, 90",
         "Robe of Volatile Power → **Bran Holloway** · off-spec roll, 64",
@@ -217,15 +217,15 @@ def test_long_log_is_split_without_breaking_lines():
     assert sum(p.body.count(" → ") for p in parts) == 200
 
 
-def test_log_post_by_boss_with_links_and_short_notes():
+def test_log_post_by_boss_with_links_and_council_decisions():
     def at(a, boss, minutes, url=None):
         return dataclasses.replace(a, boss=boss, at=RAID + 60 * minutes, url=url)
     group = LogGroup("Molten Core", "2026-10-26", [
-        at(aw("Band of Accuria", "Doran Pike", "council", note="Tank, then melee"), "Ragnaros", 200),
+        at(aw("Band of Accuria", "Doran Pike", "council", note="the only main-spec bid"), "Ragnaros", 200),
         at(aw("Arcanist Boots", "Ilsa Marrow", "ms", 88), "Lucifron", 10,
            "https://www.wowhead.com/forever/item=16800/arcanist-boots"),
         at(aw("Lava Core", "Bran Holloway", "os", 12), None, 5),
-        at(aw("Striker's Mark", "Brannoc Vale", "council", note="Hunter priority, then whoever has waited longest"),
+        at(aw("Striker's Mark", "Brannoc Vale", "council", note="roll-off after a split vote, 87; bid: Big upgrade"),
            "Magmadar", 40),
         at(aw("Felheart Gloves", "Corvin Dusk", "ms", 77), "Lucifron", 11),
     ])
@@ -237,15 +237,24 @@ def test_log_post_by_boss_with_links_and_short_notes():
         "Felheart Gloves → **Corvin Dusk** · main-spec roll, 77",
         "",
         "__Magmadar__",
-        "Striker's Mark → **Brannoc Vale** · council",
-        '> "Hunter priority, then whoever has waited longest"',
+        "Striker's Mark → **Brannoc Vale** · council · roll-off after a split vote, 87",
+        "-# bid: Big upgrade",
         "",
         "__Ragnaros__",
-        "Band of Accuria → **Doran Pike** · council · Tank, then melee",
+        "Band of Accuria → **Doran Pike** · council · the only main-spec bid",
         "",
         "__Other loot__",
         "Lava Core → **Bran Holloway** · off-spec roll, 12",
     ]
+
+
+def test_council_vote_lines():
+    def line(note):
+        return render.award_line(aw("Sash", "Ilsa", "council", note=note))
+    assert line("council vote, 2 of 3: class fit") == "Sash → **Ilsa** · council, 2 of 3 votes · class fit"
+    assert line("council vote, 2 of 3") == "Sash → **Ilsa** · council, 2 of 3 votes"  # from before reasons
+    assert line("Ilsa won the last one; Warlock priority") == "Sash → **Ilsa** · council · Ilsa won the last one; Warlock priority"
+    assert line(None) == "Sash → **Ilsa** · council"
 
 
 def test_markdown_in_player_text_is_escaped():

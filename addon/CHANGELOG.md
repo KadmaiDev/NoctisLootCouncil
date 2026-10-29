@@ -1,5 +1,9 @@
 # Changelog
 
+## Noctis Loot Council 0.1.1
+
+- **Council votes come with a reason.** Each council member ticks why they vote, from the guild's rules: class fit, biggest upgrade, less loot so far, reliability, effort (at least one). The loot log says why the winner got it: "council vote, 3 of 4: biggest upgrade, less loot so far", with their bid tags and note.
+
 ## Noctis Loot Council 0.1.0
 
 The first release, a beta: it hasn't been used in a real raid yet. Type `/nlc` for the commands.

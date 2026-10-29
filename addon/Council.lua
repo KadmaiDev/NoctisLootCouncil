@@ -5,9 +5,11 @@
 --      upgrade % and what they wear in that slot go to the loot master and the council only.
 --      Raiders without the addon bid by rolling: /roll main spec, /roll 99 off spec.
 --   2. The council votes, 5 minutes at most (the loot master's clock). One vote each,
---      changeable; a council member who bid main spec sits out (their own loot). It ends
---      early once everyone who can vote has.
---   3. A clear winner (most votes) gets it, with the votes as the reason. A tie, or no votes,
+--      changeable, with at least one reason from the rules (class fit, biggest upgrade, less
+--      loot so far, reliability, effort); a council member who bid main spec sits out (their
+--      own loot). It ends early once everyone who can vote has.
+--   3. A clear winner (most votes) gets it, with the votes and their voters' reasons as the
+--      reason in the loot log ("council vote, 2 of 3: biggest upgrade"). A tie, or no votes,
 --      goes to a roll-off between the top candidates. The loot master can also award any
 --      candidate from the window, with a reason.
 -- Shortcuts (the rules): one main-spec bid gets it without a vote; no main-spec bids and
@@ -28,9 +30,21 @@ local VOTE = 300
 local WARN = 10
 ns.BID_TAGS = { L["BIS"], L["Big upgrade"], L["Sidegrade"], L["Situational"] }
 ns.NOTE_MAX = 60
+-- Why a council member votes as they do: the rules' criteria, in the rules' order. The key
+-- goes in the vote message, the text in the loot log.
+ns.VOTE_REASONS = {
+    { key = "fit", label = L["Class fit"], text = L["class fit"] },
+    { key = "upgrade", label = L["Biggest upgrade"], text = L["biggest upgrade"] },
+    { key = "loot", label = L["Less loot so far"], text = L["less loot so far"] },
+    { key = "reliable", label = L["Reliability"], text = L["reliability"] },
+    { key = "effort", label = L["Effort"], text = L["effort"] },
+}
+local REASON = {} -- key -> position in VOTE_REASONS
+for i, r in ipairs(ns.VOTE_REASONS) do REASON[r.key] = i end
 
 -- { sid, id, link, lm = name, council = { names }, voters = { [key] = true }, bids = { [key] = bid },
---   votes = { [voterKey] = candidateKey }, phase = "bids"|"vote"|"rolloff"|"done", mine = true on
+--   votes = { [voterKey] = candidateKey }, why = { [voterKey] = { reason keys } }, myWhy = { [reason
+--   key] = true } (this player's ticks), phase = "bids"|"vote"|"rolloff"|"done", mine = true on
 --   the loot master's addon, ends = time() the phase ends, winner }
 -- bid = { name, key, unit, resp = "ms"|"os", tags, note, gain (number|nil), gear = { itemIDs }, roll }
 local session
@@ -157,10 +171,24 @@ end)
 ---------------------------------------------------------------------------
 local Tally
 
-ns.OnMessage("V", function(m, sid, cand)
+-- Known reason keys from a message, once each, in the rules' order.
+local function Reasons(text)
+    local keys, seen = {}, {}
+    for _, key in ipairs(Split(text)) do
+        if REASON[key] and not seen[key] then
+            seen[key] = true
+            keys[#keys + 1] = key
+        end
+    end
+    sort(keys, function(a, b) return REASON[a] < REASON[b] end)
+    return keys
+end
+
+ns.OnMessage("V", function(m, sid, cand, why)
     local s = session
     if not s or tonumber(sid) ~= s.sid or s.phase ~= "vote" or not ns.CanVote(s, m.key) then return end
     s.votes[m.key] = cand ~= "" and cand or nil
+    s.why[m.key] = cand ~= "" and Reasons(why) or nil
     Changed()
     if s.mine then
         local _, n = ns.Tally(s)
@@ -168,11 +196,62 @@ ns.OnMessage("V", function(m, sid, cand)
     end
 end)
 
--- This council member's vote (nil takes it back).
+-- This player's ticked reasons, in the rules' order.
+local function MyWhy(s)
+    local keys = {}
+    for _, r in ipairs(ns.VOTE_REASONS) do
+        if s.myWhy and s.myWhy[r.key] then keys[#keys + 1] = r.key end
+    end
+    return keys
+end
+
+-- This council member's vote (nil takes it back). A vote needs at least one reason ticked.
 function ns.Vote(candKey)
     local s = session
-    if not s or s.phase ~= "vote" then return end
-    ns.SendTo(Recipients(s), "V", s.sid, candKey or "")
+    if not s or s.phase ~= "vote" then return false end
+    local why = MyWhy(s)
+    if candKey and #why == 0 then
+        ns.Say(L["Tick at least one reason first: it's posted in the loot log."])
+        return false
+    end
+    ns.SendTo(Recipients(s), "V", s.sid, candKey or "", candKey and concat(why, ",") or "")
+    return true
+end
+
+-- Ticks or unticks a reason; a vote already cast is sent again with the new reasons.
+function ns.SetVoteReason(key, on)
+    local s = session
+    if not s or not REASON[key] then return end
+    s.myWhy = s.myWhy or {}
+    s.myWhy[key] = on or nil
+    local cand = s.phase == "vote" and s.votes[Me()]
+    if cand and #MyWhy(s) > 0 then
+        ns.SendTo(Recipients(s), "V", s.sid, cand, concat(MyWhy(s), ","))
+    end
+    Changed()
+end
+
+-- "council vote, 2 of 3: biggest upgrade, less loot so far": the reasons given by at least
+-- half of those who voted for the winner, the most given first.
+local function VoteReason(s, cand, best, n)
+    local count, keys = {}, {}
+    for voter, c in pairs(s.votes) do
+        if c == cand and ns.CanVote(s, voter) then
+            for _, key in ipairs(s.why[voter] or {}) do count[key] = (count[key] or 0) + 1 end
+        end
+    end
+    for key, c in pairs(count) do
+        if c * 2 >= best then keys[#keys + 1] = key end
+    end
+    sort(keys, function(a, b)
+        if count[a] ~= count[b] then return count[a] > count[b] end
+        return REASON[a] < REASON[b]
+    end)
+    local text = L["council vote, %d of %d"]:format(best, n)
+    if #keys == 0 then return text end
+    local words = {}
+    for i, key in ipairs(keys) do words[i] = ns.VOTE_REASONS[REASON[key]].text end
+    return text .. ": " .. concat(words, ", ")
 end
 
 ---------------------------------------------------------------------------
@@ -254,7 +333,7 @@ Tally = function(timeUp)
         if c > best then top, best, tied = key, c, { key } elseif c == best then tied[#tied + 1] = key end
     end
     if top and #tied == 1 then
-        return ns.CouncilAward(top, L["council vote, %d of %d"]:format(best, n))
+        return ns.CouncilAward(top, VoteReason(s, top, best, n))
     end
     if not timeUp and n < Eligible(s) then return end
     if #tied == 0 then -- nobody voted: every main-spec candidate rolls
@@ -309,7 +388,7 @@ function ns.StartCouncil(id, link)
     local voters = {}
     for _, name in ipairs(council) do voters[ns.NameKey(name)] = true end
     session = { sid = ns.NewSession(), id = id, link = link, lm = me, council = council, voters = voters,
-        bids = {}, votes = {}, mine = true }
+        bids = {}, votes = {}, why = {}, mine = true }
     Phase(session, "bids", BIDS)
     ns.Announce(L["Council item: %s. Use the pop-up, or /roll for main spec, /roll 99 for off spec. %d seconds."]:format(link, BIDS))
     ns.SendSession(session)
@@ -376,7 +455,7 @@ ns.OnMessage("S", function(m, sid, id, kind, seconds, lm, council, link)
     if not member or ns.NameKey(lm) == me then return end
     local item = id and ns.db.items[id]
     session = { sid = sid, id = id, link = link ~= "" and link or (item and item.link) or ("item:" .. tostring(id)),
-        lm = lm, council = names, voters = voters, bids = {}, votes = {} }
+        lm = lm, council = names, voters = voters, bids = {}, votes = {}, why = {} }
     Phase(session, "bids", tonumber(seconds) or BIDS)
     if ns.ShowCouncilWindow then ns.ShowCouncilWindow() end
 end)

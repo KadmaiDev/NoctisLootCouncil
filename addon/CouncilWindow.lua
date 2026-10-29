@@ -4,7 +4,8 @@
 -- tonight (from this addon's own loot log) and the votes. Off-spec bids are listed below.
 -- Opens on the loot master's addon and each council member's when an item starts.
 --
--- Council members vote with the row's button (again to take it back); the loot master also
+-- Council members tick why (the rules' reasons, at least one, posted in the loot log) and vote
+-- with the row's button (again to take it back); the loot master also
 -- has Award (with a reason, required), Roll off between the most-voted, Close bids / Count
 -- votes now, and Call off.
 local ADDON, ns = ...
@@ -13,7 +14,7 @@ local L = ns.L
 
 local ipairs, pairs, time, floor, concat, type, tostring = ipairs, pairs, time, math.floor, table.concat, type, tostring
 
-local WIDTH, HEIGHT = 780, 560
+local WIDTH, HEIGHT = 780, 610
 local ROWS = 8
 local ROW_H = 40
 local COLS = { name = 16, wears = 190, upgrade = 380, earlier = 450, votes = 600, button = 640 }
@@ -142,6 +143,11 @@ local function Refresh()
     else
         frame.more:SetText("")
     end
+    frame.whyLabel:SetShown(voting)
+    for _, c in ipairs(frame.why) do
+        c:SetShown(voting)
+        c:SetChecked(s.myWhy and s.myWhy[c.key] or false)
+    end
     local owner = s.mine and s.phase ~= "done" and s.phase ~= "rolloff"
     frame.reason:SetShown(lm)
     frame.reasonLabel:SetShown(lm)
@@ -235,6 +241,22 @@ local function CreateWindow()
     f.offSpec = ns.Label(f, "GameFontHighlightSmall")
     f.offSpec:SetPoint("TOPLEFT", f.more, "BOTTOMLEFT", 0, -4)
     f.offSpec:SetPoint("RIGHT", f, "RIGHT", -16, 0)
+    -- Why a council member votes: ticked before or after voting.
+    f.whyLabel = ns.Label(f, "GameFontHighlightSmall")
+    f.whyLabel:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 18, 102)
+    f.whyLabel:SetText(L["Why you vote (at least one; posted in the loot log with the winner)"])
+    f.why = {}
+    for i, r in ipairs(ns.VOTE_REASONS) do
+        local c = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
+        c:SetSize(24, 24)
+        c:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 14 + (i - 1) * 150, 72)
+        c.label = ns.Label(c)
+        c.label:SetPoint("LEFT", c, "RIGHT", 2, 0)
+        c.label:SetText(r.label)
+        c.key = r.key
+        c:SetScript("OnClick", function(self) ns.SetVoteReason(self.key, self:GetChecked()) end)
+        f.why[i] = c
+    end
     -- The loot master's controls.
     f.reasonLabel = ns.Label(f, "GameFontHighlightSmall")
     f.reasonLabel:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 18, 44)

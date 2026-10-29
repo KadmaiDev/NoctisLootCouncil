@@ -53,7 +53,7 @@ An award (`log` entry):
 | `at` | number | unix time |
 | `how` | string | `ms` main spec roll, `ms2` second main spec, `os` off spec, `council` council award |
 | `roll` | number / nil | the winning roll |
-| `note` | string / nil | the council's reason, or the winner's bid tags and note |
+| `note` | string / nil | council awards: how it was decided, then `; bid: ` and the winner's bid tags and note if any. How: `council vote, 3 of 4` with `: ` and the reasons the winner's voters ticked (`class fit`, `biggest upgrade`, `less loot so far`, `reliability`, `effort`), `roll-off after a split vote, 87`, `the only main-spec bid`, or the loot master's own reason |
 | `tags` | string / nil | council awards: the winner's bid tags, e.g. "BIS, Big upgrade" |
 | `inst` | string / nil | raid name, e.g. "Molten Core" |
 | `boss` | string / nil | boss name, if the award followed a kill |
@@ -75,7 +75,7 @@ out with `/loot token`), JSON body:
   "instances": { "409": "Molten Core" },
   "drops": [ { "id": 18000, "at": 1793070000, "src": "e663", "inst": 409, "n": 1 } ],
   "awards": [ { "id": 18000, "link": "...", "who": "Ilsa Marrow", "class": "WARLOCK", "at": 1793070100,
-                "how": "council", "note": "Warlock priority; biggest upgrade", "inst": "Molten Core",
+                "how": "council", "note": "council vote, 3 of 4: biggest upgrade; bid: BIS", "inst": "Molten Core",
                 "boss": "Lucifron", "nms": 4, "nos": 1, "tags": "BIS" } ]
 }
 ```

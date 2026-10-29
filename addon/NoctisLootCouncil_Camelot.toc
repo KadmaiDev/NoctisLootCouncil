@@ -2,7 +2,7 @@
 ## Title: Noctis Loot Council
 ## Author: Kadmai
 ## Notes: Loot rolls and loot council for the Noctis guild, and a list of every raid drop seen. /nlc
-## Version: 0.1.0
+## Version: 0.1.1
 ## IconTexture: Interface\AddOns\NoctisLootCouncil\media\icon.tga
 ## Category: Loot
 ## Category-deDE: Beute

@@ -92,13 +92,17 @@ def test_council_bids_go_only_to_the_council_and_a_clear_vote_awards(realm):
     # The council sees the candidates; raiders don't.
     assert r.seren.sees("Ilsa Marrow") and r.seren.sees("first upgrade in weeks")
     assert not r.vespera.sees("first upgrade in weeks")
+    r.seren.check("Biggest upgrade")
     r.seren.click("Vote", near="Ilsa Marrow")
+    r.doran.check("Biggest upgrade")
     r.doran.click("Vote", near="Ilsa Marrow")
+    r.lm.check("Biggest upgrade")
     r.lm.click("Vote", near="Vespera Ashward")
     r.wait(2)
     assert f"Ilsa Marrow wins {SASH}" in r.said()
     [award] = r.lm.query("ns.db.log")
     assert (award["who"], award["how"], award["tags"]) == ("Ilsa Marrow", "council", "BIS")
+    assert award["note"].startswith("council vote, 2 of 3: biggest upgrade;")
     assert "first upgrade in weeks" in award["note"]
     # The councillors' windows show the result too.
     assert r.seren.sees("Awarded to Ilsa Marrow.")
@@ -110,7 +114,9 @@ def test_a_split_vote_goes_to_a_roll_off_between_the_tied(realm):
     r.ilsa.click("Main spec")
     r.vespera.click("Main spec")
     r.wait(31)
+    r.seren.check("Biggest upgrade")
     r.seren.click("Vote", near="Ilsa Marrow")
+    r.doran.check("Biggest upgrade")
     r.doran.click("Vote", near="Vespera Ashward")
     r.wait(301)  # Kadmai never votes: the time runs out, 1-1
     assert "Roll-off for" in r.said()

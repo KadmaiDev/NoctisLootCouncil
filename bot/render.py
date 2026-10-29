@@ -29,7 +29,10 @@ DEFAULT_COLOUR = 0x4A55C9
 
 ROLL_ORDER_TEXT = "Main spec, then second main spec, then off spec."
 SUGGESTERS_SHOWN = 15  # names on the officer post; the rest are "and N more"
-NOTE_INLINE = 40  # a council note up to this long goes on the award's line, a longer one quoted under it
+# The addon's note on a council award: how it was decided, then the winner's bid. A vote win
+# carries the reasons its voters ticked: 'council vote, 3 of 4: biggest upgrade; bid: BIS "..."'.
+COUNCIL_VOTE = re.compile(r"council vote, (\d+) of (\d+)(?:: (.+))?")
+BID_SEP = "; bid: "
 # Where an item was found before it dropped for us (items.origin).
 ORIGIN_TEXT = {"wowhead": "spotted on Wowhead", "other_raid": "seen in another guild's raid"}
 EVERYTHING_ELSE = ("Everything else is rolled: main spec, then second main spec (already won one that night), "
@@ -288,16 +291,26 @@ def suggestion_reply(on: bool, count: int) -> str:
 
 # ---- #loot-log -------------------------------------------------------------
 
+def council_how(note: str | None) -> str:
+    """'council, 3 of 4 votes · biggest upgrade, less loot so far', then the winner's bid in small
+    text on the next line. Other decisions ('roll-off after a split vote, 87', 'the only main-spec
+    bid', the loot master's own reason) follow 'council ·' as they are."""
+    reason, sep, bid = (note or "").rpartition(BID_SEP)
+    if not sep:
+        reason, bid = note or "", ""
+    vote = COUNCIL_VOTE.fullmatch(reason)
+    if vote:
+        how = f"council, {vote[1]} of {vote[2]} votes" + (f" · {md(vote[3])}" if vote[3] else "")
+    else:
+        how = f"council · {md(reason)}" if reason else "council"
+    return how + (f"\n-# bid: {md(bid)}" if bid else "")
+
+
 def award_line(a: AwardInfo) -> str:
     """'Felheart Gloves → **Corvin Dusk** · main-spec roll, 77 · new item'."""
     item = with_emoji(a.emoji, linked(md(a.item_name), a.url))
     if a.how == COUNCIL:
-        line = f"{item} → **{md(a.who)}** · council"
-        if a.note and len(a.note) <= NOTE_INLINE:
-            line += f" · {md(a.note)}"
-        elif a.note:
-            line += f'\n> "{md(a.note)}"'
-        return line
+        return f"{item} → **{md(a.who)}** · {council_how(a.note)}"
     how = rules.HOW_ROLL_TEXT.get(a.how, md(a.how))
     if a.roll is not None:
         how += f", {a.roll}"

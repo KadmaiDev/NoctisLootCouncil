@@ -55,7 +55,7 @@ def sample_body(uploader: str = "Kadmai Moonwhisper") -> dict:
         ],
         "awards": [
             {"id": 18000, "link": link(18000, "Sash of the Unseen"), "who": "Ilsa Marrow", "class": "WARLOCK",
-             "at": RAID + 700, "how": "council", "note": "Warlock priority; biggest upgrade",
+             "at": RAID + 700, "how": "council", "note": "council vote, 3 of 4: biggest upgrade; bid: BIS",
              "inst": "Molten Core", "boss": "Lucifron", "nms": 4, "nos": 1},
             {"id": 16805, "link": link(16805, "Felheart Gloves"), "who": "Corvin Dusk", "class": "WARLOCK",
              "at": RAID + 1000, "how": "ms", "roll": 77, "inst": "Molten Core", "boss": "Lucifron",
