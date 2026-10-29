@@ -393,23 +393,30 @@ class Store:
                     groups[-1].append(d)
                 else:
                     groups.append([d])
-            claimed: set[int] = set()  # a row belongs to one of this upload's drops
+            # A stored row can hold reports this upload has as several drops (a chain whose middle
+            # copies this officer missed): those drops are the row's drop, their copies added up.
+            drops_of: list[tuple[list[list[UploadDrop]], dict[int, int]]] = []
             for group in groups:
-                first, last = group[0].at, group[-1].at
-                rows = [r for r in self.conn.execute(
+                rows = {r["id"]: r["n"] for r in self.conn.execute(
                     "SELECT id, n FROM drops WHERE item_id = ? AND src = ? AND at <= ? "
                     "AND COALESCE(last_at, at) >= ? ORDER BY ABS(at - ?), id",
-                    (item_id, src, last + window, first - window, first))
-                    if r["id"] not in claimed]
-                claimed.update(r["id"] for r in rows)
-                copies, known = sum(d.n for d in group), sum(r["n"] for r in rows)
+                    (item_id, src, group[-1].at + window, group[0].at - window, group[0].at))}
+                joined = [g for g in drops_of if rows.keys() & g[1].keys()]
+                for g in joined:
+                    drops_of.remove(g)
+                drops_of.append(([gr for g in joined for gr in g[0]] + [group],
+                                 {k: v for g in joined for k, v in g[1].items()} | rows))
+            for parts, rows in drops_of:
+                first, last = min(g[0].at for g in parts), max(g[-1].at for g in parts)
+                copies, known = sum(d.n for g in parts for d in g), sum(rows.values())
                 if rows:  # the drop's span grows to take in this upload's reports
+                    keep = next(iter(rows))  # the row nearest in time to this upload's first report
                     self.conn.execute("UPDATE drops SET n = n + ?, at = MIN(at, ?), "
                                       "last_at = MAX(COALESCE(last_at, at), ?) WHERE id = ?",
-                                      (max(copies - known, 0), first, last, rows[0]["id"]))
+                                      (max(copies - known, 0), first, last, keep))
                 else:
                     self.conn.execute("INSERT INTO drops(item_id, src, at, last_at, inst, n) VALUES(?, ?, ?, ?, ?, ?)",
-                                      (item_id, src, first, last, group[0].inst, copies))
+                                      (item_id, src, first, last, parts[0][0].inst, copies))
                 if copies <= known:
                     continue
                 if self.item_exists(item_id):

@@ -125,9 +125,11 @@ def test_copies_seen_in_the_window_and_in_chat_count_once(store, first, second):
 # Three copies seen in chat 800 seconds apart: one chain, longer than the window from end to end.
 CHAIN = [{"id": 16805, "at": RAID + 900 + i * 800, "src": "e663", "inst": 409, "n": 1} for i in range(3)]
 LATE = [dict(CHAIN[-1])]  # an officer who only saw the last copy
+ENDS = [dict(CHAIN[0]), dict(CHAIN[-1])]  # one who missed the middle copy: two drops, 1600 seconds apart
 
 
-@pytest.mark.parametrize("first, second", [(CHAIN, LATE), (LATE, CHAIN)], ids=["chain first", "late copy first"])
+@pytest.mark.parametrize("first, second", [(CHAIN, LATE), (LATE, CHAIN), (CHAIN, ENDS), (ENDS, CHAIN)],
+                         ids=["chain first", "late copy first", "chain then its ends", "ends then the chain"])
 def test_a_chain_longer_than_the_window_still_matches_its_late_copies(store, first, second):
     for owner, drops in ((("discord:1", "Kadmai"), first), (("discord:2", "Seren"), second)):
         body = sample_body(owner[1])
