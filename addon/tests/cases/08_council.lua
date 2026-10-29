@@ -187,6 +187,7 @@ test("only off-spec bids: they roll off, and it's logged as off spec", function(
     wow.wait(30)
     eq(lastSaid(), "Odo Fenwick wins " .. SASH .. " (council: off-spec roll, 90).")
     eq(ns.db.log[1].how, "os")
+    eq(ns.db.log[1].roll, 90) -- #loot-log shows "off-spec roll, 90"
 end)
 
 test("no bids: the loot master disenchants or banks it", function()

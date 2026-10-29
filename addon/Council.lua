@@ -287,8 +287,9 @@ local function Wanted(s)
     return ms, os
 end
 
--- Awards it to a candidate with a reason (their tags and note are added to the log's).
-function ns.CouncilAward(candKey, reason)
+-- Awards it to a candidate with a reason (their tags and note are added to the log's). An
+-- off-spec roll-off's roll goes in the log too, as a roll item's does.
+function ns.CouncilAward(candKey, reason, roll)
     local s = session
     if not s or not s.mine or s.phase == "done" then return false end
     local b = s.bids[candKey]
@@ -301,7 +302,7 @@ function ns.CouncilAward(candKey, reason)
     local note = #bid > 0 and reason .. "; " .. L["bid: %s"]:format(concat(bid, " ")) or reason
     local ms, os = Wanted(s)
     ns.LogAward({ id = s.id, link = s.link, who = b.name, how = b.resp == "os" and "os" or "council",
-        note = note, nms = ms, nos = os, tags = b.tags and #b.tags > 0 and concat(b.tags, ", ") or nil }, b.unit)
+        roll = b.resp == "os" and roll or nil, note = note, nms = ms, nos = os, tags = b.tags and #b.tags > 0 and concat(b.tags, ", ") or nil }, b.unit)
     ns.Announce(L["%s wins %s (council: %s)."]:format(b.name, s.link, reason))
     End(s, b.name)
     return true
@@ -316,7 +317,7 @@ local function RollOff(s, keys, reasonFmt)
     sort(names)
     Phase(s, "rolloff")
     local ok = ns.StartRoll(s.id, s.link, { only = only, names = concat(names, ", "),
-        onAward = function(e, roll) ns.CouncilAward(e.key, reasonFmt:format(roll)) end,
+        onAward = function(e, roll) ns.CouncilAward(e.key, reasonFmt:format(roll), roll) end,
         onNobody = function() End(s) end })
     if not ok then
         ns.Say(L["A roll is running; finish it, then award %s from the council window."]:format(s.link))
