@@ -1,6 +1,6 @@
 -- The council window: what the council sees while it decides a council item (the mockup's
 -- "What the council sees"). Main-spec bids are the candidates; under each, the tags and note
--- from their pop-up. Columns: what they wear now, their upgrade %, what they've won before
+-- from their pop-up. Columns: what they wear now, what they've won before
 -- tonight (from this addon's own loot log) and the votes. Off-spec bids are listed below.
 -- Opens on the loot master's addon and each council member's when an item starts.
 --
@@ -17,7 +17,7 @@ local ipairs, pairs, time, floor, ceil, concat, type, tostring = ipairs, pairs, 
 local WIDTH, HEIGHT = 780, 610
 local ROWS = 8
 local ROW_H = 40
-local COLS = { name = 16, wears = 190, upgrade = 380, earlier = 450, votes = 600, button = 640 }
+local COLS = { name = 16, wears = 190, earlier = 400, votes = 600, button = 640 }
 
 local frame, rows = nil, {}
 local tick = 0
@@ -127,7 +127,6 @@ local function Refresh()
             local wears = {}
             for _, id in ipairs(b.gear or {}) do wears[#wears + 1] = ItemName(id) end
             row.wears:SetText(#wears > 0 and concat(wears, ", ") or "-")
-            row.upgrade:SetText(ns.UpgradeText(b.gain) or "-")
             row.earlier:SetText(ns.EarlierLoot(b.key))
             row.votes:SetText(tostring(counts[b.key] or 0))
             local mine = s.votes[me] == b.key
@@ -196,9 +195,8 @@ local function Row(i)
         return fs
     end
     f.name = Cell(COLS.name, 170, "GameFontNormal")
-    f.wears = Cell(COLS.wears, 180)
-    f.upgrade = Cell(COLS.upgrade, 64)
-    f.earlier = Cell(COLS.earlier, 145)
+    f.wears = Cell(COLS.wears, 200)
+    f.earlier = Cell(COLS.earlier, 190)
     f.votes = Cell(COLS.votes, 30)
     f.said = ns.Label(f, "GameFontHighlightSmall")
     f.said:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -18)
@@ -238,7 +236,7 @@ local function CreateWindow()
     f.council = ns.Label(f, "GameFontHighlightSmall")
     f.council:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -80)
     f.council:SetPoint("RIGHT", f, "RIGHT", -16, 0)
-    local heads = { { COLS.name, L["Candidate"] }, { COLS.wears, L["Wears now"] }, { COLS.upgrade, L["Upgrade"] },
+    local heads = { { COLS.name, L["Candidate"] }, { COLS.wears, L["Wears now"] },
         { COLS.earlier, L["Before tonight"] }, { COLS.votes, L["Votes"] } }
     for _, h in ipairs(heads) do
         local fs = ns.Label(f, "GameFontNormalSmall")

@@ -22,7 +22,7 @@ Core.lua
 UI.lua
 Comms.lua
 Discovery.lua
-Upgrades.lua
+Gear.lua
 Rolls.lua
 Council.lua
 CouncilWindow.lua

@@ -35,7 +35,7 @@ test("it opens for the loot master with the item, its priority and the time left
     eq(window().phase:GetText(), "Bids close in 0:25")
 end)
 
-test("candidates: main spec first, with what they wear, upgrade, earlier loot, tags and note", function()
+test("candidates: main spec first, with what they wear, earlier loot, tags and note, and no upgrade %", function()
     local ns = lootMaster()
     ns.db.log[1] = { id = 1, link = "x", who = "Ilsa Marrow", at = wow.clock - 4 * 86400, how = "ms" }
     wow.type("/nlc start " .. SASH)
@@ -49,7 +49,7 @@ test("candidates: main spec first, with what they wear, upgrade, earlier loot, t
     local all = table.concat(text, "\n")
     assert(all:find("Ilsa Marrow", 1, true), all)
     assert(all:find("Netherwind Belt", 1, true), all)
-    assert(all:find("+14%", 1, true), all)
+    assert(not all:find("14%", 1, true), "an upgrade % from 0.1.0 isn't shown")
     assert(all:find("1 item, 4 days ago", 1, true), all)
     assert(all:find('BIS  "last piece of my set"', 1, true), all)
     assert(all:find("Odo Fenwick · trial", 1, true), all)
@@ -145,8 +145,8 @@ test("more candidates than rows: a page at a time, and the ninth can be voted in
     wow.raid(members)
     wow.type("/nlc councillors Seren Vale, Doran Pike, Kadmai Moonwhisper")
     wow.type("/nlc start " .. SASH .. " council")
-    -- Sorted by upgrade %, so Raider9 Test (the smallest) is on the second page.
-    for i = 1, 9 do bid("Raider" .. i .. " Test", "ms", "", "", tostring(20 - i)) end
+    -- In name order, so Raider9 Test is on the second page.
+    for i = 1, 9 do bid("Raider" .. i .. " Test", "ms") end
     wow.wait(30)
     assert(not rowOf("Raider9 Test"), "not on the first page")
     eq(window().more:GetText(), "Candidates 1-8 of 9")

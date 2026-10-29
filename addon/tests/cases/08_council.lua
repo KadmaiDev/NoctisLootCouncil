@@ -18,7 +18,7 @@ local function lootMaster()
     return ns
 end
 
-local function bid(who, resp, tags, note, gain, gear)
+local function bid(who, resp, tags, note, gain, gear) -- gain: what 0.1.0 sent as the upgrade %
     local s = wow.ns.CouncilSession()
     wow.message(who, "WHISPER", "B", s.sid, resp, tags or "", note or "", gain or "", gear or "")
 end
@@ -56,7 +56,7 @@ test("bids from the pop-up and from rolls; a pass takes a bid back; a clear vote
     bid("Doran Pike", "pass")            -- changed his mind
     local s = ns.CouncilSession()
     eq(s.bids["ilsa marrow"].note, "first upgrade in weeks")
-    eq(s.bids["ilsa marrow"].gain, 4.5)
+    eq(s.bids["ilsa marrow"].gain, nil, "an upgrade % from 0.1.0 is ignored")
     eq(s.bids["ilsa marrow"].gear[1], 16818)
     eq(s.bids["odo fenwick"].resp, "ms")
     eq(s.bids["odo fenwick"].roll, 70)

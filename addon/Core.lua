@@ -76,7 +76,6 @@ end)
 --   decisionsAt = time()|nil,           -- the newest decisions from Discord applied (Sync.lua)
 --   scale = 0.5-3|nil,                  -- our windows' size (nil = EllesmereUI's Window Scale, else 1) (UI.lua)
 --   council = { "First Last", ... }|nil, -- who votes on council items (Council.lua; the loot master's matters)
---   roles = { ["First Last"] = role }|nil, -- a character's chosen role for the upgrade % (Upgrades.lua)
 --   popupOff = true|nil,                -- no Main spec / Off spec / Pass pop-up (Popup.lua)
 --   autoOpenOff = true|nil,             -- the loot master's window doesn't open by itself (LootWindow.lua)
 -- }
@@ -85,7 +84,7 @@ end)
 local DB_FIELDS = { v = "number", items = "table", encounters = "table", bossSources = "table",
     instances = "table", minQuality = "number", dungeons = "boolean", log = "table", night = "number",
     trialRanks = "table", drops = "table", me = "string", decisionsAt = "number", scale = "number",
-    council = "table", roles = "table", popupOff = "boolean", autoOpenOff = "boolean", undone = "table" }
+    council = "table", popupOff = "boolean", autoOpenOff = "boolean", undone = "table" }
 ns.ITEM_FIELDS = { link = "string", q = "number", first = "number", last = "number", seen = "number",
     from = "table", inst = "number", handling = "string", note = "string",
     slot = "string", sub = "string" }
@@ -161,7 +160,6 @@ function ns.Repair(db)
     if db.council then
         db.council = Compact(db.council, function(r) return type(r) == "string" end)
     end
-    if db.roles then KeepMap(db.roles, "string", "string") end
     return db
 end
 

@@ -55,7 +55,7 @@ Only each player's first roll counts. Main-spec wins count as "tonight's" for 12
 
 Council items go to the loot council instead of a roll.
 
-1. **Bids, 30 seconds.** The pop-up asks Main spec / Off spec / Pass, with optional tags (BIS, Big upgrade, Sidegrade, Situational) and a short note. The bid goes to the loot master and the council only, with your **upgrade %** (the item's stats for your role against what you wear, as a share of all your gear) and what you wear in that slot. Raiders without the addon bid by rolling.
+1. **Bids, 30 seconds.** The pop-up asks Main spec / Off spec / Pass, with optional tags (BIS, Big upgrade, Sidegrade, Situational) and a short note. The bid goes to the loot master and the council only, with what you wear in that slot. Raiders without the addon bid by rolling.
 2. **The council votes**, up to 5 minutes, one vote each, ticking at least one reason from the rules: class fit, biggest upgrade, less loot so far, reliability, effort. A council member who bid on the item sits it out.
 3. **The most votes wins**, and the loot log says why: the votes and the reasons at least half of the winner's voters gave ("council vote, 3 of 4: biggest upgrade, less loot so far"), with the winner's bid tags and note. A split vote goes to a roll-off between the tied. One main-spec bid wins without a vote; only off-spec bids roll off; no bids, and the loot master disenchants or banks it. The loot master can also award it with a reason.
 
@@ -66,9 +66,6 @@ The council window shows each candidate's gear, upgrade, earlier loot, tags, not
 | `/nlc councillors First Last, First Last` | who votes (on the loot master's addon) |
 | `/nlc award First Last, reason` | award the council item to a candidate |
 | `/nlc councilwindow` | open the council window again |
-| `/nlc role [melee\|ranged\|caster\|healer\|tank\|feral\|auto]` | the role your upgrade % is worked out for |
-
-The upgrade % only counts plain stats: trinkets with use or proc effects, set bonuses and resistance gear score low, so the council goes by tags and notes for those.
 
 ## Windows, export and Discord
 

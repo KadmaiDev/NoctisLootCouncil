@@ -1,4 +1,4 @@
--- Addon messages, the raider's pop-up and the upgrade % it shows and sends.
+-- Addon messages and the raider's pop-up.
 
 local SASH = wow.link(18000, "Sash of the Unseen", 4)
 local BELT = wow.link(16818, "Netherwind Belt", 4)
@@ -88,17 +88,11 @@ end)
 test("council item: tags and a note, and Main spec sends the bid to the loot master and council only", function()
     local ns = raider()
     wow.equip[18000] = { "Armor", "Cloth", "INVTYPE_WAIST", class = 4, sub = 1 }
-    wow.equip[16818] = { "Armor", "Cloth", "INVTYPE_WAIST", class = 4, sub = 1 }
-    wow.stats[18000] = { ITEM_MOD_SPELL_POWER_SHORT = 20, ITEM_MOD_INTELLECT_SHORT = 10, ITEM_MOD_STAMINA_SHORT = 10, ITEM_MOD_HIT_SPELL_RATING_SHORT = 1 }
-    wow.stats[16818] = { ITEM_MOD_SPELL_POWER_SHORT = 12, ITEM_MOD_INTELLECT_SHORT = 8, ITEM_MOD_STAMINA_SHORT = 10 }
-    wow.stats[1] = { ITEM_MOD_SPELL_POWER_SHORT = 680 } -- the rest of the gear
     wow.gear[6] = BELT
-    wow.gear[1] = wow.link(1, "Everything Else", 4)
     wow.message("Seren Vale", "RAID", "S", 201, 18000, "council", 30, "Seren Vale", "Seren Vale,Doran Pike", SASH)
     assert(popup():IsShown())
     assert(popup().note:IsShown())
-    -- 41 against 20, of 700 in all: +3%
-    assert(popup().info:GetText():find("+3%", 1, true), popup().info:GetText())
+    eq(popup().info:GetText(), "Goes to the loot master and council only.", "no upgrade % for the raider to lean on")
     popup().chips[1]:SetChecked(true) -- BIS
     popup().chips[3]:SetChecked(true) -- Sidegrade
     popup().note:SetText("first upgrade in weeks")
@@ -113,7 +107,7 @@ test("council item: tags and a note, and Main spec sends the bid to the loot mas
     eq(bids[1][3], "ms")
     eq(bids[1][4], "BIS,Sidegrade")
     eq(bids[1][5], "first upgrade in weeks")
-    eq(bids[1][6], "3.0")
+    eq(bids[1][6], "", "where 0.1.0 sent an upgrade %")
     eq(bids[1][7], "16818")
 end)
 
@@ -156,33 +150,6 @@ test("/nlc popup off: no pop-up", function()
     wow.type("/nlc popup off")
     wow.message("Seren Vale", "RAID", "S", 101, HELM, "roll", 30)
     eq(popup(), nil)
-end)
-
-test("upgrade %: can't use it, no upgrade, and nothing worn yet", function()
-    local ns = raider()
-    wow.equip[16866] = { "Armor", "Plate", "INVTYPE_HEAD", class = 4, sub = 4 }
-    wow.stats[16866] = { ITEM_MOD_STRENGTH_SHORT = 20 }
-    eq(ns.MyUpgrade(HELM), nil, "a warlock can't wear plate")
-    wow.equip[18000] = { "Armor", "Cloth", "INVTYPE_WAIST", class = 4, sub = 1 }
-    wow.stats[18000] = { ITEM_MOD_SPELL_POWER_SHORT = 20 }
-    eq(ns.MyUpgrade(SASH), math.huge, "nothing worn scores yet")
-    eq(ns.UpgradeText(math.huge), "new")
-    wow.equip[16818] = { "Armor", "Cloth", "INVTYPE_WAIST", class = 4, sub = 1 }
-    wow.stats[16818] = { ITEM_MOD_SPELL_POWER_SHORT = 40 }
-    wow.gear[6] = BELT
-    eq(ns.MyUpgrade(SASH), 0, "worse than the belt worn")
-end)
-
-test("/nlc role: the role the upgrade % is worked out for", function()
-    local ns = raider()
-    wow.player.class = "DRUID"
-    eq(ns.MyRole(), "feral", "a druid's default")
-    wow.type("/nlc role healer")
-    eq(ns.MyRole(), "healer")
-    wow.type("/nlc role ranged")
-    assert(printed():find("Not a role for your class", 1, true))
-    wow.type("/nlc role auto")
-    eq(ns.MyRole(), "feral")
 end)
 
 test("pop-ups only open for someone running the loot, and a council's only from the loot master it names", function()

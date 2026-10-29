@@ -7,6 +7,7 @@
 - **`/nlc undo` reaches Discord**: an award taken back after it was uploaded leaves the #loot-log post at the next upload, instead of staying there next to the correction.
 - **Bids and votes stay private.** They never go raid-wide: if the game won't whisper them, a bid becomes a roll (without its tags and note) and a council member is told their vote didn't arrive.
 - **Only the loot master runs the council.** Pop-ups, council sessions and their next steps only count from the raid's leader, an assistant or the master looter, and from the loot master they name; a vote without a reason doesn't count.
+- **No more upgrade %.** It was worked out from levelling stat weights and missed set bonuses, procs and caps, so it's gone from the pop-up and the council window (and `/nlc role` with it). The council goes by the bid's tags, note and what the raider wears in that slot.
 - **The council window pages** through more than eight candidates, so every one can be voted for.
 - **No roll starts while a council item is open** (its rolls would be taken as bids), and a council roll-off that's called off, or a tie nobody re-rolls, goes back to the vote for the loot master to decide.
 - **Long roll-off and tie announcements** go over several lines of raid chat instead of not at all.

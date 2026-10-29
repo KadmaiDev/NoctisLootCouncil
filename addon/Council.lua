@@ -1,8 +1,8 @@
 -- The loot council, for council items. The loot master starts it (/nlc start, or the loot
 -- window's button); then:
 --   1. Bids, 30 seconds. Raiders with the addon get the pop-up: Main spec / Off spec / Pass,
---      optional tags (BIS, Big upgrade, Sidegrade, Situational) and a note; their bid, their
---      upgrade % and what they wear in that slot go to the loot master and the council only.
+--      optional tags (BIS, Big upgrade, Sidegrade, Situational) and a note; their bid and what
+--      they wear in that slot go to the loot master and the council only.
 --      Raiders without the addon bid by rolling: /roll main spec, /roll 99 off spec.
 --   2. The council votes, 5 minutes at most (the loot master's clock). One vote each,
 --      changeable, with at least one reason from the rules (class fit, biggest upgrade, less
@@ -46,7 +46,7 @@ for i, r in ipairs(ns.VOTE_REASONS) do REASON[r.key] = i end
 --   votes = { [voterKey] = candidateKey }, why = { [voterKey] = { reason keys } }, myWhy = { [reason
 --   key] = true } (this player's ticks), phase = "bids"|"vote"|"rolloff"|"done", mine = true on
 --   the loot master's addon, ends = time() the phase ends, winner }
--- bid = { name, key, unit, resp = "ms"|"os", tags, note, gain (number|nil), gear = { itemIDs }, roll }
+-- bid = { name, key, unit, resp = "ms"|"os", tags, note, gear = { itemIDs }, roll }
 local session
 local token = 0
 
@@ -84,8 +84,6 @@ function ns.Candidates(s)
     for _, b in pairs(s.bids) do list[#list + 1] = b end
     sort(list, function(a, b)
         if a.resp ~= b.resp then return a.resp == "ms" end
-        local x, y = a.gain or -1, b.gain or -1
-        if x ~= y then return x > y end
         return a.key < b.key
     end)
     return list
@@ -120,7 +118,7 @@ local function Split(text)
     return list
 end
 
-local function AddBid(m, resp, tags, note, gain, gear, roll)
+local function AddBid(m, resp, tags, note, gear, roll)
     local s = session
     if resp == "pass" then
         s.bids[m.key] = nil
@@ -129,7 +127,6 @@ local function AddBid(m, resp, tags, note, gain, gear, roll)
         b.resp = resp
         b.tags = tags or b.tags
         b.note = note or b.note
-        b.gain = gain or b.gain
         b.gear = gear or b.gear
         b.roll = roll or b.roll
         b.trial = m.unit and ns.IsTrial(m.unit) or false
@@ -138,16 +135,14 @@ local function AddBid(m, resp, tags, note, gain, gear, roll)
     Changed()
 end
 
-ns.OnMessage("B", function(m, sid, resp, tags, note, gain, gear)
+ns.OnMessage("B", function(m, sid, resp, tags, note, _, gear) -- _: 0.1.0's upgrade %, ignored
     local s = session
     if not s or tonumber(sid) ~= s.sid or s.phase ~= "bids" then return end
     if resp ~= "ms" and resp ~= "os" and resp ~= "pass" then return end
-    local g = tonumber(gain)
-    if gain == "new" then g = math.huge end
     local ids = {}
     for _, id in ipairs(Split(gear)) do ids[#ids + 1] = tonumber(id) end
     note = note and note:sub(1, ns.NOTE_MAX) or nil
-    AddBid(m, resp, Split(tags), note ~= "" and note or nil, g, ids)
+    AddBid(m, resp, Split(tags), note ~= "" and note or nil, ids)
 end)
 
 -- Raiders without the addon bid by rolling; a roll from someone who bid with the pop-up is
@@ -162,7 +157,7 @@ ns.On("CHAT_MSG_SYSTEM", function(text)
         b.roll = b.roll or roll
         Changed()
     else
-        AddBid(m, high == 100 and "ms" or "os", nil, nil, nil, nil, roll)
+        AddBid(m, high == 100 and "ms" or "os", nil, nil, nil, roll)
     end
 end)
 

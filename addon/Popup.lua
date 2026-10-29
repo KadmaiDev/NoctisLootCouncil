@@ -3,8 +3,7 @@
 --  * A roll item: Main spec does /roll, Off spec /roll 99. The roll itself, in chat, is what
 --    counts, exactly as if it were typed.
 --  * A council item: no roll yet. Optional tags and a note, then Main spec or Off spec sends
---    the bid (with your upgrade % and what you wear in that slot) to the loot master and the
---    council only; Pass takes a bid back.
+--    the bid (with what you wear in that slot) to the loot master and the council only; Pass takes a bid back.
 -- It closes when you choose, when the loot master ends it, or when time is up. /nlc popup off
 -- turns it off for this account.
 local ADDON, ns = ...
@@ -53,12 +52,6 @@ local function Tags()
     return concat(list, ",")
 end
 
-local function Gain()
-    local gain = ns.MyUpgrade(open.link)
-    if gain == math.huge then return "new" end
-    return gain and ("%.1f"):format(gain) or ""
-end
-
 local function Choose(resp)
     local o = open
     if not o then return end
@@ -68,8 +61,9 @@ local function Choose(resp)
         local note = (frame.note:GetText() or ""):sub(1, ns.NOTE_MAX)
         local names = { o.lm }
         for _, n in ipairs(o.council) do names[#names + 1] = n end
+        -- The empty field is where 0.1.0 sent an upgrade %, kept so its council windows still read the rest.
         local missed = ns.SendTo(names, "B", o.sid, resp, resp == "pass" and "" or Tags(), resp == "pass" and "" or note,
-            resp == "pass" and "" or Gain(), ns.WornIDs(o.link))
+            "", ns.WornIDs(o.link))
         -- Not everyone got it privately: a roll is a bid everyone's addon reads, without the
         -- tags and note (kept private), as if bidding without the addon.
         if missed and resp ~= "pass" then
@@ -133,14 +127,7 @@ local function Show(o)
     frame:SetHeight(council and COUNCIL_HEIGHT or HEIGHT)
     frame.title:SetText(council and L["Council item"] or L["Roll"])
     frame.item:SetText(o.link)
-    local up = ns.UpgradeText(ns.MyUpgrade(o.link))
-    if council then
-        frame.info:SetText(up and L["Your upgrade: %s. Goes to the loot master and council only."]:format(up)
-            or L["Goes to the loot master and council only."])
-    else
-        frame.info:SetText(up and L["Your upgrade: %s. Main spec rolls 1-100, off spec 1-99."]:format(up)
-            or L["Main spec rolls 1-100, off spec 1-99."])
-    end
+    frame.info:SetText(council and L["Goes to the loot master and council only."] or L["Main spec rolls 1-100, off spec 1-99."])
     for _, chip in ipairs(frame.chips) do
         chip:SetChecked(false)
         chip:SetShown(council)
