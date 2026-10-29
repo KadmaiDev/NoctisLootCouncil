@@ -27,7 +27,7 @@ import uuid
 
 import package
 
-PROJECT_ID = None  # set once the owner has created the project on CurseForge
+PROJECT_ID = 1771629  # the Noctis Loot Council project on CurseForge
 API = "https://wow.curseforge.com/api"
 GAME_VERSIONS = [17053]  # WoW Forever 1.60.1; at launch, find the live one with --versions
 FOREVER_TYPE = 88568  # CurseForge's game version type for WoW Forever
