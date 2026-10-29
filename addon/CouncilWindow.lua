@@ -12,7 +12,7 @@ local ADDON, ns = ...
 if ns.disabled then return end
 local L = ns.L
 
-local ipairs, pairs, time, floor, concat, type, tostring = ipairs, pairs, time, math.floor, table.concat, type, tostring
+local ipairs, pairs, time, floor, ceil, concat, type, tostring = ipairs, pairs, time, math.floor, math.ceil, table.concat, type, tostring
 
 local WIDTH, HEIGHT = 780, 610
 local ROWS = 8
@@ -21,11 +21,13 @@ local COLS = { name = 16, wears = 190, upgrade = 380, earlier = 450, votes = 600
 
 local frame, rows = nil, {}
 local tick = 0
+local page, pageSid = 1, nil -- more than ROWS candidates: which ROWS are shown
 
 local function Me() return ns.NameKey(ns.PlayerName()) end
 
 local function ClassColour(unit, name)
-    local _, class = unit and UnitClass and UnitClass(unit)
+    local _, class
+    if unit and UnitClass then _, class = UnitClass(unit) end
     local c = ns.Plain(class) and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
     if c and c.colorStr then return "|c" .. c.colorStr .. name .. "|r" end
     return name
@@ -112,8 +114,12 @@ local function Refresh()
     for _, b in ipairs(ns.Candidates(s)) do
         if b.resp == "ms" then list[#list + 1] = b else offSpec[#offSpec + 1] = b end
     end
+    if pageSid ~= s.sid then page, pageSid = 1, s.sid end
+    local pages = math.max(1, ceil(#list / ROWS))
+    if page > pages then page = pages end
+    local first = (page - 1) * ROWS
     for i = 1, ROWS do
-        local row, b = rows[i], list[i]
+        local row, b = rows[i], list[first + i]
         row.bid = b
         row:SetShown(b ~= nil)
         if b then
@@ -139,10 +145,14 @@ local function Refresh()
     for _, b in ipairs(offSpec) do os[#os + 1] = b.name .. (b.roll and " (" .. b.roll .. ")" or "") end
     frame.offSpec:SetText(#os > 0 and L["Off spec, not candidates: %s"]:format(concat(os, ", ")) or "")
     if #list > ROWS then
-        frame.more:SetText(L["and %d more: /nlc award <name>"]:format(#list - ROWS))
+        frame.more:SetText(L["Candidates %d-%d of %d"]:format(first + 1, math.min(first + ROWS, #list), #list))
     else
         frame.more:SetText("")
     end
+    frame.prev:SetShown(#list > ROWS)
+    frame.prev:SetEnabled(page > 1)
+    frame.nextPage:SetShown(#list > ROWS)
+    frame.nextPage:SetEnabled(page < pages)
     frame.whyLabel:SetShown(voting)
     for _, c in ipairs(frame.why) do
         c:SetShown(voting)
@@ -238,6 +248,11 @@ local function CreateWindow()
     for i = 1, ROWS do rows[i] = Row(i) end
     f.more = ns.Label(f, "GameFontHighlightSmall")
     f.more:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -132 - ROWS * ROW_H)
+    -- More candidates than rows: a page at a time, so every one can be voted for.
+    f.prev = ns.Button(f, L["< Previous"], 90, function() page = page - 1 Refresh() end)
+    f.prev:SetPoint("LEFT", f.more, "RIGHT", 10, 0)
+    f.nextPage = ns.Button(f, L["Next >"], 90, function() page = page + 1 Refresh() end)
+    f.nextPage:SetPoint("LEFT", f.prev, "RIGHT", 4, 0)
     f.offSpec = ns.Label(f, "GameFontHighlightSmall")
     f.offSpec:SetPoint("TOPLEFT", f.more, "BOTTOMLEFT", 0, -4)
     f.offSpec:SetPoint("RIGHT", f, "RIGHT", -16, 0)

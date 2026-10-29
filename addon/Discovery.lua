@@ -267,8 +267,9 @@ local function Receipts()
 end
 ns.ChatPattern = Pattern
 
--- A drop seen without its corpse: the recent kill's, if the item is new or known to come
--- from that boss; otherwise just noted.
+-- A drop seen without its corpse: the recent kill's, if the item is new (or added unseen,
+-- like a decision from Discord before it ever dropped) or known to come from that boss;
+-- otherwise just noted.
 local function Sighting(link, kind, knownQuality, encounterID)
     if not ns.db then return end
     local inst = Here()
@@ -283,7 +284,7 @@ local function Sighting(link, kind, knownQuality, encounterID)
         killKey = (k and k.id == encounterID) and k.key or ("k" .. encounterID .. "@late")
     elseif k then
         local item = ns.db.items[itemID]
-        if not item or (item.from and item.from["e" .. k.id]) then src, killKey = "e" .. k.id, k.key end
+        if not item or item.seen == 0 or (item.from and item.from["e" .. k.id]) then src, killKey = "e" .. k.id, k.key end
     end
     Record(itemID, link, q, inst, src, killKey, kind)
 end

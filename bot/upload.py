@@ -63,6 +63,14 @@ class UploadAward:
 
 
 @dataclass
+class UploadUndone:
+    """An award taken back in game (/nlc undo): the identity of the award it was."""
+    id: int
+    who: str
+    at: int
+
+
+@dataclass
 class Upload:
     uploader: str | None
     items: list[UploadItem]
@@ -71,6 +79,7 @@ class Upload:
     drops: list[UploadDrop]
     awards: list[UploadAward]
     decisions_at: int | None = None  # the newest decisions the uploader's game had applied
+    undone: list[UploadUndone] = field(default_factory=list)  # awards taken back (missing from older companions)
     skipped: int = 0  # malformed entries left out
 
 
@@ -189,6 +198,17 @@ def parse_upload(body: Any) -> Upload:
             tags=_str(raw.get("tags")),
         ))
 
+    undone: list[UploadUndone] = []
+    for raw in _container(body, "undone", list):
+        if not isinstance(raw, dict):
+            skipped += 1
+            continue
+        iid, at, who = _int(raw.get("id")), _int(raw.get("at")), _str(raw.get("who"))
+        if iid is None or at is None or who is None:
+            skipped += 1
+            continue
+        undone.append(UploadUndone(id=iid, who=who, at=at))
+
     return Upload(uploader=_str(body.get("uploader")), items=items, encounters=encounters,
                   instances=instances, drops=drops, awards=awards, decisions_at=_int(body.get("decisions_at")),
-                  skipped=skipped)
+                  undone=undone, skipped=skipped)

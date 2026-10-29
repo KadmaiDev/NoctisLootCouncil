@@ -2,7 +2,7 @@
 
 local SASH = wow.link(18000, "Sash of the Unseen", 4)
 local BELT = wow.link(16818, "Netherwind Belt", 4)
-local SEREN = { "Seren", "Vale", rank = "Officer", class = "PRIEST" }
+local SEREN = { "Seren", "Vale", rank = "Officer", class = "PRIEST", assist = true }
 local DORAN = { "Doran", "Pike", rank = "Officer", class = "WARRIOR" }
 local ILSA = { "Ilsa", "Marrow", rank = "Raider", class = "WARLOCK" }
 local VESPERA = { "Vespera", "Ashward", rank = "Raider", class = "WARLOCK" }
@@ -115,8 +115,8 @@ test("Roll off is between the most-voted candidates", function()
     bid("Vespera Ashward", "ms")
     bid("Odo Fenwick", "ms")
     wow.wait(30)
-    wow.message("Seren Vale", "WHISPER", "V", ns.CouncilSession().sid, "ilsa marrow")
-    wow.message("Doran Pike", "WHISPER", "V", ns.CouncilSession().sid, "odo fenwick")
+    wow.message("Seren Vale", "WHISPER", "V", ns.CouncilSession().sid, "ilsa marrow", "fit")
+    wow.message("Doran Pike", "WHISPER", "V", ns.CouncilSession().sid, "odo fenwick", "loot")
     eq(window().rolloff:GetText(), "Roll off: Ilsa, Odo")
     window().rolloff:Click()
     assert(wow.said():find("Roll-off for " .. SASH .. " between Ilsa Marrow, Odo Fenwick", 1, true), wow.said())
@@ -136,4 +136,45 @@ test("a council member's window: no Award, and they sit out their own bid", func
     assert(window().council:GetText():find("(you) · sits out", 1, true), window().council:GetText())
     assert(not window().reason:IsShown())
     assert(not window().why[1]:IsShown(), "no reasons for a candidate")
+end)
+
+test("more candidates than rows: a page at a time, and the ninth can be voted in", function()
+    local ns = start()
+    local members = { SEREN, DORAN }
+    for i = 1, 9 do members[#members + 1] = { "Raider" .. i, "Test", rank = "Raider", class = "MAGE" } end
+    wow.raid(members)
+    wow.type("/nlc councillors Seren Vale, Doran Pike, Kadmai Moonwhisper")
+    wow.type("/nlc start " .. SASH .. " council")
+    -- Sorted by upgrade %, so Raider9 Test (the smallest) is on the second page.
+    for i = 1, 9 do bid("Raider" .. i .. " Test", "ms", "", "", tostring(20 - i)) end
+    wow.wait(30)
+    assert(not rowOf("Raider9 Test"), "not on the first page")
+    eq(window().more:GetText(), "Candidates 1-8 of 9")
+    assert(window().nextPage:IsShown())
+    assert(not window().prev:IsEnabled())
+    window().nextPage:Click()
+    eq(window().more:GetText(), "Candidates 9-9 of 9")
+    assert(rowOf("Raider9 Test"), "the ninth has a row on the second page")
+    assert(not rowOf("Raider1 Test"))
+    local sid = ns.CouncilSession().sid
+    wow.message("Seren Vale", "WHISPER", "V", sid, "raider9 test", "loot")
+    wow.message("Doran Pike", "WHISPER", "V", sid, "raider9 test", "loot")
+    window().why[3]:SetChecked(true)
+    window().why[3]:Run("OnClick")
+    rowOf("Raider9 Test").vote:Click()
+    eq(ns.db.log[1].who, "Raider9 Test")
+    eq(ns.db.log[1].note, "council vote, 3 of 3: less loot so far")
+    window().prev:Click()
+    eq(window().more:GetText(), "Candidates 1-8 of 9")
+end)
+
+test("candidates' names are in their class colour", function()
+    lootMaster()
+    RAID_CLASS_COLORS = { WARLOCK = { colorStr = "ff8788ee" } }
+    wow.type("/nlc start " .. SASH)
+    bid("Ilsa Marrow", "ms")
+    bid("Vespera Ashward", "ms")
+    local text = rowOf("Ilsa Marrow").name:GetText()
+    RAID_CLASS_COLORS = nil
+    eq(text, "|cff8788eeIlsa Marrow|r")
 end)

@@ -14,6 +14,7 @@ from .config import Settings
 from .luaparse import LuaError
 
 log = logging.getLogger("companion")
+DECISIONS = "decisions"  # the key of a failed decisions fetch among the problems
 
 
 def setup_logging(log_file: Path | None) -> None:
@@ -60,19 +61,22 @@ class Companion:
         self._fetch = fetch
         self._clock = clock
         self._uploaded: dict[Path, tuple[int, int]] = {}  # file -> (mtime_ns, size) last uploaded
-        self._last_problem: str | None = None
+        # Standing problems by what failed (a saved file, or "decisions"): each is cleared only when
+        # that same thing next works, so fetching decisions doesn't hide an upload that keeps failing.
+        self._problems: dict[str, str] = {}
         self.status = Status()
 
-    def _problem(self, message: str) -> None:
+    def _problem(self, what: str, message: str) -> None:
         # A bot that's down would otherwise log the same line every 30 seconds.
-        if message != self._last_problem:
+        if self._problems.pop(what, None) != message:
             log.warning(message)
-        self._last_problem = message
+        self._problems[what] = message
         self.status.problem = message
 
-    def _cleared(self) -> None:
-        self._last_problem = None
-        self.status.problem = None
+    def _cleared(self, *what: str) -> None:
+        for key in what:
+            self._problems.pop(key, None)
+        self.status.problem = next(reversed(self._problems.values()), None)  # the newest left
 
     def _answered(self, ok: bool) -> None:
         self.status.connected = ok
@@ -89,7 +93,9 @@ class Companion:
         """Upload every saved file whose modification time or size changed (every one, with `force`;
         the bot ignores what it already has). Returns how many went up."""
         done = 0
-        for path in savedfile.find_saved_files(self.settings.wow_dir):
+        paths = savedfile.find_saved_files(self.settings.wow_dir)
+        self._cleared(*(k for k in self._problems if k != DECISIONS and Path(k) not in paths))  # files gone
+        for path in paths:
             try:
                 st = path.stat()
             except OSError:
@@ -101,7 +107,7 @@ class Companion:
                 body = savedfile.build_upload(savedfile.read_saved_file(path))
             except (LuaError, ValueError, OSError) as exc:
                 # Usually the game is still writing it; the next pass reads it again.
-                self._problem(f"Couldn't read {self._label(path)} yet ({exc}); trying again shortly.")
+                self._problem(str(path), f"Couldn't read {self._label(path)} yet ({exc}); trying again shortly.")
                 continue
             try:
                 answer = self._upload(self.settings.bot_url, self.settings.token, body)
@@ -110,11 +116,11 @@ class Companion:
                 raise
             except client.BotError as exc:
                 self._answered(False)
-                self._problem(f"Upload of {self._label(path)} failed: {exc}. Trying again shortly.")
+                self._problem(str(path), f"Upload of {self._label(path)} failed: {exc}. Trying again shortly.")
                 continue
             self._uploaded[path] = signature
             self._answered(True)
-            self._cleared()
+            self._cleared(str(path))
             self.status.uploaded_at = self._clock()
             self.status.new_awards = _count(answer, "new_awards")
             self.status.new_items = _count(answer, "new_items")
@@ -133,20 +139,20 @@ class Companion:
             raise
         except client.BotError as exc:
             self._answered(False)
-            self._problem(f"Couldn't fetch decisions: {exc}. Trying again shortly.")
+            self._problem(DECISIONS, f"Couldn't fetch decisions: {exc}. Trying again shortly.")
             return False
         self._answered(True)
         at = answer.get("at")
         if not isinstance(at, int) or not isinstance(answer.get("items"), dict):
-            self._problem("The bot's decisions answer didn't look right; trying again shortly.")
+            self._problem(DECISIONS, "The bot's decisions answer didn't look right; trying again shortly.")
             return False
         self.status.decisions = decisions.counts(answer)
         folder = decisions.addon_dir(self.settings.wow_dir)
         if decisions.current_at(folder) == at and all((folder / n).is_file() for n in decisions.TOC_NAMES):
-            self._cleared()
+            self._cleared(DECISIONS)
             return False
         decisions.write_addon(folder, answer)
-        self._cleared()
+        self._cleared(DECISIONS)
         log.info("Wrote %s In game after the next /reload or login.", decisions.summary(answer))
         return True
 

@@ -185,12 +185,14 @@ function commands.load(first, last, class, rank, guild, clock, savedPath, decisi
     return ns.db and ns.db.me
 end
 
--- raid <First,Last,CLASS,rank,guild> ...  (the others in the raid; guild "" = outside the guild)
+-- raid <First,Last,CLASS,rank,guild,leader> ...  (the others in the raid; guild "" = outside the
+-- guild; leader "1" = leads the raid, so their addon's session messages count)
 function commands.raid(...)
     local members = {}
     for _, m in ipairs({ ... }) do
-        local first, last, class, rank, guild = m:match("^(.-),(.-),(.-),(.-),(.*)$")
-        members[#members + 1] = { first, last, class = class, rank = rank, guild = guild ~= "" and guild or false }
+        local first, last, class, rank, guild, leader = m:match("^(.-),(.-),(.-),(.-),(.-),(.*)$")
+        members[#members + 1] = { first, last, class = class, rank = rank, guild = guild ~= "" and guild or false,
+            leader = leader == "1" }
     end
     wow.raid(members)
 end

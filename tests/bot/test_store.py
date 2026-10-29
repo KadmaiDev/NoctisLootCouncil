@@ -103,6 +103,46 @@ def test_two_officers_same_drop_counted_once_keeping_largest_n(store):
     assert store.item_state(16805).drops == 3
 
 
+# Two copies of the gloves from one kill, as two officers' addons record them (addon/Discovery.lua):
+# the loot master's window sees both at once, one entry with n = 2; another officer sees two chat
+# lines, two entries with n = 1 a little apart.
+WINDOW = [{"id": 16805, "at": RAID + 900, "src": "e663", "inst": 409, "n": 2}]
+CHAT = [{"id": 16805, "at": RAID + 960, "src": "e663", "inst": 409, "n": 1},
+        {"id": 16805, "at": RAID + 1020, "src": "e663", "inst": 409, "n": 1}]
+
+
+@pytest.mark.parametrize("first, second", [(WINDOW, CHAT), (CHAT, WINDOW)], ids=["window first", "chat first"])
+def test_copies_seen_in_the_window_and_in_chat_count_once(store, first, second):
+    for owner, drops in ((("discord:1", "Kadmai"), first), (("discord:2", "Seren"), second)):
+        body = sample_body(owner[1])
+        body["drops"] = copy.deepcopy(drops)
+        upload(store, body, owner)
+        assert store.item_state(16805).drops == 2
+    upload(store, body, owner)  # uploaded again: still two
+    assert store.item_state(16805).drops == 2
+
+
+def test_an_officer_who_saw_fewer_copies_doesnt_lower_the_count(store):
+    body = sample_body()
+    body["drops"] = copy.deepcopy(CHAT)
+    upload(store, body)
+    body["drops"] = [dict(CHAT[0], n=1)]  # only one chat line reached this officer
+    upload(store, body, ("discord:2", "Seren"))
+    body["drops"] = [dict(WINDOW[0], n=3)]  # a third copy, seen only in the window
+    upload(store, body, ("discord:3", "Doran"))
+    assert store.item_state(16805).drops == 3
+
+
+def test_a_drop_kept_in_several_rows_before_counts_its_copies(store):
+    # Databases from before copies were reconciled can hold one drop as two rows of one copy each.
+    store.conn.executemany("INSERT INTO drops(item_id, src, at, inst, n) VALUES(16805, 'e663', ?, 409, 1)",
+                           [(RAID + 960,), (RAID + 1020,)])
+    body = sample_body()
+    body["drops"] = copy.deepcopy(WINDOW)
+    upload(store, body)
+    assert store.item_state(16805).drops == 2
+
+
 def test_item_merge_rules(store):
     upload(store, sample_body())
     body = sample_body()
@@ -286,6 +326,69 @@ def test_old_database_gets_the_new_columns(tmp_path):
     conn = connect(path)
     assert [tuple(r) for r in conn.execute("SELECT user_id, user_name FROM suggestions")] == [(7, None)]
     connect(path)  # and again: nothing to add
+
+
+def test_old_database_gets_the_undone_awards_table(tmp_path):
+    import sqlite3
+
+    from bot.db import connect
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.execute("CREATE TABLE awards (who_key TEXT NOT NULL, item_id INTEGER NOT NULL, at INTEGER NOT NULL, "
+                "who TEXT NOT NULL, class TEXT, how TEXT NOT NULL, roll INTEGER, note TEXT, inst TEXT, boss TEXT, "
+                "nms INTEGER, nos INTEGER, tags TEXT, link TEXT, night TEXT NOT NULL, uploader TEXT, "
+                "received_at INTEGER NOT NULL, PRIMARY KEY (who_key, item_id, at))")
+    old.execute("INSERT INTO awards(who_key, item_id, at, who, how, night, received_at) "
+                "VALUES('ilsa marrow', 18000, 5, 'Ilsa Marrow', 'ms', '2026-10-26', 6)")
+    old.commit()
+    old.close()
+    conn = connect(path)
+    assert conn.execute("SELECT COUNT(*) FROM undone_awards").fetchone()[0] == 0
+    assert conn.execute("SELECT who FROM awards").fetchone()[0] == "Ilsa Marrow"
+
+
+# ---- awards taken back in game -------------------------------------------------------
+
+def test_parse_reads_awards_taken_back_and_skips_malformed_ones():
+    body = sample_body()
+    body["undone"] = [{"id": 16805, "who": "Corvin Dusk", "at": RAID + 1000}, {"id": 16805, "who": "X"}, "x"]
+    up = parse_upload(body)
+    assert [(u.id, u.who, u.at) for u in up.undone] == [(16805, "Corvin Dusk", RAID + 1000)]
+    assert up.skipped == 2
+    assert parse_upload(sample_body()).undone == []  # an older companion doesn't send them
+
+
+def test_an_award_taken_back_in_game_leaves_the_log(store):
+    upload(store, sample_body())  # award, then /reload: the bot has it
+    for inst, night, gen in store.dirty_log_groups():
+        store.clear_log_dirty(inst, night, gen)
+    for item_id, gen in store.dirty_items():
+        store.clear_item_dirty(item_id, gen)
+    body = sample_body()  # /nlc undo: the award leaves the log and is listed as taken back
+    gloves = body["awards"].pop()
+    body["undone"] = [{"id": gloves["id"], "who": gloves["who"], "at": gloves["at"]}]
+    result = upload(store, body)
+    assert result.undone == 1 and result.new_awards == 0
+    assert [a.who for a in store.log_group("Molten Core", "2026-10-26").awards] == ["Ilsa Marrow"]
+    assert [(g[0], g[1]) for g in store.dirty_log_groups()] == [("Molten Core", "2026-10-26")]
+    assert 16805 in [i for i, _ in store.dirty_items()]
+    assert store.item_state(16805).first_award is None
+    assert upload(store, body).undone == 0  # uploaded again: nothing more to do
+
+
+def test_an_award_taken_back_stays_gone(store):
+    body = sample_body()
+    gloves = body["awards"][-1]
+    body["undone"] = [{"id": gloves["id"], "who": gloves["who"].upper(), "at": gloves["at"]}]
+    del body["awards"][-1]
+    upload(store, body)
+    # An older copy of the log (another officer's file, an old upload) still has the award.
+    assert upload(store, sample_body("Seren Ashvale"), ("discord:2", "Seren")).new_awards == 0
+    assert [a.who for a in store.log_group("Molten Core", "2026-10-26").awards] == ["Ilsa Marrow"]
+    # The corrected award (a new time) is an award like any other.
+    body["awards"].append(dict(gloves, who="Doran Pike", at=gloves["at"] + 120))
+    assert upload(store, body).new_awards == 1
+    assert [a.who for a in store.log_group("Molten Core", "2026-10-26").awards] == ["Ilsa Marrow", "Doran Pike"]
 
 
 # ---- posting queues -----------------------------------------------------------

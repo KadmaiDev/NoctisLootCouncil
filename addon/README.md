@@ -47,7 +47,7 @@ Only each player's first roll counts. Main-spec wins count as "tonight's" for 12
 | `/nlc cancel` | call it off |
 | `/nlc wins` | tonight's main-spec wins |
 | `/nlc newnight` | start a new raid night |
-| `/nlc undo` | remove the last award |
+| `/nlc undo` | remove the last award (from Discord's #loot-log too, after the next upload) |
 | `/nlc trials [rank, rank]` | the guild ranks that are trials (default: any rank with "trial" in its name) |
 | `/nlc popup on\|off` | the Main spec / Off spec / Pass pop-up |
 

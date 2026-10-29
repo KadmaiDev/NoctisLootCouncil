@@ -1,7 +1,7 @@
 -- The council, on the loot master's addon and on a council member's.
 
 local SASH = wow.link(18000, "Sash of the Unseen", 4)
-local SEREN = { "Seren", "Vale", rank = "Officer", class = "PRIEST" }
+local SEREN = { "Seren", "Vale", rank = "Officer", class = "PRIEST", assist = true }
 local DORAN = { "Doran", "Pike", rank = "Officer", class = "WARRIOR" }
 local ILSA = { "Ilsa", "Marrow", rank = "Raider", class = "WARLOCK" }
 local VESPERA = { "Vespera", "Ashward", rank = "Raider", class = "WARLOCK" }
@@ -109,8 +109,8 @@ test("a split vote goes to a roll-off between the tied; only their rolls count",
     bid("Vespera Ashward", "ms")
     bid("Bran Holloway", "ms")
     wow.wait(30)
-    vote("Seren Vale", "ilsa marrow")
-    vote("Doran Pike", "vespera ashward")
+    vote("Seren Vale", "ilsa marrow", "fit")
+    vote("Doran Pike", "vespera ashward", "upgrade")
     ns.SetVoteReason("effort", true)
     ns.Vote("bran holloway")
     assert(wow.said():find("The council is split on " .. SASH, 1, true), wow.said())
@@ -131,11 +131,11 @@ test("time up: the most votes wins; with no votes at all, every main-spec bid ro
     bid("Ilsa Marrow", "ms")
     bid("Vespera Ashward", "ms")
     wow.wait(30)
-    vote("Seren Vale", "vespera ashward")
+    vote("Seren Vale", "vespera ashward", "upgrade")
     wow.wait(299)
     eq(ns.CouncilSession().phase, "vote")
     wow.wait(1)
-    eq(lastSaid(), "Vespera Ashward wins " .. SASH .. " (council: council vote, 1 of 1).")
+    eq(lastSaid(), "Vespera Ashward wins " .. SASH .. " (council: council vote, 1 of 1: biggest upgrade).")
 
     wow.type("/nlc start " .. SASH)
     bid("Ilsa Marrow", "ms")
@@ -260,4 +260,135 @@ test("a raider who isn't on the council keeps no session", function()
     wow.raid({ SEREN, ILSA })
     wow.message("Seren Vale", "RAID", "S", 301, 18000, "council", 30, "Seren Vale", "Seren Vale", SASH)
     eq(ns.CouncilSession(), nil)
+end)
+
+test("no roll can start while a council item is open: its rolls would be taken as bids", function()
+    local ns = lootMaster()
+    wow.type("/nlc start " .. SASH)
+    wow.type("/nlc start " .. wow.link(16818, "Netherwind Belt", 4) .. " roll")
+    assert(printed():find("The council is still on " .. SASH, 1, true), printed())
+    eq(ns.CurrentRoll(), nil)
+    wow.roll("Ilsa Marrow", 50)
+    eq(ns.CouncilSession().bids["ilsa marrow"].resp, "ms", "the roll is a bid on the council item")
+end)
+
+-- A council at its roll-off: two main-spec bids, one vote each.
+local function rollOff()
+    local ns = lootMaster()
+    wow.type("/nlc start " .. SASH)
+    bid("Ilsa Marrow", "ms")
+    bid("Vespera Ashward", "ms")
+    wow.wait(30)
+    vote("Seren Vale", "ilsa marrow", "fit")
+    vote("Doran Pike", "vespera ashward", "loot")
+    wow.wait(300)
+    eq(ns.CouncilSession().phase, "rolloff")
+    return ns
+end
+
+test("a council roll-off called off goes back to the vote, and the loot master can award it", function()
+    local ns = rollOff()
+    clearPrinted()
+    wow.type("/nlc cancel")
+    eq(ns.CouncilSession().phase, "vote")
+    assert(printed():find("The roll-off for " .. SASH .. " is off", 1, true), printed())
+    wow.type("/nlc award Vespera Ashward, Ilsa won the last one")
+    eq(ns.db.log[1].who, "Vespera Ashward")
+    eq(ns.CouncilSession().phase, "done")
+end)
+
+test("a council roll-off tie nobody re-rolls goes back to the vote too", function()
+    local ns = rollOff()
+    wow.roll("Ilsa Marrow", 50)
+    wow.roll("Vespera Ashward", 50)
+    wow.wait(30)
+    assert(wow.said():find("Tie for " .. SASH, 1, true), wow.said())
+    wow.wait(30)
+    eq(ns.CouncilSession().phase, "vote")
+    wow.type("/nlc cancel")
+    eq(ns.CouncilSession().phase, "done", "and it can be called off")
+end)
+
+test("a roll-off between many fits raid chat: the names go on lines of their own", function()
+    local ns = start()
+    local members = { SEREN, DORAN }
+    for i = 1, 25 do members[#members + 1] = { "Raidmember" .. i, "Longsurname" .. i, rank = "Raider" } end
+    wow.raid(members)
+    wow.type("/nlc councillors Seren Vale, Doran Pike, Kadmai Moonwhisper")
+    wow.type("/nlc start " .. SASH .. " council")
+    for i = 1, 25 do bid("Raidmember" .. i .. " Longsurname" .. i, "ms") end
+    wow.wait(30)
+    wow.wait(300) -- nobody votes: every main-spec bid rolls off
+    eq(ns.CouncilSession().phase, "rolloff")
+    local lines = {}
+    for _, s in ipairs(wow.sent) do
+        if s[2] == "RAID" then lines[#lines + 1] = s[1] end
+    end
+    local all = table.concat(lines, "\n")
+    assert(all:find("Roll-off for " .. SASH .. ": /roll if you're named below, 30 seconds:", 1, true), all)
+    for i = 1, 25 do assert(all:find("Raidmember" .. i .. " Longsurname" .. i, 1, true), "missing " .. i) end
+    assert(not printed():find("Couldn't post this", 1, true), printed())
+end)
+
+test("a vote with no reason from the rules doesn't count", function()
+    local ns = lootMaster()
+    wow.type("/nlc start " .. SASH)
+    bid("Ilsa Marrow", "ms")
+    bid("Vespera Ashward", "ms")
+    wow.wait(30)
+    clearPrinted()
+    vote("Seren Vale", "ilsa marrow")
+    vote("Doran Pike", "ilsa marrow", "made-up,also-made-up")
+    eq(ns.CouncilSession().votes["seren vale"], nil)
+    eq(ns.CouncilSession().votes["doran pike"], nil)
+    assert(printed():find("Seren Vale's vote has no reason, so it doesn't count", 1, true), printed())
+    vote("Seren Vale", "ilsa marrow", "effort")
+    eq(ns.CouncilSession().votes["seren vale"], "ilsa marrow", "with a reason it counts")
+    vote("Seren Vale", "")
+    eq(ns.CouncilSession().votes["seren vale"], nil, "and taking a vote back needs none")
+end)
+
+test("session messages only count from the loot master they name, who must be running the loot", function()
+    local ns = start()
+    wow.raid({ SEREN, DORAN, ILSA, VESPERA })
+    -- Ilsa is in the group but neither leads nor assists.
+    wow.message("Ilsa Marrow", "RAID", "S", 401, 18000, "council", 30, "Seren Vale", "Seren Vale,Kadmai Moonwhisper", SASH)
+    eq(ns.CouncilSession(), nil, "naming someone else as loot master")
+    wow.message("Ilsa Marrow", "RAID", "S", 401, 18000, "council", 30, "Ilsa Marrow", "Ilsa Marrow,Kadmai Moonwhisper", SASH)
+    eq(ns.CouncilSession(), nil, "naming herself, without running the loot")
+    wow.message("Seren Vale", "RAID", "S", 301, 18000, "council", 30, "Seren Vale", "Seren Vale,Kadmai Moonwhisper", SASH)
+    local s = ns.CouncilSession()
+    eq(s.sid, 301)
+    wow.message("Ilsa Marrow", "RAID", "P", 301, "vote", 300)
+    eq(s.phase, "bids", "Ilsa can't move it on")
+    wow.message("Ilsa Marrow", "RAID", "E", 301, "Ilsa Marrow")
+    eq(s.phase, "bids", "or end it")
+    wow.message("Doran Pike", "RAID", "S", 302, 18000, "council", 30, "Doran Pike", "Doran Pike,Kadmai Moonwhisper", SASH)
+    eq(ns.CouncilSession().sid, 301, "another loot master can't replace an open session")
+    wow.message("Seren Vale", "RAID", "S", 303, 18000, "council", 30, "Seren Vale", "Seren Vale,Kadmai Moonwhisper", SASH)
+    eq(ns.CouncilSession().sid, 303, "its own loot master moving on to the next item can")
+end)
+
+test("another council's start doesn't replace the loot master's own open council", function()
+    local ns = lootMaster()
+    wow.type("/nlc start " .. SASH)
+    local sid = ns.CouncilSession().sid
+    wow.message("Seren Vale", "RAID", "S", 999, 18000, "council", 30, "Seren Vale", "Seren Vale,Kadmai Moonwhisper", SASH)
+    eq(ns.CouncilSession().sid, sid)
+    eq(ns.CouncilSession().mine, true)
+end)
+
+test("a vote never goes raid-wide: if the whisper fails, the council member is told", function()
+    local ns = start()
+    wow.raid({ SEREN, DORAN, ILSA, VESPERA })
+    wow.message("Seren Vale", "RAID", "S", 301, 18000, "council", 30, "Seren Vale", "Seren Vale,Kadmai Moonwhisper", SASH)
+    wow.message("Ilsa Marrow", "WHISPER", "B", 301, "ms", "", "", "", "")
+    wow.message("Seren Vale", "RAID", "P", 301, "vote", 300)
+    wow.whisperFails = true
+    ns.SetVoteReason("upgrade", true)
+    ns.Vote("ilsa marrow")
+    for _, v in ipairs(wow.messages("V")) do
+        assert(v.channel == "WHISPER", "a vote went " .. tostring(v.channel))
+    end
+    assert(printed():find("Couldn't send your vote privately to Seren Vale", 1, true), printed())
 end)

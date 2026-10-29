@@ -207,7 +207,8 @@ class Realm:
                 decisions = p.decisions_file if p.decisions_file.exists() else ""
                 p.call("load", p.first, p.last, p.cls, p.rank, p.guild or "", self.clock, saved, decisions)
         for p in self.clients:
-            others = [f"{o.first},{o.last},{o.cls},{o.rank},{o.guild or ''}" for o in self.players if o is not p]
+            others = [f"{o.first},{o.last},{o.cls},{o.rank},{o.guild or ''},{'1' if o.leader else ''}"
+                      for o in self.players if o is not p]
             p.call("raid", *others)
             if p.leader:
                 p.call("leader", "1")

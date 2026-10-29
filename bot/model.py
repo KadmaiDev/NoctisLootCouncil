@@ -99,4 +99,5 @@ class Post:
 class UploadResult:
     new_items: int
     new_awards: int
+    undone: int = 0  # awards taken back in game that the bot had, now removed
     skipped: int = 0

@@ -313,15 +313,38 @@ class LootBot(commands.Bot):
         return titleimage.render(card.title, card.title_colour, icon)
 
     async def sync_log_group(self, inst: str, night: str) -> bool:
-        """One #loot-log post per raid and night, edited as more awards arrive (split if it gets long)."""
+        """One #loot-log post per raid and night, edited as more awards arrive (split if it gets long).
+        Awards taken back in game can shorten it: parts no longer needed are deleted, and every part
+        once the night has no awards left."""
         async with self._locks[f"log:{inst}|{night}"]:
-            parts = render.log_cards(self.store.log_group(inst, night))
-            ok = True
+            group = self.store.log_group(inst, night)
+            parts = render.log_cards(group) if group.awards else []
             for i, card in enumerate(parts):
-                ok &= await self._upsert_card("log", f"{inst}|{night}|{i}", self.config.ch_log, card)
-                if not ok:
-                    break
-            return ok
+                if not await self._upsert_card("log", f"{inst}|{night}|{i}", self.config.ch_log, card):
+                    return False
+            i = len(parts)
+            while self.store.get_post("log", f"{inst}|{night}|{i}") is not None:
+                if not await self._delete_post("log", f"{inst}|{night}|{i}"):
+                    return False
+                i += 1
+            return True
+
+    async def _delete_post(self, kind: str, key: str) -> bool:
+        post = self.store.get_post(kind, key)
+        if post is None:
+            return True
+        channel = self._text_channel(post.channel_id)
+        if channel is None:
+            return False
+        try:
+            await channel.get_partial_message(post.message_id).delete()
+        except discord.NotFound:
+            pass  # someone deleted it already
+        except discord.HTTPException as exc:
+            log.warning("Could not delete the %s post for %s: %s", kind, key, exc)
+            return False
+        self.store.forget_post(kind, key)
+        return True
 
     async def post_priorities(self, day: str, raid: str | None) -> int:
         channel = self._text_channel(self.config.ch_priorities)

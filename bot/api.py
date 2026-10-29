@@ -48,8 +48,8 @@ async def upload(request: web.Request) -> web.Response:
     except BadUpload as exc:
         return _error(400, str(exc))
     result = request.app[STORE_KEY].apply_upload(parsed, owner[0], owner[1])
-    log.info("Upload from %s (%s): %d new items, %d new awards, %d skipped",
-             owner[1], parsed.uploader or "?", result.new_items, result.new_awards, result.skipped)
+    log.info("Upload from %s (%s): %d new items, %d new awards, %d undone, %d skipped",
+             owner[1], parsed.uploader or "?", result.new_items, result.new_awards, result.undone, result.skipped)
     request.app[NOTIFY_KEY]()
     return web.json_response({"ok": True, "new_items": result.new_items, "new_awards": result.new_awards})
 

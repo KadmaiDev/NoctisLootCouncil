@@ -160,6 +160,26 @@ async def test_more_awards_edit_the_nights_log_post(tmp_path, channels):
     assert "3 items" in log_text and "Doran Pike" in log_text
 
 
+async def test_awards_taken_back_in_game_edit_the_nights_log_post_or_delete_it(tmp_path, channels):
+    bot = make_bot(tmp_path, channels)
+    body = sample_body()
+    bot.store.apply_upload(parse_upload(body), "discord:1", "Kadmai")
+    await bot.sync_pending()
+    [msg] = channels[LOG].messages.values()
+    body["undone"] = [{k: body["awards"][-1][k] for k in ("id", "who", "at")}]  # /nlc undo
+    body["awards"].pop()
+    bot.store.apply_upload(parse_upload(body), "discord:1", "Kadmai")
+    await bot.sync_pending()
+    assert channels[LOG].sends == 1 and channels[LOG].edits == 1
+    assert "1 item" in text(msg) and "Corvin Dusk" not in text(msg) and "Ilsa Marrow" in text(msg)
+    body["undone"].append({k: body["awards"][0][k] for k in ("id", "who", "at")})  # and the other one
+    body["awards"].pop()
+    bot.store.apply_upload(parse_upload(body), "discord:1", "Kadmai")
+    await bot.sync_pending()
+    assert channels[LOG].messages == {} and bot.store.get_post("log", "Molten Core|2026-10-26|0") is None
+    assert not bot.store.dirty_log_groups()
+
+
 async def test_deleted_post_is_posted_again(tmp_path, channels):
     bot = make_bot(tmp_path, channels)
     bot.store.add_item(18000, "Sash of the Unseen")

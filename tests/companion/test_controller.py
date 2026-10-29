@@ -21,6 +21,7 @@ class FakeBot:
     def __init__(self, token="good"):
         self.token = token
         self.down = False
+        self.rejects = None  # an upload error the bot answers while fetching decisions still works
         self.uploads = 0
 
     def _check(self, token):
@@ -31,6 +32,8 @@ class FakeBot:
 
     def upload(self, url, token, body):
         self._check(token)
+        if self.rejects:
+            raise client.BotError(self.rejects)
         self.uploads += 1
         return {"new_awards": 3, "new_items": 1} if self.uploads == 1 else {"new_awards": 0, "new_items": 0}
 
@@ -115,6 +118,24 @@ def test_bot_down_shows_on_the_status(tmp_path, bot):
     link = controller.state()["link"]
     assert link["state"] == "down" and "connection refused" in link["detail"]
     assert told == []
+    controller.stop()
+
+
+def test_a_failing_upload_stays_on_the_status_while_decisions_arrive(tmp_path, bot):
+    controller, told = make(tmp_path, bot, Settings(wow_dir=make_wow(tmp_path), bot_url=URL, token="good"))
+    bot.rejects = "the bot answered 400: bad upload"
+    controller.run_pass()
+    state = controller.state()
+    assert state["link"]["state"] == "ok"  # the bot answers; only the upload is refused
+    assert "Upload of ACCOUNT1/NoctisLootCouncil.lua failed: the bot answered 400" in state["note"]
+    assert [t for t, _ in told] == ["New decisions for the game"]
+    warned = [a for a in controller.activity if "failed" in a[1]]
+    controller.run_pass()  # still refused: still shown, and not logged again every pass
+    assert "failed" in controller.state()["note"]
+    assert [a for a in controller.activity if "failed" in a[1]] == warned and len(warned) == 1
+    bot.rejects = None
+    controller.run_pass()
+    assert controller.state()["note"] is None and bot.uploads == 1
     controller.stop()
 
 

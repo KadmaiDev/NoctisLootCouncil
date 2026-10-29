@@ -9,10 +9,10 @@
 -- A message is a kind and its fields, separated by tabs: "B\t12\tms\tBIS,Sidegrade\tnote".
 -- Tabs and line breaks inside a field are escaped. Under 255 bytes, the game's limit.
 --
--- Raid-wide (RAID or PARTY): the session start and end. Bids and votes go by WHISPER to the
--- loot master and each council member only, so other raiders' addons never see them; if a
--- whisper can't be sent (the name format Forever wants for a whisper isn't known yet), it
--- goes raid-wide instead, which our addon still only shows to the council.
+-- Raid-wide (RAID or PARTY): the session start, the vote starting, and the end. Bids and
+-- votes go by WHISPER to the loot master and each council member only, so other raiders'
+-- addons never see them. They never go raid-wide: if a whisper can't be sent (the name format
+-- Forever wants for a whisper isn't known yet), the sender is told, and a bid becomes a roll.
 local ADDON, ns = ...
 if ns.disabled then return end
 local L = ns.L
@@ -92,11 +92,12 @@ local function Myself()
     return { name = ns.PlayerName(), key = ns.NameKey(ns.PlayerName()), unit = "player" }
 end
 
--- To each of these names ("First Last"), privately; raid-wide if a whisper fails.
+-- To each of these names ("First Last"), privately, and never raid-wide. Returns the names
+-- it couldn't reach, or nil if it reached them all.
 function ns.SendTo(names, kind, ...)
     local text = ns.Encode(kind, ...)
     local me = ns.NameKey(ns.PlayerName())
-    local toMe, done = false, {}
+    local toMe, done, missed = false, {}, nil
     for _, name in ipairs(names) do
         local key = ns.NameKey(name)
         if not key or done[key] then
@@ -104,13 +105,34 @@ function ns.SendTo(names, kind, ...)
         elseif key == me then
             toMe = true -- to ourselves: no need for the network
         elseif not Raw(text, "WHISPER", name) then
-            local channel = GroupChannel()
-            if not (channel and Raw(text, channel)) then Failed() end
-            return -- raid-wide reaches us too
+            missed = missed or {}
+            missed[#missed + 1] = name
         end
         if key then done[key] = true end
     end
     if toMe then Deliver(Myself(), ns.Decode(text)) end
+    return missed
+end
+
+-- Could this group member be running the loot: the group's leader, an assistant, or the
+-- master looter? Session messages (a roll or council starting, moving on, ending) only count
+-- from them, so another raider's addon can't open pop-ups or steer the council. If the game
+-- can't tell us, anyone can.
+function ns.MayRunLoot(unit)
+    if not unit then return false end
+    if unit == "player" then return true end -- our own messages, back to us
+    if not (UnitIsGroupLeader or UnitIsGroupAssistant) then return true end
+    if UnitIsGroupLeader and UnitIsGroupLeader(unit) then return true end
+    if UnitIsGroupAssistant and UnitIsGroupAssistant(unit) then return true end
+    if GetLootMethod and UnitIsUnit then
+        local ok, method, partyMaster, raidMaster = pcall(GetLootMethod)
+        if ok and method == "master" then
+            local master = raidMaster and "raid" .. raidMaster
+                or partyMaster and (partyMaster == 0 and "player" or "party" .. partyMaster)
+            if master and UnitIsUnit(unit, master) then return true end
+        end
+    end
+    return false
 end
 
 function ns.OnMessage(kind, fn)
@@ -122,8 +144,8 @@ ns.On("CHAT_MSG_ADDON", function(prefix, text, _, sender)
     if not Plain(prefix) or prefix ~= PREFIX or not Plain(text) or not Plain(sender) or type(text) ~= "string" then return end
     local fields = ns.Decode(text)
     if not handlers[fields[1]] then return end
-    -- Only group members count; ourselves too (raid-wide messages come back to us).
-    local m = ns.GroupMember(sender)
-    if not m and ns.NameKey(sender) == ns.NameKey(ns.PlayerName()) then m = Myself() end
+    -- Only group members count; ourselves too (raid-wide messages come back to us), as "player".
+    local m
+    if ns.NameKey(sender) == ns.NameKey(ns.PlayerName()) then m = Myself() else m = ns.GroupMember(sender) end
     if m then Deliver(m, fields) end
 end)

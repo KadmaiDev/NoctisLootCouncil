@@ -98,8 +98,9 @@ CREATE TABLE IF NOT EXISTS instances (
     name TEXT NOT NULL
 );
 
--- One row per sighting, de-duplicated across officers: reports of the same item and source
--- within 15 minutes of each other are one row (rules.same_drop).
+-- Drops, de-duplicated across officers: reports of the same item and source within 15 minutes of
+-- each other are one drop (rules.same_drop), and `n` is the most copies any one upload saw of it.
+-- (Before 2026-10-29 one drop could be several rows; their `n` add up.)
 CREATE TABLE IF NOT EXISTS drops (
     id      INTEGER PRIMARY KEY,
     item_id INTEGER NOT NULL,
@@ -126,6 +127,17 @@ CREATE TABLE IF NOT EXISTS awards (
     tags        TEXT,                            -- council awards: the winner's bid tags
     link        TEXT,
     night       TEXT NOT NULL,                   -- raid night, ISO date in the guild's time zone
+    uploader    TEXT,
+    received_at INTEGER NOT NULL,
+    PRIMARY KEY (who_key, item_id, at)
+);
+
+-- Awards taken back in game (/nlc undo), by the award's key. Kept, so an older copy of the award
+-- (another officer's file, a re-upload) can't bring it back.
+CREATE TABLE IF NOT EXISTS undone_awards (
+    who_key     TEXT NOT NULL,
+    item_id     INTEGER NOT NULL,
+    at          INTEGER NOT NULL,
     uploader    TEXT,
     received_at INTEGER NOT NULL,
     PRIMARY KEY (who_key, item_id, at)

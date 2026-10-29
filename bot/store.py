@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 from . import iteminfo, rules, warcraftlogs
 from .model import AwardInfo, ItemState, LogGroup, Post, UploadResult
 from .rules import COUNCIL, HANDLINGS, Vote
-from .upload import Upload, UploadItem, name_from_link
+from .upload import Upload, UploadDrop, UploadItem, UploadUndone, name_from_link
 
 TOKEN_PREFIX = "nlc_"
 # Loot counts as in a Warcraft Logs report from an hour before it starts (logging switched on late)
@@ -349,30 +349,13 @@ class Store:
                     new_items += self._merge_item(UploadItem(id=aw.id, name=name_from_link(aw.link), link=aw.link,
                                                              seen=1, first=aw.at, last=aw.at), uploader)
                     listed.add(aw.id)
-            # A drop matches another officer's report of it; two drops in one upload are two
-            # drops (the addon already counts each once), so a row matches at most once per upload.
-            matched: set[int] = set()
-            for d in up.drops:
-                src = d.src or ""
-                window = rules.DROP_WINDOW_SECONDS
-                rows = self.conn.execute(
-                    "SELECT id, at, n FROM drops WHERE item_id = ? AND src = ? AND at BETWEEN ? AND ? "
-                    "ORDER BY ABS(at - ?)", (d.id, src, d.at - window, d.at + window, d.at)).fetchall()
-                row = next((r for r in rows if r["id"] not in matched and rules.same_drop(d.at, r["at"])), None)
-                if row is None:
-                    cur = self.conn.execute("INSERT INTO drops(item_id, src, at, inst, n) VALUES(?, ?, ?, ?, ?)",
-                                            (d.id, src, d.at, d.inst, d.n))
-                    matched.add(cur.lastrowid)
-                    changed = True
-                else:
-                    matched.add(row["id"])
-                    changed = d.n > row["n"]
-                    if changed:
-                        self.conn.execute("UPDATE drops SET n = ? WHERE id = ?", (d.n, row["id"]))
-                if changed and self.item_exists(d.id):
-                    self._mark_dirty(d.id)
+            self._merge_drops(up.drops)
+            undone = self._undo_awards(up.undone, uploader)
             for aw in up.awards:
                 who_key, item_id, at = rules.award_key(aw.who, aw.id, aw.at)
+                if self.conn.execute("SELECT 1 FROM undone_awards WHERE who_key = ? AND item_id = ? AND at = ?",
+                                     (who_key, item_id, at)).fetchone():
+                    continue  # taken back in game; this is an older copy of the log
                 night = rules.night_of(at, self.tz).isoformat()
                 cur = self.conn.execute(
                     "INSERT OR IGNORE INTO awards(who_key, item_id, at, who, class, how, roll, note, inst, boss, "
@@ -388,7 +371,62 @@ class Store:
             self.conn.execute("INSERT INTO uploads(at, owner, uploader, new_items, new_awards) VALUES(?, ?, ?, ?, ?)",
                               (self.now(), owner, uploader, new_items, new_awards))
             self._refresh_decisions_at()
-        return UploadResult(new_items=new_items, new_awards=new_awards, skipped=up.skipped)
+        return UploadResult(new_items=new_items, new_awards=new_awards, undone=undone, skipped=up.skipped)
+
+    def _merge_drops(self, drops: list[UploadDrop]) -> None:
+        """Officers' addons report the same drops differently: two copies in the loot master's window
+        are one report with n = 2, while another officer sees two chat lines, two reports with n = 1.
+        So copies are reconciled, not rows: an upload's reports of an item and source close together
+        in time (rules.same_drop, chained) are one drop with their copies added up, and the bot keeps
+        the most copies any one upload saw of it, across however many rows hold it."""
+        window = rules.DROP_WINDOW_SECONDS
+        by_source: dict[tuple[int, str], list[UploadDrop]] = {}
+        for d in sorted(drops, key=lambda d: d.at):
+            by_source.setdefault((d.id, d.src or ""), []).append(d)
+        for (item_id, src), reports in by_source.items():
+            groups: list[list[UploadDrop]] = []
+            for d in reports:
+                if groups and rules.same_drop(d.at, groups[-1][-1].at):
+                    groups[-1].append(d)
+                else:
+                    groups.append([d])
+            claimed: set[int] = set()  # a row belongs to one of this upload's drops
+            for group in groups:
+                first, last = group[0].at, group[-1].at
+                rows = [r for r in self.conn.execute(
+                    "SELECT id, n FROM drops WHERE item_id = ? AND src = ? AND at BETWEEN ? AND ? "
+                    "ORDER BY ABS(at - ?), id", (item_id, src, first - window, last + window, first))
+                    if r["id"] not in claimed]
+                claimed.update(r["id"] for r in rows)
+                copies, known = sum(d.n for d in group), sum(r["n"] for r in rows)
+                if copies <= known:
+                    continue
+                if rows:
+                    self.conn.execute("UPDATE drops SET n = n + ? WHERE id = ?", (copies - known, rows[0]["id"]))
+                else:
+                    self.conn.execute("INSERT INTO drops(item_id, src, at, inst, n) VALUES(?, ?, ?, ?, ?)",
+                                      (item_id, src, first, group[0].inst, copies))
+                if self.item_exists(item_id):
+                    self._mark_dirty(item_id)
+
+    def _undo_awards(self, undone: list[UploadUndone], uploader: str) -> int:
+        """Awards taken back in game: remembered (so no older copy brings one back) and removed, with
+        their #loot-log post and item marked for editing. Returns how many were removed."""
+        removed = 0
+        for u in undone:
+            who_key, item_id, at = rules.award_key(u.who, u.id, u.at)
+            self.conn.execute("INSERT OR IGNORE INTO undone_awards(who_key, item_id, at, uploader, received_at) "
+                              "VALUES(?, ?, ?, ?, ?)", (who_key, item_id, at, uploader, self.now()))
+            row = self.conn.execute("SELECT inst, night FROM awards WHERE who_key = ? AND item_id = ? AND at = ?",
+                                    (who_key, item_id, at)).fetchone()
+            if row is None:
+                continue  # never uploaded, or already removed
+            self.conn.execute("DELETE FROM awards WHERE who_key = ? AND item_id = ? AND at = ?", (who_key, item_id, at))
+            removed += 1
+            self.conn.execute("UPDATE log_groups SET dirty = dirty + 1 WHERE inst = ? AND night = ?",
+                              (row["inst"] or "", row["night"]))
+            self._mark_dirty(item_id)
+        return removed
 
     # ---- #loot-log ---------------------------------------------------------
 

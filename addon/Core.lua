@@ -68,6 +68,7 @@ end)
 --         class = "WARLOCK"|nil, at = time(), how = "ms"|"ms2"|"os"|"council", roll|nil,
 --         note = council reason or the winner's bid|nil, inst = raid name|nil, boss = boss name|nil,
 --         nms, nos = how many wanted it main spec / off spec|nil }
+--   undone = { { id = itemID, who, at } }, -- awards taken back with /nlc undo, so the bot removes them too
 --   drops = { { id = itemID, at = time(), src|nil, inst|nil, n = copies } }, -- each sighting that added to an item's count, for the bot to merge officers' uploads
 --   night = time()|nil,                 -- /nlc newnight: wins before this don't count as tonight's
 --   trialRanks = { "rank name", ... }|nil, -- guild ranks that are trials (nil = any rank with "trial" in its name)
@@ -84,7 +85,7 @@ end)
 local DB_FIELDS = { v = "number", items = "table", encounters = "table", bossSources = "table",
     instances = "table", minQuality = "number", dungeons = "boolean", log = "table", night = "number",
     trialRanks = "table", drops = "table", me = "string", decisionsAt = "number", scale = "number",
-    council = "table", roles = "table", popupOff = "boolean", autoOpenOff = "boolean" }
+    council = "table", roles = "table", popupOff = "boolean", autoOpenOff = "boolean", undone = "table" }
 ns.ITEM_FIELDS = { link = "string", q = "number", first = "number", last = "number", seen = "number",
     from = "table", inst = "number", handling = "string", note = "string",
     slot = "string", sub = "string" }
@@ -93,6 +94,7 @@ local LOG_FIELDS = { id = "number", link = "string", who = "string", class = "st
     how = "string", roll = "number", note = "string", inst = "string", boss = "string", nms = "number", nos = "number",
     tags = "string" }
 local DROP_FIELDS = { id = "number", at = "number", src = "string", inst = "number", n = "number" }
+local UNDONE_FIELDS = { id = "number", who = "string", at = "number" }
 
 local function KeepTyped(t, fields)
     for k, v in pairs(t) do
@@ -147,6 +149,11 @@ function ns.Repair(db)
         if type(d) ~= "table" then return false end
         KeepTyped(d, DROP_FIELDS)
         return d.id ~= nil and d.at ~= nil and d.n ~= nil
+    end)
+    db.undone = Compact(db.undone or {}, function(u)
+        if type(u) ~= "table" then return false end
+        KeepTyped(u, UNDONE_FIELDS)
+        return u.id ~= nil and u.who ~= nil and u.at ~= nil
     end)
     if db.trialRanks then
         db.trialRanks = Compact(db.trialRanks, function(r) return type(r) == "string" end)

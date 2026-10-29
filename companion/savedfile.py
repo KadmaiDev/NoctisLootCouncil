@@ -16,6 +16,7 @@ _LINK_NAME = re.compile(r"\|h\[(.*?)\]\|h")
 ITEM_FIELDS = ("link", "q", "first", "last", "seen", "inst", "handling", "note", "slot", "sub")
 DROP_FIELDS = ("id", "at", "src", "inst", "n")
 AWARD_FIELDS = ("id", "link", "who", "class", "at", "how", "roll", "note", "inst", "boss", "nms", "nos", "tags")
+UNDONE_FIELDS = ("id", "who", "at")  # an award taken back with /nlc undo: which one it was
 
 
 def find_saved_files(wow_dir: Path) -> list[Path]:
@@ -64,6 +65,7 @@ def build_upload(db: dict) -> dict:
     instances = {str(k): v for k, v in _pairs(db.get("instances")) if isinstance(v, str)}
     drops = [_pick(d, DROP_FIELDS) for d in _entries(db.get("drops")) if isinstance(d, dict)]
     awards = [_pick(a, AWARD_FIELDS) for a in _entries(db.get("log")) if isinstance(a, dict)]
+    undone = [_pick(u, UNDONE_FIELDS) for u in _entries(db.get("undone")) if isinstance(u, dict)]
     return {
         "uploader": db.get("me") if isinstance(db.get("me"), str) else None,
         "items": items,
@@ -71,6 +73,7 @@ def build_upload(db: dict) -> dict:
         "instances": instances,
         "drops": drops,
         "awards": awards,
+        "undone": undone,
         "decisions_at": db.get("decisionsAt") if isinstance(db.get("decisionsAt"), int) else None,
     }
 

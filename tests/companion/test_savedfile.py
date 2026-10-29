@@ -54,6 +54,15 @@ def test_upload_is_what_the_bot_reads():
     assert up.awards[0].note.endswith("\nsecond line")
 
 
+def test_awards_taken_back_go_up_for_the_bot_to_remove():
+    db = savedfile.read_saved_file(FIXTURES / "NoctisLootCouncil.lua")
+    assert savedfile.build_upload(db)["undone"] == []  # a file from before /nlc undo was remembered
+    db["undone"] = [{"id": 16805, "who": "Corvin Dusk", "at": 1793049100, "how": "ms"}, "junk"]
+    body = savedfile.build_upload(db)
+    assert body["undone"] == [{"id": 16805, "who": "Corvin Dusk", "at": 1793049100}]
+    assert [(u.id, u.who, u.at) for u in parse_upload(body).undone] == [(16805, "Corvin Dusk", 1793049100)]
+
+
 def test_missing_db_variable(tmp_path):
     p = tmp_path / "NoctisLootCouncil.lua"
     p.write_text("SomethingElse = {}\n")

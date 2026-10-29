@@ -30,6 +30,7 @@ local function TierName(tier)
 end
 
 local WARN = 10          -- seconds left when raid chat is reminded
+local CHAT_MAX = 255     -- the longest line raid chat takes
 
 -- The roll running now: { link, id, sid, round, tied = { [key] = true }|nil, rolls = { [key] = entry },
 -- only = { [key] = true }|nil (a roll-off: only these count, all as equals), onAward = fn|nil }
@@ -145,6 +146,24 @@ local function Done(r)
     Changed()
 end
 
+-- A line naming people. Too long for one chat line (a roll-off between a 40-man raid's
+-- bidders), it's the head, then the names over as many lines as they need.
+local function AnnounceNames(full, head, names)
+    if #full <= CHAT_MAX then return ns.Announce(full) end
+    ns.Announce(head)
+    local line = ""
+    for _, name in ipairs(names) do
+        local longer = line == "" and name or line .. ", " .. name
+        if #longer > CHAT_MAX then
+            ns.Announce(line)
+            line = name
+        else
+            line = longer
+        end
+    end
+    if line ~= "" then ns.Announce(line) end
+end
+
 -- Adds an award to the loot log, with what the export and the bot want to know: the
 -- winner's class, the raid and the boss.
 function ns.LogAward(award, unit)
@@ -207,6 +226,7 @@ Finish = function()
     if r.round > 1 and not top.r[r.round] then
         Done(r) -- a tie, and none of those tied rolled again
         ns.Announce(L["Nobody re-rolled for %s; the loot master decides."]:format(r.link))
+        if r.onCancel then r.onCancel() end
         return
     end
     r.round, r.tied = r.round + 1, {}
@@ -215,7 +235,8 @@ Finish = function()
         r.tied[e.key] = true
         names[#names + 1] = e.name
     end
-    ns.Announce(L["Tie for %s: %s. Roll again, %d seconds."]:format(r.link, concat(names, ", "), DURATION))
+    AnnounceNames(L["Tie for %s: %s. Roll again, %d seconds."]:format(r.link, concat(names, ", "), DURATION),
+        L["Tie for %s. Roll again if you're named below, %d seconds:"]:format(r.link, DURATION), names)
     Schedule(r)
 end
 
@@ -289,15 +310,17 @@ function ns.RollStandings()
     return out
 end
 
--- Starts a roll. opts: only = { key = true } and onAward = fn(entry, roll) for a council
--- roll-off; onNobody = fn. Returns false if a roll is already running.
+-- Starts a roll. opts: only = { key = true }, names = { names } and onAward = fn(entry, roll)
+-- for a council roll-off; onNobody = fn; onCancel = fn, if it's called off or a tie is never
+-- re-rolled. Returns false if a roll is already running.
 function ns.StartRoll(id, link, opts)
     if current then return false end
     opts = opts or {}
     current = { id = id, link = link, round = 1, rolls = {}, sid = ns.NewSession(), only = opts.only,
-        onAward = opts.onAward, onNobody = opts.onNobody }
+        onAward = opts.onAward, onNobody = opts.onNobody, onCancel = opts.onCancel }
     if opts.only then
-        ns.Announce(L["Roll-off for %s between %s: /roll. %d seconds."]:format(link, opts.names, DURATION))
+        AnnounceNames(L["Roll-off for %s between %s: /roll. %d seconds."]:format(link, concat(opts.names, ", "), DURATION),
+            L["Roll-off for %s: /roll if you're named below, %d seconds:"]:format(link, DURATION), opts.names)
     else
         ns.Announce(L["Roll for %s: /roll for main spec, /roll 99 for off spec. %d seconds."]:format(link, DURATION))
         ns.Broadcast("S", current.sid, link, "roll", DURATION)
@@ -318,10 +341,16 @@ local function ItemFrom(text)
 end
 
 -- Starts the item's lane: the council for a council item (unless `how` is "roll"), else a
--- roll. Returns false if something is already running.
+-- roll. Returns false if something is already running: a roll, or a council (whose bids are
+-- rolls too, so a second item's rolls would be taken as bids on it).
 function ns.StartItem(id, link, how)
     if current then
         ns.Say(L["Already rolling for %s. /nlc stop ends it now, /nlc cancel calls it off."]:format(current.link))
+        return false
+    end
+    local s = ns.CouncilSession and ns.CouncilSession()
+    if s and s.mine and s.phase ~= "done" then
+        ns.Say(L["The council is still on %s. /nlc stop moves it on, /nlc cancel calls it off."]:format(s.link))
         return false
     end
     local item = id and ns.db.items[id]
@@ -357,6 +386,7 @@ ns.Command("cancel", function()
     local r = current
     Done(r)
     ns.Announce(L["Roll for %s called off."]:format(r.link))
+    if r.onCancel then r.onCancel() end
 end, L["call off the roll or the council"])
 
 ns.Command("wins", function()
@@ -381,6 +411,11 @@ ns.Command("undo", function()
     local e = log[#log]
     if not e then ns.Say(L["Nothing to undo."]) return end
     log[#log] = nil
+    -- The bot may have the award from an earlier upload: the next one tells it to take it back.
+    if e.id then
+        local undone = ns.db.undone
+        undone[#undone + 1] = { id = e.id, who = e.who, at = e.at }
+    end
     ns.Say(L["Removed: %s won %s."]:format(e.who, e.link or "?"))
 end, L["remove the last award (it no longer counts as a win)"])
 

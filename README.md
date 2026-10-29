@@ -78,12 +78,12 @@ Decisions made in Discord always win. A decision set in game (`/nlc council ...`
 
 1. Go to https://discord.com/developers/applications, **New Application**, name it "Noctis Loot".
 2. **Bot** tab: **Reset Token** and copy the token (it goes in `.env` as `DISCORD_TOKEN`). No privileged intents are needed.
-3. **OAuth2 → URL Generator**: scopes **`bot`** and **`applications.commands`**; bot permissions **View Channels, Send Messages, Embed Links, Read Message History**. (Manage Messages isn't needed: the bot only edits its own posts.) Open the generated link and add the bot to the server. The same link by hand, with your application ID:
-   `https://discord.com/oauth2/authorize?client_id=APPLICATION_ID&scope=bot+applications.commands&permissions=84992`
+3. **OAuth2 → URL Generator**: scopes **`bot`** and **`applications.commands`**; bot permissions **View Channels, Send Messages, Embed Links, Attach Files, Read Message History**. (Attach Files is for the drawn item titles on #loot-items and #loot-officers. Manage Messages isn't needed: the bot only edits its own posts.) Open the generated link and add the bot to the server. The same link by hand, with your application ID:
+   `https://discord.com/oauth2/authorize?client_id=APPLICATION_ID&scope=bot+applications.commands&permissions=117760`
 
 ### 2. Channels and the officer role
 
-- Create **#loot-officers** (private: officers only), **#loot-items**, **#loot-priorities** and **#loot-log**. Give the bot access to the private channel (channel settings → Permissions → add the bot's role with View Channel, Send Messages, Embed Links, Read Message History).
+- Create **#loot-officers** (private: officers only), **#loot-items**, **#loot-priorities** and **#loot-log**. Give the bot access to the private channel (channel settings → Permissions → add the bot's role with View Channel, Send Messages, Embed Links, Attach Files, Read Message History).
 - Only members with the officer role can vote, set priorities and use the officer commands (server admins without the role can't vote).
 - Suggested pinned post for #loot-items (post and pin it yourself), from the mockup:
   > The officers decide which items are council items. If you think a roll item matters enough to be councilled, press **Suggest for council**. It's counted for the officers' next look at the list and never changes anything during a raid.
@@ -245,7 +245,7 @@ It **writes**:
 
 It **talks to** the bot address in `companion.ini`, and nowhere else:
 
-- `POST /api/upload`, with what the saved file holds about raid loot: the items (name, link, quality, where and when they dropped, the decision and note), the drops it saw and the awards (who won what, their class, how, the roll, the note and bid tags), and the name of the character that uploaded. The account folder's name stays on your PC.
+- `POST /api/upload`, with what the saved file holds about raid loot: the items (name, link, quality, where and when they dropped, the decision and note), the drops it saw and the awards (who won what, their class, how, the roll, the note and bid tags) and those taken back with `/nlc undo`, and the name of the character that uploaded. The account folder's name stays on your PC.
 - `GET /api/decisions`: the council and roll decisions.
 
 Both carry your token. It tells the bot the upload is yours, and does nothing else: the bot accepts it for those two requests only, and it gives no access to your Discord or Battle.net account. `/loot token` replaces it.

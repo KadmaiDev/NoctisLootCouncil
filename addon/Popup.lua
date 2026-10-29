@@ -22,8 +22,8 @@ local tick = 0
 
 local function ItemLink(id, link)
     if link and link ~= "" then return link end
-    local GetInfo = C_Item and C_Item.GetItemInfo
-    local _, l = GetInfo and GetInfo(id)
+    local _, l
+    if C_Item and C_Item.GetItemInfo then _, l = C_Item.GetItemInfo(id) end
     if ns.Plain(l) and type(l) == "string" then return l end
     if C_Item and C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(id) end
     return "item:" .. tostring(id)
@@ -68,8 +68,16 @@ local function Choose(resp)
         local note = (frame.note:GetText() or ""):sub(1, ns.NOTE_MAX)
         local names = { o.lm }
         for _, n in ipairs(o.council) do names[#names + 1] = n end
-        ns.SendTo(names, "B", o.sid, resp, resp == "pass" and "" or Tags(), resp == "pass" and "" or note,
+        local missed = ns.SendTo(names, "B", o.sid, resp, resp == "pass" and "" or Tags(), resp == "pass" and "" or note,
             resp == "pass" and "" or Gain(), ns.WornIDs(o.link))
+        -- Not everyone got it privately: a roll is a bid everyone's addon reads, without the
+        -- tags and note (kept private), as if bidding without the addon.
+        if missed and resp ~= "pass" then
+            ns.Say(L["Couldn't send your bid privately to %s, so it's a roll instead (no tags or note)."]:format(concat(missed, ", ")))
+            if RandomRoll then RandomRoll(1, resp == "ms" and 100 or 99) end
+        elseif missed then
+            ns.Say(L["Couldn't send your pass to %s."]:format(concat(missed, ", ")))
+        end
     end
     Close()
 end
@@ -145,9 +153,11 @@ local function Show(o)
 end
 
 ns.OnMessage("S", function(m, sid, a, b, c, d, e, f)
-    if ns.db.popupOff then return end
+    if ns.db.popupOff or not ns.MayRunLoot(m.unit) then return end
     -- A roll:    sid, link, "roll", seconds
     -- A council: sid, itemID, "council", seconds, loot master, council names, link (may be missing)
+    -- A council's bids go to the loot master it names, so that must be who sent it.
+    if b == "council" and ns.NameKey(d) ~= m.key then return end
     local o
     if b == "roll" then
         o = { sid = tonumber(sid), link = a, kind = "roll", ends = time() + (tonumber(c) or 30), council = {} }
@@ -158,11 +168,21 @@ ns.OnMessage("S", function(m, sid, a, b, c, d, e, f)
             lm = d, council = names }
         o.link = ItemLink(o.id, f)
     end
-    if o and o.sid then Show(o) end
+    if o and o.sid then
+        o.from = m.key
+        Show(o)
+    end
 end)
 
 ns.OnMessage("E", function(m, sid)
-    if open and tonumber(sid) == open.sid then Close() end
+    if open and tonumber(sid) == open.sid and m.key == open.from then Close() end
+end)
+
+-- A council item the client hadn't loaded: its link once it has.
+ns.On("GET_ITEM_INFO_RECEIVED", function(id)
+    if not open or not open.id or open.id ~= id or not open.link:find("^item:") then return end
+    open.link = ItemLink(open.id)
+    if frame then frame.item:SetText(open.link) end
 end)
 
 function ns.PopupOpen() return open end

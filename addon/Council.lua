@@ -187,8 +187,14 @@ end
 ns.OnMessage("V", function(m, sid, cand, why)
     local s = session
     if not s or tonumber(sid) ~= s.sid or s.phase ~= "vote" or not ns.CanVote(s, m.key) then return end
+    -- A vote needs a reason from the rules (an older addon, or a made-up message, may send none).
+    local reasons = cand ~= "" and Reasons(why) or nil
+    if reasons and #reasons == 0 then
+        if s.mine then ns.Say(L["%s's vote has no reason, so it doesn't count: they may need to update the addon."]:format(m.name)) end
+        return
+    end
     s.votes[m.key] = cand ~= "" and cand or nil
-    s.why[m.key] = cand ~= "" and Reasons(why) or nil
+    s.why[m.key] = reasons
     Changed()
     if s.mine then
         local _, n = ns.Tally(s)
@@ -205,6 +211,12 @@ local function MyWhy(s)
     return keys
 end
 
+-- Votes are never sent raid-wide: if a whisper fails, the council member is told.
+local function VoteSent(missed)
+    if not missed then return end
+    ns.Say(L["Couldn't send your vote privately to %s. Whisper the loot master your vote and why; they can award it with /nlc award."]:format(concat(missed, ", ")))
+end
+
 -- This council member's vote (nil takes it back). A vote needs at least one reason ticked.
 function ns.Vote(candKey)
     local s = session
@@ -214,7 +226,7 @@ function ns.Vote(candKey)
         ns.Say(L["Tick at least one reason first: it's posted in the loot log."])
         return false
     end
-    ns.SendTo(Recipients(s), "V", s.sid, candKey or "", candKey and concat(why, ",") or "")
+    VoteSent(ns.SendTo(Recipients(s), "V", s.sid, candKey or "", candKey and concat(why, ",") or ""))
     return true
 end
 
@@ -226,7 +238,7 @@ function ns.SetVoteReason(key, on)
     s.myWhy[key] = on or nil
     local cand = s.phase == "vote" and s.votes[Me()]
     if cand and #MyWhy(s) > 0 then
-        ns.SendTo(Recipients(s), "V", s.sid, cand, concat(MyWhy(s), ","))
+        VoteSent(ns.SendTo(Recipients(s), "V", s.sid, cand, concat(MyWhy(s), ",")))
     end
     Changed()
 end
@@ -316,9 +328,16 @@ local function RollOff(s, keys, reasonFmt)
     end
     sort(names)
     Phase(s, "rolloff")
-    local ok = ns.StartRoll(s.id, s.link, { only = only, names = concat(names, ", "),
+    local ok = ns.StartRoll(s.id, s.link, { only = only, names = names,
         onAward = function(e, roll) ns.CouncilAward(e.key, reasonFmt:format(roll), roll) end,
-        onNobody = function() End(s) end })
+        onNobody = function() End(s) end,
+        -- Called off, or a tie nobody re-rolled: back to the vote, for the loot master to award
+        -- it from the window (or /nlc award), roll off again, or call it off.
+        onCancel = function()
+            if session ~= s or s.phase ~= "rolloff" then return end
+            Phase(s, "vote")
+            ns.Say(L["The roll-off for %s is off. Award it from the council window (or /nlc award), roll off again, or /nlc cancel."]:format(s.link))
+        end })
     if not ok then
         ns.Say(L["A roll is running; finish it, then award %s from the council window."]:format(s.link))
         Phase(s, "vote")
@@ -370,7 +389,7 @@ local function CloseBids()
     end
     Phase(s, "vote", VOTE)
     ns.Announce(L["Bids closed for %s: %d main spec. The council has %d minutes."]:format(s.link, #ms, VOTE / 60))
-    ns.SendTo(s.council, "P", s.sid, "vote", VOTE)
+    ns.Broadcast("P", s.sid, "vote", VOTE) -- nothing private: the vote has started
     After(VOTE, function() Tally(true) end)
 end
 
@@ -445,8 +464,12 @@ end
 ---------------------------------------------------------------------------
 ns.OnMessage("S", function(m, sid, id, kind, seconds, lm, council, link)
     if kind ~= "council" then return end
+    -- Only from the loot master it names, who must be able to run the loot.
+    if ns.NameKey(lm) ~= m.key or not ns.MayRunLoot(m.unit) then return end
     sid, id = tonumber(sid), tonumber(id)
     if not sid or (session and session.sid == sid) then return end
+    -- An open session is only replaced by its own loot master moving on to the next item.
+    if session and session.phase ~= "done" and (session.mine or ns.NameKey(session.lm) ~= m.key) then return end
     local names = Split(council)
     local me, voters, member = Me(), {}, false
     for _, name in ipairs(names) do
@@ -463,13 +486,13 @@ end)
 
 ns.OnMessage("P", function(m, sid, phase, seconds)
     local s = session
-    if not s or s.mine or tonumber(sid) ~= s.sid or phase ~= "vote" then return end
+    if not s or s.mine or tonumber(sid) ~= s.sid or phase ~= "vote" or m.key ~= ns.NameKey(s.lm) then return end
     Phase(s, "vote", tonumber(seconds))
 end)
 
 ns.OnMessage("E", function(m, sid, winner)
     local s = session
-    if not s or s.mine or tonumber(sid) ~= s.sid then return end
+    if not s or s.mine or tonumber(sid) ~= s.sid or m.key ~= ns.NameKey(s.lm) then return end
     s.winner = winner ~= "" and winner or nil
     Phase(s, "done")
 end)

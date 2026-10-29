@@ -41,6 +41,7 @@ Fields the companion uses (others may exist; ignore them):
 | `instances` | `{ [instanceID] = name }` | raids |
 | `drops` | list of `{ id, at, src, inst, n }` | each sighting that added to `seen`: item ID, unix time, source (as in `from`, may be missing), instance, copies |
 | `log` | list of awards, oldest first | see below |
+| `undone` | list of `{ id, who, at }` | awards taken back with `/nlc undo`: the item ID, winner and time of the award as it was in `log` (missing in files from before 2026-10-29) |
 
 An award (`log` entry):
 
@@ -76,7 +77,8 @@ out with `/loot token`), JSON body:
   "drops": [ { "id": 18000, "at": 1793070000, "src": "e663", "inst": 409, "n": 1 } ],
   "awards": [ { "id": 18000, "link": "...", "who": "Ilsa Marrow", "class": "WARLOCK", "at": 1793070100,
                 "how": "council", "note": "council vote, 3 of 4: biggest upgrade; bid: BIS", "inst": "Molten Core",
-                "boss": "Lucifron", "nms": 4, "nos": 1, "tags": "BIS" } ]
+                "boss": "Lucifron", "nms": 4, "nos": 1, "tags": "BIS" } ],
+  "undone": [ { "id": 16866, "who": "Doran Pike", "at": 1793070400 } ]
 }
 ```
 
@@ -84,11 +86,20 @@ out with `/loot token`), JSON body:
 the whole file each time; the bot de-duplicates:
 
 - **Awards:** one per (`who` lower-cased, `id`, `at`).
+- **Awards taken back:** an `undone` entry removes the award with that key (and edits its
+  #loot-log post, or deletes the post if the night has no awards left). The bot remembers it,
+  so the award never comes back, even from an upload that still has it in `awards` (another
+  officer's file, or an older one). An award's absence from `log` means nothing on its own:
+  uploads are each officer's own partial history. `undone` may be missing (older companions).
 - **Drops:** several officers may upload the same raid, and their clocks and the moment each
   saw the drop differ by seconds to minutes. Two drops are the same drop when they have the
-  same `id` and `src` (missing counts as "") and their `at` are within 15 minutes; the bot
-  keeps the largest `n` any upload reported. An item's drop count in our raids is the sum
-  over its distinct drops. (A fixed half-hour bucket would count a drop seen at 20:29 by one
+  same `id` and `src` (missing counts as "") and their `at` are within 15 minutes. Each addon
+  records copies its own way: two copies in the loot master's loot window are one entry with
+  `n = 2`, while an officer who only sees the chat lines has two entries with `n = 1`. So the
+  bot counts copies, not entries: an upload's entries for one `id` and `src` within 15 minutes
+  of each other (one after another) are one drop with their `n` added up, and the bot keeps
+  the most copies any one upload saw of it. An item's drop count in our raids is the sum over
+  its distinct drops. (A fixed half-hour bucket would count a drop seen at 20:29 by one
   officer and 20:31 by another twice.)
 - **Items:** name, link, quality, sources and first/last are merged (union of sources, min
   first, max last). An item the bot has never seen with `seen > 0` is **new in our raids**:

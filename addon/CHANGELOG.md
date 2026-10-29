@@ -4,6 +4,14 @@
 
 - **Council votes come with a reason.** Each council member ticks why they vote, from the guild's rules: class fit, biggest upgrade, less loot so far, reliability, effort (at least one). The loot log says why the winner got it: "council vote, 3 of 4: biggest upgrade, less loot so far", with their bid tags and note.
 - **A council item that goes to an off-spec roll-off** is logged with the winning roll, like any other roll ("off-spec roll, 90").
+- **`/nlc undo` reaches Discord**: an award taken back after it was uploaded leaves the #loot-log post at the next upload, instead of staying there next to the correction.
+- **Bids and votes stay private.** They never go raid-wide: if the game won't whisper them, a bid becomes a roll (without its tags and note) and a council member is told their vote didn't arrive.
+- **Only the loot master runs the council.** Pop-ups, council sessions and their next steps only count from the raid's leader, an assistant or the master looter, and from the loot master they name; a vote without a reason doesn't count.
+- **The council window pages** through more than eight candidates, so every one can be voted for.
+- **No roll starts while a council item is open** (its rolls would be taken as bids), and a council roll-off that's called off, or a tie nobody re-rolls, goes back to the vote for the loot master to decide.
+- **Long roll-off and tie announcements** go over several lines of raid chat instead of not at all.
+- **A council item decided in Discord before it ever dropped** is counted at its first drop, even when it's only seen in chat.
+- Fixed: candidates' names in the council window are in their class colour, and the pop-up shows a council item's name once the game has loaded it.
 
 ## Noctis Loot Council 0.1.0
 

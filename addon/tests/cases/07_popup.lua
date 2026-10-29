@@ -3,7 +3,7 @@
 local SASH = wow.link(18000, "Sash of the Unseen", 4)
 local BELT = wow.link(16818, "Netherwind Belt", 4)
 local HELM = wow.link(16866, "Helm of Might", 4)
-local SEREN = { "Seren", "Vale", rank = "Officer", class = "PRIEST" }
+local SEREN = { "Seren", "Vale", rank = "Officer", class = "PRIEST", assist = true }
 local DORAN = { "Doran", "Pike", rank = "Officer", class = "WARRIOR" }
 
 -- The player as a raider in Seren's raid (Seren is the loot master).
@@ -124,15 +124,19 @@ test("a council item without its link in the message is looked up by its ID", fu
     eq(wow.requested[#wow.requested], 18000)
 end)
 
-test("if whispers can't be sent, the bid goes raid-wide instead", function()
+test("if whispers can't be sent, the bid never goes raid-wide: it becomes a roll instead", function()
     raider()
     wow.whisperFails = true
     wow.message("Seren Vale", "RAID", "S", 201, 18000, "council", 30, "Seren Vale", "Doran Pike", SASH)
+    popup().chips[1]:SetChecked(true)
+    popup().note:SetText("private note")
     popup().os:Click()
-    local bids = wow.messages("B")
-    eq(#bids, 1)
-    eq(bids[1].channel, "RAID")
-    eq(bids[1][3], "os")
+    for _, b in ipairs(wow.messages("B")) do
+        assert(b.channel == "WHISPER", "a bid went " .. tostring(b.channel))
+    end
+    eq(wow.rolled[1], 1)
+    eq(wow.rolled[2], 99, "an off-spec roll")
+    assert(printed():find("Couldn't send your bid privately to Seren Vale, Doran Pike, so it's a roll instead", 1, true), printed())
 end)
 
 test("if the game blocks addon messages, the loot master is told once and rolls still work", function()
@@ -179,4 +183,32 @@ test("/nlc role: the role the upgrade % is worked out for", function()
     assert(printed():find("Not a role for your class", 1, true))
     wow.type("/nlc role auto")
     eq(ns.MyRole(), "feral")
+end)
+
+test("pop-ups only open for someone running the loot, and a council's only from the loot master it names", function()
+    raider()
+    wow.raid({ SEREN, DORAN })
+    wow.message("Doran Pike", "RAID", "S", 101, HELM, "roll", 30)
+    assert(not popup() or not popup():IsShown(), "Doran neither leads nor assists")
+    wow.message("Seren Vale", "RAID", "S", 201, 18000, "council", 30, "Doran Pike", "Doran Pike", SASH)
+    assert(not popup() or not popup():IsShown(), "Seren naming Doran as loot master")
+    wow.message("Seren Vale", "RAID", "S", 101, HELM, "roll", 30)
+    assert(popup():IsShown())
+    wow.message("Doran Pike", "RAID", "E", 101)
+    assert(popup():IsShown(), "only Seren can close it")
+    wow.message("Seren Vale", "RAID", "E", 101)
+    assert(not popup():IsShown())
+end)
+
+test("a council item without its link: the cached link if the client has it, else the link once it loads", function()
+    raider()
+    wow.cache[18000] = { "Sash of the Unseen", 4 }
+    wow.message("Seren Vale", "RAID", "S", 201, 18000, "council", 30, "Seren Vale", "Seren Vale")
+    assert(popup().item:GetText():find("[Sash of the Unseen]", 1, true), popup().item:GetText())
+    wow.message("Seren Vale", "RAID", "E", 201)
+    wow.cache[18000] = nil
+    wow.message("Seren Vale", "RAID", "S", 202, 18000, "council", 30, "Seren Vale", "Seren Vale")
+    eq(popup().item:GetText(), "item:18000")
+    wow.itemLoads(18000, "Sash of the Unseen", 4)
+    assert(popup().item:GetText():find("[Sash of the Unseen]", 1, true), popup().item:GetText())
 end)
