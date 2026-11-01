@@ -9,9 +9,9 @@ local L = ns.L
 
 local ipairs, pairs, time, floor, concat, type, date, tostring = ipairs, pairs, time, math.floor, table.concat, type, date, tostring
 
-local WIDTH, HEIGHT = 900, 470
+local WIDTH, HEIGHT = 960, 470
 local DROP_ROWS, ROLL_ROWS = 8, 10
-local LEFT_W = 400
+local LEFT_W = 460
 
 local frame
 local dropRows, rollRows = {}, {}
@@ -40,7 +40,8 @@ local function Award(drop)
     end
 end
 
-local HOW = { ms = L["main spec"], ms2 = L["second main spec"], os = L["off spec"], council = L["council"] }
+local HOW = { ms = L["main spec"], ms2 = L["second main spec"], os = L["off spec"], council = L["council"],
+    de = L["disenchanted"] }
 
 -- "Council item · Warlock priority", "Rolling, 0:18", "Done · Bran Holloway, off spec 64"...
 function ns.DropState(drop)
@@ -55,7 +56,9 @@ function ns.DropState(drop)
         return s.phase == "bids" and L["Council: taking bids"] or s.phase == "vote" and L["Council: voting"] or L["Council: roll-off"], "running"
     end
     local e = Award(drop)
-    if e then
+    if e and e.how == "de" then
+        return L["Disenchanted · %s"]:format(e.who), "done"
+    elseif e then
         return L["Done · %s, %s"]:format(e.who, (HOW[e.how] or e.how) .. (e.roll and " " .. e.roll or "")), "done"
     end
     if item.handling == "council" then
@@ -97,6 +100,7 @@ local function RefreshDrops()
             local idle = kind ~= "running" and kind ~= "done"
             row.start:SetShown(idle)
             row.other:SetShown(idle)
+            row.de:SetShown(idle)
             row.start:SetText(kind == "council" and L["Council"] or L["Roll"])
             row.other:SetText(kind == "council" and L["Roll instead"] or L["Council instead"])
             row.kind = kind
@@ -230,20 +234,24 @@ local function CreateWindow()
         row:SetPoint("TOPLEFT", pane, "TOPLEFT", 14, -4 - (i - 1) * 46)
         row.item = ns.Label(row, "GameFontNormal")
         row.item:SetPoint("TOPLEFT", row, "TOPLEFT", 4, -4)
-        row.item:SetWidth(LEFT_W - 190)
+        row.item:SetWidth(LEFT_W - 270)
         row.item:SetWordWrap(false)
         row.state = ns.Label(row, "GameFontHighlightSmall")
         row.state:SetPoint("TOPLEFT", row.item, "BOTTOMLEFT", 0, -4)
-        row.state:SetWidth(LEFT_W - 190)
+        row.state:SetWidth(LEFT_W - 270)
         row.state:SetWordWrap(false)
         row.start = ns.Button(row, L["Roll"], 80, function()
             if row.drop then ns.StartItem(row.drop.id, row.drop.link, row.kind == "council" and "council" or "roll") end
         end)
-        row.start:SetPoint("TOPRIGHT", row, "TOPRIGHT", -96, -4)
+        row.start:SetPoint("TOPRIGHT", row, "TOPRIGHT", -176, -4)
         row.other = ns.Button(row, L["Council instead"], 92, function()
             if row.drop then ns.StartItem(row.drop.id, row.drop.link, row.kind == "council" and "roll" or "council") end
         end)
         row.other:SetPoint("LEFT", row.start, "RIGHT", 4, 0)
+        row.de = ns.Button(row, L["Disenchant"], 76, function()
+            if row.drop then ns.Disenchant(row.drop.id, row.drop.link) end
+        end)
+        row.de:SetPoint("LEFT", row.other, "RIGHT", 4, 0)
         dropRows[i] = row
     end
     local hint = ns.Label(pane, "GameFontDisableSmall")

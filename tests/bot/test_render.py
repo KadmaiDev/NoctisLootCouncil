@@ -257,6 +257,13 @@ def test_council_vote_lines():
     assert line(None) == "Sash → **Ilsa** · council"
 
 
+def test_disenchanted_item():
+    assert render.award_line(aw("Lava Core", "Bran Holloway", "de")) == "Lava Core → **Bran Holloway** · disenchanted"
+    # Never "new item": nobody rolled for it.
+    assert render.award_line(aw("Lava Core", "Bran", "de", new=True)) == "Lava Core → **Bran** · disenchanted"
+    assert render.award_summary(aw("Lava Core", "Bran", "de")) == "nobody wanted it, disenchanted by Bran"
+
+
 def test_markdown_in_player_text_is_escaped():
     line = render.award_line(aw("Sash", "Ilsa", "council", note="*best* upgrade"))
     assert "council · \\*best\\* upgrade" in line

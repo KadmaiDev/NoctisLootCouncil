@@ -65,7 +65,7 @@ end)
 --   minQuality = number|nil,            -- lowest quality recorded (nil = 3, rare)
 --   dungeons = true|nil,                -- record dungeon drops too (for trying it out)
 --   log = { award }, oldest first (Rolls.lua, Council.lua): { id = itemID, link, who = "First Last",
---         class = "WARLOCK"|nil, at = time(), how = "ms"|"ms2"|"os"|"council", roll|nil,
+--         class = "WARLOCK"|nil, at = time(), how = "ms"|"ms2"|"os"|"council"|"de" (disenchant), roll|nil,
 --         note = council reason or the winner's bid|nil, inst = raid name|nil, boss = boss name|nil,
 --         nms, nos = how many wanted it main spec / off spec|nil }
 --   undone = { { id = itemID, who, at } }, -- awards taken back with /nlc undo, so the bot removes them too
@@ -78,13 +78,14 @@ end)
 --   council = { "First Last", ... }|nil, -- who votes on council items (Council.lua; the loot master's matters)
 --   popupOff = true|nil,                -- no Main spec / Off spec / Pass pop-up (Popup.lua)
 --   autoOpenOff = true|nil,             -- the loot master's window doesn't open by itself (LootWindow.lua)
+--   disenchanter = "First Last"|nil,    -- who items nobody wants go to (Rolls.lua)
 -- }
 -- The companion app reads this file; its format is in the repository's docs/sync-format.md.
 -- Each field's type, so a damaged save is repaired at load instead of breaking things.
 local DB_FIELDS = { v = "number", items = "table", encounters = "table", bossSources = "table",
     instances = "table", minQuality = "number", dungeons = "boolean", log = "table", night = "number",
     trialRanks = "table", drops = "table", me = "string", decisionsAt = "number", scale = "number",
-    council = "table", popupOff = "boolean", autoOpenOff = "boolean", undone = "table" }
+    council = "table", popupOff = "boolean", autoOpenOff = "boolean", undone = "table", disenchanter = "string" }
 ns.ITEM_FIELDS = { link = "string", q = "number", first = "number", last = "number", seen = "number",
     from = "table", inst = "number", handling = "string", note = "string",
     slot = "string", sub = "string" }

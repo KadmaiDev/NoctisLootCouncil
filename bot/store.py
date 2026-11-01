@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 from . import iteminfo, rules, warcraftlogs
 from .model import AwardInfo, ItemState, LogGroup, Post, UploadResult
-from .rules import COUNCIL, HANDLINGS, Vote
+from .rules import COUNCIL, DISENCHANT, HANDLINGS, Vote
 from .upload import Upload, UploadDrop, UploadItem, UploadUndone, name_from_link
 
 TOKEN_PREFIX = "nlc_"
@@ -460,8 +460,9 @@ class Store:
         awards = []
         for r in rows:
             name = r["item_name"] or name_from_link(r["link"]) or f"Item {r['item_id']}"
-            # "new item": rolled on its first night in our raids (council items were decided, so not new).
-            new_item = r["how"] != COUNCIL and self._first_night(r["item_id"]) == night
+            # "new item": rolled on its first night in our raids (council items were decided, so not
+            # new; a disenchanted one wasn't rolled for).
+            new_item = r["how"] not in (COUNCIL, DISENCHANT) and self._first_night(r["item_id"]) == night
             url = (iteminfo.page_url(r["item_id"], r["wh_name"] or name, r["wh_env"])
                    if r["wh_found"] and r["wh_env"] else None)
             awards.append(dataclasses.replace(self._award_info(r, name, new_item), emoji=r["emoji"], url=url))

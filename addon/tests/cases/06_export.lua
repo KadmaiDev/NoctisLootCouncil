@@ -83,6 +83,17 @@ test("a council award keeps its reason; commas and quotes are escaped as RCLootC
     assert(lines(ns.ExportCSV())[2]:find('"Warlock priority, ""biggest upgrade"""', 1, true))
 end)
 
+test("a disenchanted item is RCLootCouncil's Disenchant award reason", function()
+    local ns = start()
+    ns.db.log[1] = { id = 18000, link = SASH, who = "Bran Holloway", at = wow.clock, how = "de" }
+    local f = fields(lines(ns.ExportCSV())[2])
+    eq(#f, 23)
+    eq(f[1], "Bran Holloway")
+    eq(f[8], "Disenchant")
+    eq(f[18], "1")
+    eq(f[19], "true")
+end)
+
 test("/nlc export shows tonight's awards in a box, selected for copying; all shows the log", function()
     local ns = start()
     ns.db.log = {

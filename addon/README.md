@@ -40,6 +40,8 @@ Who wins, by the guild's rules:
 
 Only each player's first roll counts. Main-spec wins count as "tonight's" for 12 hours, or until `/nlc newnight`.
 
+**Nobody wants it?** Set the guild's disenchanter with `/nlc disenchanter First Last`, and each drop in the loot master's window gets a **Disenchant** button: raid chat is told who it goes to, and the loot log (and Discord's #loot-log) shows it as disenchanted. It never counts as a win. The loot master still hands the item over.
+
 | Command | |
 |---|---|
 | `/nlc start <item> [roll\|council]` | start its roll, or the council for a council item |
@@ -48,6 +50,7 @@ Only each player's first roll counts. Main-spec wins count as "tonight's" for 12
 | `/nlc wins` | tonight's main-spec wins |
 | `/nlc newnight` | start a new raid night |
 | `/nlc undo` | remove the last award (from Discord's #loot-log too, after the next upload) |
+| `/nlc disenchanter [First Last\|none]` | who items nobody wants go to (the Disenchant button) |
 | `/nlc trials [rank, rank]` | the guild ranks that are trials (default: any rank with "trial" in its name) |
 | `/nlc popup on\|off` | the Main spec / Off spec / Pass pop-up |
 
@@ -57,9 +60,9 @@ Council items go to the loot council instead of a roll.
 
 1. **Bids, 30 seconds.** The pop-up asks Main spec / Off spec / Pass, with optional tags (BIS, Big upgrade, Sidegrade, Situational) and a short note. The bid goes to the loot master and the council only, with what you wear in that slot. Raiders without the addon bid by rolling.
 2. **The council votes**, up to 5 minutes, one vote each, ticking at least one reason from the rules: class fit, biggest upgrade, less loot so far, reliability, effort. A council member who bid on the item sits it out.
-3. **The most votes wins**, and the loot log says why: the votes and the reasons at least half of the winner's voters gave ("council vote, 3 of 4: biggest upgrade, less loot so far"), with the winner's bid tags and note. A split vote goes to a roll-off between the tied. One main-spec bid wins without a vote; only off-spec bids roll off; no bids, and the loot master disenchants or banks it. The loot master can also award it with a reason.
+3. **The most votes wins**, and the loot log says why: the votes and the reasons at least half of the winner's voters gave ("council vote, 3 of 4: biggest upgrade, less loot so far"), with the winner's bid tags and note. A split vote goes to a roll-off between the tied. One main-spec bid wins without a vote; only off-spec bids roll off; no bids, and the loot master disenchants it (the Disenchant button) or banks it. The loot master can also award it with a reason.
 
-The council window shows each candidate's gear, upgrade, earlier loot, tags, note and votes.
+The council window shows each candidate's gear, earlier loot, tags, note and votes.
 
 | Command | |
 |---|---|
@@ -69,7 +72,7 @@ The council window shows each candidate's gear, upgrade, earlier loot, tags, not
 
 ## Windows, export and Discord
 
-- **`/nlc show`** opens the loot master's window: tonight's drops with their decision and a button to start each, the running roll with everyone's standing, the item list and the loot log. It opens by itself when the loot master loots a boss (`/nlc autoopen off` stops that).
+- **`/nlc show`** opens the loot master's window: tonight's drops with their decision, a button to start each and one to disenchant it, the running roll with everyone's standing, the item list and the loot log. It opens by itself when the loot master loots a boss (`/nlc autoopen off` stops that).
 - **`/nlc export [all]`** puts tonight's awards (or all of them) in a box to copy, in RCLootCouncil's CSV format, for oxm.gg's RCLootCouncil import.
 - **Decisions from Discord**: officers vote council or roll in Discord; the Noctis Loot companion app writes them into a small `NoctisLootDecisions` addon that this one reads at login, and uploads the saved loot log back.
 - **`/nlc scale [50-300]`** sets the size of the windows. They take EllesmereUI's or ElvUI's look if you use one, and work with the Gamepad UI.

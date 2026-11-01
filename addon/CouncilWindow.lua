@@ -45,7 +45,7 @@ end
 function ns.EarlierLoot(key)
     local since, n, last = ns.NightStart(), 0, nil
     for _, e in ipairs(ns.db.log) do
-        if e.at < since and ns.NameKey(e.who) == key and e.how ~= "os" then
+        if e.at < since and ns.NameKey(e.who) == key and ns.CountsAsWin(e) then
             n = n + 1
             last = e.at
         end

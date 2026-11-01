@@ -52,7 +52,7 @@ An award (`log` entry):
 | `who` | string | winner, "First Last" |
 | `class` | string / nil | winner's class file name: `WARRIOR`, `MAGE`, ... |
 | `at` | number | unix time |
-| `how` | string | `ms` main spec roll, `ms2` second main spec, `os` off spec, `council` council award |
+| `how` | string | `ms` main spec roll, `ms2` second main spec, `os` off spec, `council` council award, `de` given to the disenchanter because nobody wanted it (`who` is the disenchanter; never a win) |
 | `roll` | number / nil | the winning roll |
 | `note` | string / nil | council awards: how it was decided, then `; bid: ` and the winner's bid tags and note if any. How: `council vote, 3 of 4` with `: ` and the reasons the winner's voters ticked (`class fit`, `biggest upgrade`, `less loot so far`, `reliability`, `effort`), `roll-off after a split vote, 87`, `the only main-spec bid`, or the loot master's own reason |
 | `tags` | string / nil | council awards: the winner's bid tags, e.g. "BIS, Big upgrade" |

@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 
 from . import iteminfo, rules
 from .model import AwardInfo, ItemState, LogGroup
-from .rules import COUNCIL, ROLL
+from .rules import COUNCIL, DISENCHANT, ROLL
 
 # A layout message holds at most 4000 characters of text; the rest is for the title and footer.
 MESSAGE_LIMIT = 3500
@@ -168,6 +168,8 @@ def award_summary(a: AwardInfo) -> str:
     """'rolled, won by Corvin Dusk (main spec, 77)'."""
     if a.how == COUNCIL:
         return f"council award to {md(a.who)}"
+    if a.how == DISENCHANT:
+        return f"nobody wanted it, disenchanted by {md(a.who)}"
     spec = rules.HOW_SPEC_TEXT.get(a.how, a.how)
     detail = f"{spec}, {a.roll}" if a.roll is not None else spec
     return f"rolled, won by {md(a.who)} ({detail})"
@@ -311,6 +313,8 @@ def award_line(a: AwardInfo) -> str:
     item = with_emoji(a.emoji, linked(md(a.item_name), a.url))
     if a.how == COUNCIL:
         return f"{item} → **{md(a.who)}** · {council_how(a.note)}"
+    if a.how == DISENCHANT:
+        return f"{item} → **{md(a.who)}** · disenchanted"
     how = rules.HOW_ROLL_TEXT.get(a.how, md(a.how))
     if a.roll is not None:
         how += f", {a.roll}"

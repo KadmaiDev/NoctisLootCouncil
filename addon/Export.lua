@@ -15,9 +15,10 @@ local WIDTH, HEIGHT = 720, 420
 local HEADER = "player,date,time,id,item,itemID,itemString,response,votes,class,instance,boss,"
     .. "difficultyID,mapID,groupSize,gear1,gear2,responseID,isAwardReason,subType,equipLoc,note,owner"
 
--- The response column and RCLootCouncil's response number for each kind of award.
-local RESPONSE = { ms = "Main spec", ms2 = "Second main spec", os = "Off spec", council = "Council" }
-local RESPONSE_ID = { ms = 1, ms2 = 2, os = 3, council = 1 }
+-- The response column and RCLootCouncil's response number for each kind of award. A
+-- disenchant is one of RCLootCouncil's award reasons (its first, "Disenchant"), not a response.
+local RESPONSE = { ms = "Main spec", ms2 = "Second main spec", os = "Off spec", council = "Council", de = "Disenchant" }
+local RESPONSE_ID = { ms = 1, ms2 = 2, os = 3, council = 1, de = 1 }
 
 -- As RCLootCouncil does it: a field with a comma is quoted, its quotes doubled.
 local function Field(s)
@@ -40,7 +41,7 @@ local function Row(e, n)
         Field(e.who), date("%Y/%m/%d", e.at), date("%H:%M:%S", e.at), e.at .. "-" .. n,
         Field(e.link or itemString), Field(e.id), itemString, Field(RESPONSE[e.how] or e.how), "",
         Field(e.class), Field(e.inst), Field(e.boss), "", "", "", "", "",
-        Field(RESPONSE_ID[e.how] or ""), "false", Field(subType), Field(equipLoc), Field(note), Field(ns.db.me),
+        Field(RESPONSE_ID[e.how] or ""), e.how == "de" and "true" or "false", Field(subType), Field(equipLoc), Field(note), Field(ns.db.me),
     }, ",")
 end
 

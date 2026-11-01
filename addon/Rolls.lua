@@ -55,13 +55,19 @@ local function Tonight()
 end
 ns.NightStart = Tonight
 
+-- True for an award that counts as a win: not an off-spec one, nor an item handed to the
+-- disenchanter.
+function ns.CountsAsWin(e)
+    return e.how ~= "os" and e.how ~= "de"
+end
+
 -- True if this player (a NameKey) won a main-spec item tonight.
 function ns.WonTonight(key)
     local since, log = Tonight(), ns.db.log
     for i = #log, 1, -1 do
         local e = log[i]
         if e.at < since then return false end
-        if e.how ~= "os" and ns.NameKey(e.who) == key then return true end
+        if ns.CountsAsWin(e) and ns.NameKey(e.who) == key then return true end
     end
     return false
 end
@@ -392,7 +398,7 @@ end, L["call off the roll or the council"])
 ns.Command("wins", function()
     local since, lines = Tonight(), {}
     for _, e in ipairs(ns.db.log) do
-        if e.how ~= "os" and e.at >= since then
+        if ns.CountsAsWin(e) and e.at >= since then
             lines[#lines + 1] = ("  %s · %s"):format(e.who, e.link or "?")
         end
     end
@@ -417,7 +423,45 @@ ns.Command("undo", function()
         undone[#undone + 1] = { id = e.id, who = e.who, at = e.at }
     end
     ns.Say(L["Removed: %s won %s."]:format(e.who, e.link or "?"))
+    if ns.RollChanged then ns.RollChanged() end
 end, L["remove the last award (it no longer counts as a win)"])
+
+-- An item nobody wants goes to the guild's disenchanter: logged (how = "de") so the log shows
+-- where it went, and never counted as a win. The loot master still hands it over.
+function ns.Disenchant(id, link)
+    local name = ns.db.disenchanter
+    if not name then
+        ns.Say(L["No disenchanter set: /nlc disenchanter First Last."])
+        return
+    end
+    local s = ns.CouncilSession and ns.CouncilSession()
+    if (current and current.id == id) or (s and s.id == id and s.phase ~= "done") then
+        ns.Say(L["%s is still being decided: call it off first."]:format(link))
+        return
+    end
+    local m = ns.GroupMember(name)
+    if not m then
+        ns.Say(L["%s isn't in the group: set another disenchanter with /nlc disenchanter."]:format(name))
+        return
+    end
+    ns.LogAward({ id = id, link = link, who = m.name, how = "de" }, m.unit)
+    ns.Announce(L["%s goes to %s to disenchant."]:format(link, m.name))
+    if ns.RollChanged then ns.RollChanged() end
+    return true
+end
+
+ns.Command("disenchanter", function(text)
+    if text:lower() == "none" then
+        ns.db.disenchanter = nil
+    elseif text ~= "" then
+        ns.db.disenchanter = text:match("^%s*(.-)%s*$")
+    end
+    if ns.db.disenchanter then
+        ns.Say(L["Disenchanter: %s. The loot master's window has a Disenchant button on each drop."]:format(ns.db.disenchanter))
+    else
+        ns.Say(L["No disenchanter set."])
+    end
+end, L["[First Last|none]: who disenchants items nobody wants (logged, never a win)"])
 
 ns.Command("trials", function(text)
     if text:lower() == "default" then

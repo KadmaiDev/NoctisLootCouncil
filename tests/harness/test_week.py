@@ -131,3 +131,22 @@ async def test_a_decision_taken_back_in_discord_is_forgotten_in_game(guild, runn
     # The game's next upload doesn't bring the old decision back.
     await companion_pass(r.lm, running.api_url, token)
     assert running.bot.store.decisions()["items"]["18000"]["handling"] == "none"
+
+
+async def test_an_item_nobody_wants_is_disenchanted_and_logged_as_such(guild, running, realm):
+    r = realm
+    token = await token_for(guild, guild.officers[2])
+    r.login()
+    r.lm.type("/nlc disenchanter Bran Holloway")
+    r.kill(663, "Lucifron")
+    r.loot(r.lm, [(HELM, 4)])
+    r.lm.type("/nlc start " + HELM)
+    r.wait(31)  # nobody rolls
+    r.lm.click("Disenchant", near="Helm of Might")
+    assert f"{HELM} goes to Bran Holloway to disenchant." in r.said()
+    assert r.lm.query("ns.WonTonight('bran holloway')") is False
+    r.logout()
+
+    await companion_pass(r.lm, running.api_url, token)
+    post = await guild.wait_until(lambda: guild.channel("loot-log").find("Bran Holloway"), what="the loot log")
+    assert "**Bran Holloway** · disenchanted" in post.text, post.text

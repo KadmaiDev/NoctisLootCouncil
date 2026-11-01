@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 COUNCIL = "council"
 ROLL = "roll"
 HANDLINGS = (COUNCIL, ROLL)
+DISENCHANT = "de"  # an award's how: handed to the disenchanter, never a win
 
 # Drops seen by several officers are the same sighting if they are within 15 minutes of each
 # other (sync-format.md, section 2). A boss drops once per kill, so this can't merge two kills.
