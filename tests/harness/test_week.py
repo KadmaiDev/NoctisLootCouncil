@@ -144,7 +144,9 @@ async def test_an_item_nobody_wants_is_disenchanted_and_logged_as_such(guild, ru
     r.wait(31)  # nobody rolls
     r.lm.click("Disenchant", near="Helm of Might")
     r.lm.click("Disenchant", near="Helm of Might")  # the same second
-    assert r.said().count(f"{HELM} goes to Bran Holloway to disenchant.") == 2
+    r.lm.type("/nlc undo")  # a slip: taken back and handed out again, in the same second
+    r.lm.click("Disenchant", near="Helm of Might")
+    assert r.said().count(f"{HELM} goes to Bran Holloway to disenchant.") == 3
     assert r.lm.query("ns.WonTonight('bran holloway')") is False
     r.logout()
 

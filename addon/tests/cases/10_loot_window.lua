@@ -215,3 +215,27 @@ test("two drops of one item: an award closes the older one only", function()
     eq(older.state:GetText(), "Lucifron · Done · Bran Holloway, disenchanted")
     assert(newer.de:IsShown(), "Magmadar's copy is still to hand out")
 end)
+
+test("award times stay in order and unique, across items, seconds and /nlc undo", function()
+    local ns = lootBoss()
+    wow.type("/nlc disenchanter Bran Holloway")
+    -- Two of A and one of B in one second, then A again in the next.
+    ns.Disenchant(16805, GLOVES)
+    ns.Disenchant(16805, GLOVES)
+    ns.Disenchant(18000, SASH)
+    wow.wait(1)
+    ns.Disenchant(16805, GLOVES)
+    -- Undo the last and hand it out again in the same second: not the undone award's time.
+    wow.type("/nlc undo")
+    ns.Disenchant(16805, GLOVES)
+    local log, seen = ns.db.log, {}
+    eq(#log, 4)
+    for i, e in ipairs(log) do
+        local key = e.who .. "|" .. e.id .. "|" .. e.at
+        assert(not seen[key], "two awards with one identity: " .. key)
+        seen[key] = true
+        if i > 1 then assert(e.at > log[i - 1].at, "the log stays in time order") end
+    end
+    local u = ns.db.undone[1]
+    assert(not seen[u.who .. "|" .. u.id .. "|" .. u.at], "the re-award reused the undone award's time")
+end)

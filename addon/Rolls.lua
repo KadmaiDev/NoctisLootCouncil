@@ -180,14 +180,14 @@ function ns.LogAward(award, unit)
     local name, instanceType = GetInstanceInfo()
     if Plain(name) and Plain(instanceType) and instanceType ~= "none" and type(name) == "string" then award.inst = name end
     award.boss = ns.RecentBoss()
-    -- Two awards of one item to one player (two copies disenchanted) never share a second: the
-    -- bot tells awards apart by who, item and time.
-    local log, now = ns.db.log, time()
-    local at, key = now, ns.NameKey(award.who)
-    for i = #log, 1, -1 do
-        local e = log[i]
-        if e.at < now then break end
-        if e.id == award.id and e.at >= at and ns.NameKey(e.who) == key then at = e.at + 1 end
+    -- The bot tells awards apart by who, item and time, so no two share a second (two copies
+    -- disenchanted at once), and none reuses an award's taken back with /nlc undo (the bot
+    -- would skip it as undone). Each comes after the last, which keeps the log in time order.
+    local log = ns.db.log
+    local at, last = time(), log[#log]
+    if last and last.at >= at then at = last.at + 1 end
+    for _, u in ipairs(ns.db.undone) do
+        if u.at and u.at >= at then at = u.at + 1 end
     end
     award.at = at
     log[#log + 1] = award
