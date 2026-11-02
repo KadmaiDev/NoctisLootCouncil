@@ -3,6 +3,7 @@
 ## Noctis Loot Council 0.1.2 (not released yet)
 
 - **A Disenchant button.** Set the guild's disenchanter with `/nlc disenchanter First Last`; each drop in the loot master's window then has a Disenchant button for items nobody wants. Raid chat is told who it goes to, and the loot log, the export (RCLootCouncil's "Disenchant" award reason) and Discord's #loot-log show it as disenchanted. It never counts as a win, tonight or in the council's "Before tonight".
+- **A drop of several copies stays open** in the loot master's window until each copy is handed out (won or disenchanted), instead of showing as done after the first.
 
 ## Noctis Loot Council 0.1.1
 

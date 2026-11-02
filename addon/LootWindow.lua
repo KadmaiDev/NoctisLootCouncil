@@ -32,19 +32,39 @@ end
 ---------------------------------------------------------------------------
 -- What each drop is doing
 ---------------------------------------------------------------------------
-local function Award(drop)
-    for i = #ns.db.log, 1, -1 do
-        local e = ns.db.log[i]
-        if e.at < drop.at then break end
-        if e.id == drop.id then return e end
+-- Tonight's awards matched to tonight's drops copy by copy: each award goes to the oldest drop
+-- of that item, looted before it, with a copy left. So a drop of two copies stays open after
+-- the first is handed out. drop -> { award, ... }
+local function Handed()
+    local out, list, log = {}, ns.tonight, ns.db.log
+    for _, drop in ipairs(list) do out[drop] = {} end
+    if #list == 0 then return out end
+    local first, start = list[1].at, #log + 1
+    while start > 1 and log[start - 1].at >= first do start = start - 1 end
+    for i = start, #log do
+        local e = log[i]
+        for _, drop in ipairs(list) do
+            local got = out[drop]
+            if drop.id == e.id and drop.at <= e.at and #got < drop.n then
+                got[#got + 1] = e
+                break
+            end
+        end
     end
+    return out
 end
 
 local HOW = { ms = L["main spec"], ms2 = L["second main spec"], os = L["off spec"], council = L["council"],
     de = L["disenchanted"] }
 
+-- "Vespera Ashward, main spec 40", "Bran Holloway, disenchanted".
+local function AwardText(e)
+    return ("%s, %s"):format(e.who, (HOW[e.how] or e.how) .. (e.roll and " " .. e.roll or ""))
+end
+
 -- "Council item · Warlock priority", "Rolling, 0:18", "Done · Bran Holloway, off spec 64"...
-function ns.DropState(drop)
+-- handed is Handed()'s result (worked out here if not given).
+function ns.DropState(drop, handed)
     local item = ns.db.items[drop.id] or {}
     local r = ns.CurrentRoll()
     if r and r.id == drop.id then
@@ -55,18 +75,19 @@ function ns.DropState(drop)
     if s and s.id == drop.id and s.phase ~= "done" then
         return s.phase == "bids" and L["Council: taking bids"] or s.phase == "vote" and L["Council: voting"] or L["Council: roll-off"], "running"
     end
-    local e = Award(drop)
-    if e and e.how == "de" then
-        return L["Disenchanted · %s"]:format(e.who), "done"
-    elseif e then
-        return L["Done · %s, %s"]:format(e.who, (HOW[e.how] or e.how) .. (e.roll and " " .. e.roll or "")), "done"
+    local got = (handed or Handed())[drop] or {}
+    if #got > 0 and #got >= drop.n then
+        local texts = {}
+        for i, e in ipairs(got) do texts[i] = AwardText(e) end
+        return L["Done · %s"]:format(concat(texts, "; ")), "done"
     end
+    local prefix = #got > 0 and L["%d of %d handed out · %s"]:format(#got, drop.n, AwardText(got[#got])) .. " · " or ""
     if item.handling == "council" then
-        return L["Council item"] .. (item.note and " · " .. item.note or ""), "council"
+        return prefix .. L["Council item"] .. (item.note and " · " .. item.note or ""), "council"
     elseif item.handling == "roll" then
-        return L["Roll item"] .. (item.note and " · " .. item.note or ""), "roll"
+        return prefix .. L["Roll item"] .. (item.note and " · " .. item.note or ""), "roll"
     end
-    return drop.new and L["New · first time seen, so it's rolled"] or L["Not decided · rolled"], "roll"
+    return prefix .. (drop.new and L["New · first time seen, so it's rolled"] or L["Not decided · rolled"]), "roll"
 end
 
 ---------------------------------------------------------------------------
@@ -86,14 +107,14 @@ local function DecisionsLine()
 end
 
 local function RefreshDrops()
-    local list = ns.tonight
+    local list, handed = ns.tonight, Handed()
     local first = #list > DROP_ROWS and #list - DROP_ROWS + 1 or 1 -- the newest drops
     for i = 1, DROP_ROWS do
         local row, drop = dropRows[i], list[first + i - 1]
         row.drop = drop
         row:SetShown(drop ~= nil)
         if drop then
-            local state, kind = ns.DropState(drop)
+            local state, kind = ns.DropState(drop, handed)
             local link = drop.link .. (drop.n > 1 and " ×" .. drop.n or "")
             row.item:SetText(link)
             row.state:SetText((drop.boss and drop.boss .. " · " or "") .. state)

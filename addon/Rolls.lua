@@ -180,8 +180,16 @@ function ns.LogAward(award, unit)
     local name, instanceType = GetInstanceInfo()
     if Plain(name) and Plain(instanceType) and instanceType ~= "none" and type(name) == "string" then award.inst = name end
     award.boss = ns.RecentBoss()
-    award.at = time()
-    local log = ns.db.log
+    -- Two awards of one item to one player (two copies disenchanted) never share a second: the
+    -- bot tells awards apart by who, item and time.
+    local log, now = ns.db.log, time()
+    local at, key = now, ns.NameKey(award.who)
+    for i = #log, 1, -1 do
+        local e = log[i]
+        if e.at < now then break end
+        if e.id == award.id and e.at >= at and ns.NameKey(e.who) == key then at = e.at + 1 end
+    end
+    award.at = at
     log[#log + 1] = award
     return award
 end

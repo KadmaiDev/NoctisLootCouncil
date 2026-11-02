@@ -139,14 +139,16 @@ async def test_an_item_nobody_wants_is_disenchanted_and_logged_as_such(guild, ru
     r.login()
     r.lm.type("/nlc disenchanter Bran Holloway")
     r.kill(663, "Lucifron")
-    r.loot(r.lm, [(HELM, 4)])
+    r.loot(r.lm, [(HELM, 4), (HELM, 4)])  # two copies
     r.lm.type("/nlc start " + HELM)
     r.wait(31)  # nobody rolls
     r.lm.click("Disenchant", near="Helm of Might")
-    assert f"{HELM} goes to Bran Holloway to disenchant." in r.said()
+    r.lm.click("Disenchant", near="Helm of Might")  # the same second
+    assert r.said().count(f"{HELM} goes to Bran Holloway to disenchant.") == 2
     assert r.lm.query("ns.WonTonight('bran holloway')") is False
     r.logout()
 
+    # Both reach #loot-log: the bot tells awards apart by who, item and time.
     await companion_pass(r.lm, running.api_url, token)
     post = await guild.wait_until(lambda: guild.channel("loot-log").find("Bran Holloway"), what="the loot log")
-    assert "**Bran Holloway** · disenchanted" in post.text, post.text
+    assert post.text.count("**Bran Holloway** · disenchanted") == 2, post.text

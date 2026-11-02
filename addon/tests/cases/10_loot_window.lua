@@ -133,7 +133,7 @@ test("Disenchant gives an item nobody wants to the disenchanter: announced, logg
     eq(e.class, "MAGE")
     eq(e.boss, "Lucifron")
     assert(wow.said():find(GLOVES .. " goes to Bran Holloway to disenchant.", 1, true), wow.said())
-    eq(dropRow(GLOVES).state:GetText(), "Lucifron · Disenchanted · Bran Holloway")
+    eq(dropRow(GLOVES).state:GetText(), "Lucifron · Done · Bran Holloway, disenchanted")
     assert(not dropRow(GLOVES).de:IsShown(), "done: no Disenchant button")
     assert(not dropRow(GLOVES).start:IsShown())
     assert(not ns.WonTonight("bran holloway"), "a disenchant isn't a win")
@@ -160,4 +160,58 @@ test("no Disenchant while the item is being rolled; the disenchanter is kept bet
     eq(ns.db.disenchanter, "Bran Holloway")
     wow.type("/nlc disenchanter none")
     eq(ns.db.disenchanter, nil)
+end)
+
+test("a drop of two copies stays open until both are handed out: two disenchants, or a win then a disenchant", function()
+    local ns = start()
+    wow.leader = true
+    wow.raid({ VESPERA, ODO, BRAN })
+    wow.type("/nlc disenchanter Bran Holloway")
+    wow.kill(663, "Lucifron")
+    local corpse = wow.npc(12118)
+    wow.open({ { GLOVES, 4, corpse }, { GLOVES, 4, corpse } })
+    eq(#ns.tonight, 1)
+    eq(ns.tonight[1].n, 2)
+    dropRow(GLOVES).de:Click()
+    eq(dropRow(GLOVES).state:GetText(), "Lucifron · 1 of 2 handed out · Bran Holloway, disenchanted · New · first time seen, so it's rolled")
+    assert(dropRow(GLOVES).de:IsShown(), "a copy is left")
+    dropRow(GLOVES).de:Click()
+    eq(dropRow(GLOVES).state:GetText(), "Lucifron · Done · Bran Holloway, disenchanted; Bran Holloway, disenchanted")
+    assert(not dropRow(GLOVES).de:IsShown())
+    local a, b = ns.db.log[1], ns.db.log[2]
+    eq(a.who .. a.id, b.who .. b.id)
+    assert(a.at ~= b.at, "the same second: the bot would take them for one award")
+
+    ns = start()
+    wow.leader = true
+    wow.raid({ VESPERA, ODO, BRAN })
+    wow.type("/nlc disenchanter Bran Holloway")
+    wow.kill(663, "Lucifron")
+    corpse = wow.npc(12118)
+    wow.open({ { GLOVES, 4, corpse }, { GLOVES, 4, corpse } })
+    dropRow(GLOVES).start:Click()
+    wow.roll("Vespera Ashward", 40)
+    wow.wait(30)
+    eq(dropRow(GLOVES).state:GetText(), "Lucifron · 1 of 2 handed out · Vespera Ashward, main spec 40 · New · first time seen, so it's rolled")
+    assert(dropRow(GLOVES).start:IsShown() and dropRow(GLOVES).de:IsShown(), "the second copy can be rolled or disenchanted")
+    dropRow(GLOVES).de:Click()
+    eq(dropRow(GLOVES).state:GetText(), "Lucifron · Done · Vespera Ashward, main spec 40; Bran Holloway, disenchanted")
+end)
+
+test("two drops of one item: an award closes the older one only", function()
+    local ns = lootBoss()
+    wow.type("/nlc disenchanter Bran Holloway")
+    dropRow(GLOVES).de:Click()
+    wow.wait(1)
+    wow.kill(664, "Magmadar")
+    wow.open({ { GLOVES, 4, wow.npc(11982) } })
+    eq(#ns.tonight, 4)
+    local older, newer
+    for _, f in ipairs(wow.frames) do
+        if f.drop and f.drop.link == GLOVES and f:IsShown() then
+            if f.drop.boss == "Lucifron" then older = f else newer = f end
+        end
+    end
+    eq(older.state:GetText(), "Lucifron · Done · Bran Holloway, disenchanted")
+    assert(newer.de:IsShown(), "Magmadar's copy is still to hand out")
 end)
