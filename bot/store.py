@@ -11,7 +11,7 @@ import time
 from typing import Callable
 from zoneinfo import ZoneInfo
 
-from . import iteminfo, rules, warcraftlogs
+from . import iteminfo, milestones, rules, warcraftlogs
 from .model import AwardInfo, ItemState, LogGroup, Post, UploadResult
 from .rules import COUNCIL, DISENCHANT, HANDLINGS, Vote
 from .upload import Upload, UploadDrop, UploadItem, UploadUndone, name_from_link
@@ -663,6 +663,92 @@ class Store:
                 "token_hash = excluded.token_hash, created_at = excluded.created_at, last_used_at = NULL",
                 (owner, owner_name, _hash_token(token), self.now()))
         return token
+
+    # ---- level milestones (milestones.py) ----------------------------------
+
+    def milestone_settings(self) -> milestones.Settings:
+        levels = self._meta("ms_levels")
+        channel = self._meta("ms_channel")
+        return milestones.Settings(
+            on=self._meta("ms_on") == "1",
+            guild=self._meta("ms_guild") or None,
+            channel_id=int(channel) if channel and channel.isdigit() else None,
+            levels=milestones.parse_levels(levels) if levels else milestones.DEFAULT_LEVELS,
+            since=int(self._meta("ms_since", "0") or 0),
+        )
+
+    def set_milestone_settings(self, *, on: bool | None = None, guild: str | None = None,
+                               channel_id: int | None = None, levels: tuple[int, ...] | None = None) -> milestones.Settings:
+        """Change what's given. Turning it on starts a new `since`: nothing from before is announced."""
+        before = self.milestone_settings()
+        with self.conn:
+            if guild is not None:
+                self._set_meta("ms_guild", guild.strip())
+            if channel_id is not None:
+                self._set_meta("ms_channel", str(channel_id))
+            if levels is not None:
+                self._set_meta("ms_levels", ",".join(str(lv) for lv in levels))
+            if on is not None:
+                self._set_meta("ms_on", "1" if on else "0")
+                if on and not before.on:
+                    self._set_meta("ms_since", str(self.now()))
+        return self.milestone_settings()
+
+    def apply_milestones(self, up: milestones.MilestoneUpload, owner_name: str) -> tuple[int, str | None]:
+        """Take an upload's roster and level-ups. Returns (milestones queued to post, why it was
+        ignored or None). Ignored while off or unset, and for any guild but the one set."""
+        s = self.milestone_settings()
+        if not s.on or not s.guild:
+            return 0, "milestones are off"
+        if not milestones.same_guild(up.guild, s.guild):
+            return 0, "another guild"
+        now, top, queued = self.now(), max(s.levels), 0
+        upsert = ("INSERT INTO ms_characters(key, name, class, rank, level, seen_at) VALUES(?, ?, ?, ?, ?, ?) "
+                  "ON CONFLICT(key) DO UPDATE SET name = excluded.name, class = COALESCE(excluded.class, class), "
+                  "rank = COALESCE(excluded.rank, rank), level = MAX(level, excluded.level), "
+                  "seen_at = MAX(seen_at, excluded.seen_at)")
+        with self.conn:
+            for m in up.members:
+                self.conn.execute(upsert, (milestones.name_key(m.name), m.name, m.cls, m.rank, m.level, now))
+            for e in sorted(up.levels, key=lambda e: e.at):
+                key = milestones.name_key(e.name)
+                self.conn.execute(upsert, (key, e.name, e.cls, None, e.to, e.at))
+                level = milestones.milestone_for(e.frm, e.to, s.levels)
+                if level is None or e.at < s.since or e.at < now - milestones.STALE_SECONDS:
+                    continue
+                # Never a milestone at or below one already posted (another officer's roster saw it first).
+                done = self.conn.execute("SELECT 1 FROM ms_posts WHERE key = ? AND level >= ?", (key, level)).fetchone()
+                if done:
+                    continue
+                nth = None
+                if level == top:
+                    nth = self.conn.execute("SELECT COUNT(*) FROM ms_characters WHERE level >= ?", (top,)).fetchone()[0]
+                row = self.conn.execute("SELECT class, rank FROM ms_characters WHERE key = ?", (key,)).fetchone()
+                self.conn.execute(
+                    "INSERT INTO ms_posts(key, level, name, class, rank, at, nth, top, guild, uploader, received_at) "
+                    "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (key, level, e.name, e.cls or row["class"], row["rank"], e.at, nth, int(level == top), s.guild,
+                     up.uploader or owner_name, now))
+                queued += 1
+        return queued, None
+
+    def pending_milestones(self) -> list[milestones.Milestone]:
+        rows = self.conn.execute("SELECT * FROM ms_posts WHERE message_id IS NULL ORDER BY at, key").fetchall()
+        return [milestones.Milestone(key=r["key"], name=r["name"], level=r["level"], at=r["at"], cls=r["class"],
+                                     rank=r["rank"], nth=r["nth"], top=bool(r["top"]), guild=r["guild"]) for r in rows]
+
+    def milestone_posted(self, m: milestones.Milestone, channel_id: int, message_id: int) -> None:
+        """Record the post (message_id 0: dropped without posting)."""
+        with self.conn:
+            self.conn.execute("UPDATE ms_posts SET channel_id = ?, message_id = ? WHERE key = ? AND level = ?",
+                              (channel_id, message_id, m.key, m.level))
+
+    def milestone_counts(self) -> tuple[int, int, int]:
+        """(characters known, milestones posted, waiting to post)."""
+        chars = self.conn.execute("SELECT COUNT(*) FROM ms_characters").fetchone()[0]
+        posted = self.conn.execute("SELECT COUNT(*) FROM ms_posts WHERE message_id > 0").fetchone()[0]
+        waiting = self.conn.execute("SELECT COUNT(*) FROM ms_posts WHERE message_id IS NULL").fetchone()[0]
+        return chars, posted, waiting
 
     def token_owner(self, token: str) -> tuple[str, str] | None:
         if not token:

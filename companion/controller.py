@@ -125,6 +125,7 @@ class Controller:
         uploaded, wrote = 0, False
         try:
             uploaded = companion.upload_changed(force=force)
+            companion.upload_milestones(force=force)
             wrote = companion.update_decisions()
         except client.TokenRefused:
             log.error("The bot didn't accept the token. Get a new one with /loot token in Discord.")

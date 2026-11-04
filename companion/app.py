@@ -15,6 +15,8 @@ from .luaparse import LuaError
 
 log = logging.getLogger("companion")
 DECISIONS = "decisions"  # the key of a failed decisions fetch among the problems
+MILESTONES = "milestones"  # the key of a failed milestones-settings fetch
+MILESTONES_RECHECK = 600  # seconds the bot's milestones answer (on/off, which guild) is kept
 
 
 def setup_logging(log_file: Path | None) -> None:
@@ -44,6 +46,7 @@ class Status:
     new_awards: int = 0  # in the last upload
     new_items: int = 0
     decisions: tuple[str, int, int] | None = None  # decisions.counts() of the latest the bot sent
+    new_milestones: int = 0  # in the last milestones upload
 
 
 def _count(answer: dict, key: str) -> int:
@@ -55,12 +58,19 @@ class Companion:
     def __init__(self, settings: Settings,
                  upload: Callable[[str, str, dict], dict] = client.post_upload,
                  fetch: Callable[[str, str], dict] = client.get_decisions,
-                 clock: Callable[[], float] = time.time):
+                 clock: Callable[[], float] = time.time,
+                 milestone_settings: Callable[[str, str], dict] = client.get_milestone_settings,
+                 upload_milestones: Callable[[str, str, dict], dict] = client.post_milestones):
         self.settings = settings
         self._upload = upload
         self._fetch = fetch
         self._clock = clock
+        self._ms_settings = milestone_settings
+        self._ms_upload = upload_milestones
         self._uploaded: dict[Path, tuple[int, int]] = {}  # file -> (mtime_ns, size) last uploaded
+        self._ms_uploaded: dict[Path, tuple[int, int]] = {}  # the same for milestones files
+        self._ms_guild: str | None = None  # the guild the bot takes milestones for (None: off)
+        self._ms_checked_at: float | None = None
         # Standing problems by what failed (a saved file, or "decisions"): each is cleared only when
         # that same thing next works, so fetching decisions doesn't hide an upload that keeps failing.
         self._problems: dict[str, str] = {}
@@ -94,7 +104,8 @@ class Companion:
         the bot ignores what it already has). Returns how many went up."""
         done = 0
         paths = savedfile.find_saved_files(self.settings.wow_dir)
-        self._cleared(*(k for k in self._problems if k != DECISIONS and Path(k) not in paths))  # files gone
+        self._cleared(*(k for k in self._problems  # loot files gone
+                        if k not in (DECISIONS, MILESTONES) and not k.startswith("ms:") and Path(k) not in paths))
         for path in paths:
             try:
                 st = path.stat()
@@ -130,6 +141,77 @@ class Companion:
             done += 1
         return done
 
+    def _signature(self, path: Path) -> tuple[int, int] | None:
+        try:
+            st = path.stat()
+        except OSError:
+            return None
+        return st.st_mtime_ns, st.st_size
+
+    def _milestones_guild(self) -> str | None:
+        """The guild the bot takes milestones for, or None (off, or the bot can't be asked); asked again
+        after MILESTONES_RECHECK seconds."""
+        now = self._clock()
+        if self._ms_checked_at is not None and now - self._ms_checked_at < MILESTONES_RECHECK:
+            return self._ms_guild
+        try:
+            answer = self._ms_settings(self.settings.bot_url, self.settings.token)
+        except client.TokenRefused:
+            self._refused()
+            raise
+        except client.BotError as exc:
+            self._answered(False)
+            self._problem(MILESTONES, f"Couldn't ask the bot about milestones: {exc}. Trying again shortly.")
+            return None
+        self._answered(True)
+        self._cleared(MILESTONES)
+        guild = answer.get("guild")
+        self._ms_guild = guild if answer.get("on") is True and isinstance(guild, str) and guild.strip() else None
+        self._ms_checked_at = now
+        return self._ms_guild
+
+    def upload_milestones(self, force: bool = False) -> int:
+        """Send the bot's guild's roster and level-ups from each changed Noctis Milestones saved file.
+        Without that addon's saved file this does nothing at all; while the bot has milestones off,
+        nothing is sent. Other guilds' rosters never leave the PC. Returns how many files went up."""
+        paths = savedfile.find_milestone_files(self.settings.wow_dir)
+        self._cleared(*(k for k in self._problems if k.startswith("ms:") and Path(k[3:]) not in paths))
+        changed = [(p, sig) for p in paths
+                   if (sig := self._signature(p)) is not None and (force or self._ms_uploaded.get(p) != sig)]
+        if not changed:
+            return 0
+        guild = self._milestones_guild()
+        if guild is None:
+            return 0  # the files stay changed: they go up once the bot takes them
+        done = 0
+        for path, signature in changed:
+            what = f"ms:{path}"
+            try:
+                db = savedfile.read_saved_file(path, savedfile.MILESTONES_VARIABLE)
+                bodies = savedfile.build_milestone_uploads(db, guild)
+            except (LuaError, ValueError, OSError) as exc:
+                self._problem(what, f"Couldn't read {self._label(path)} yet ({exc}); trying again shortly.")
+                continue
+            try:
+                for body in bodies:
+                    answer = self._ms_upload(self.settings.bot_url, self.settings.token, body)
+                    self.status.new_milestones = _count(answer, "new_milestones")
+                    log.info("Sent %s's level-ups from %s (%s): %d members, %d level-ups, %s new milestones.",
+                             body["guild"], self._label(path), body.get("uploader") or "unknown character",
+                             len(body["members"]), len(body["levels"]), answer.get("new_milestones", "?"))
+            except client.TokenRefused:
+                self._refused()
+                raise
+            except client.BotError as exc:
+                self._answered(False)
+                self._problem(what, f"Sending level-ups from {self._label(path)} failed: {exc}. Trying again shortly.")
+                continue
+            self._ms_uploaded[path] = signature
+            self._answered(True)
+            self._cleared(what)
+            done += 1
+        return done
+
     def update_decisions(self) -> bool:
         """Fetch the decisions and rewrite the addon folder if `at` changed. Returns True if it wrote."""
         try:
@@ -158,6 +240,7 @@ class Companion:
 
     def run_once(self) -> None:
         self.upload_changed()
+        self.upload_milestones()
         self.update_decisions()
 
     def run_forever(self, sleep: Callable[[float], None] = time.sleep) -> None:

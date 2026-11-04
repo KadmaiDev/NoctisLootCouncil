@@ -192,6 +192,36 @@ CREATE TABLE IF NOT EXISTS tokens (
     last_used_at INTEGER
 );
 
+-- Level milestones (milestones.py). The settings are in `meta` (ms_on, ms_guild, ms_channel, ms_levels,
+-- ms_since). Characters of the guild as officers' rosters showed them, each at the highest level seen.
+CREATE TABLE IF NOT EXISTS ms_characters (
+    key     TEXT PRIMARY KEY,                    -- the name, lower-cased
+    name    TEXT NOT NULL,
+    class   TEXT,
+    rank    TEXT,
+    level   INTEGER NOT NULL,
+    seen_at INTEGER NOT NULL
+);
+
+-- At most one post per character and milestone, whichever officer's upload noticed it first.
+-- message_id NULL: waiting to post; 0: not posted (it went stale while waiting).
+CREATE TABLE IF NOT EXISTS ms_posts (
+    key         TEXT NOT NULL,
+    level       INTEGER NOT NULL,
+    name        TEXT NOT NULL,
+    class       TEXT,
+    rank        TEXT,
+    at          INTEGER NOT NULL,                -- when the level-up was noticed
+    nth         INTEGER,                         -- max level: how many in the guild had reached it
+    top         INTEGER NOT NULL DEFAULT 0,
+    guild       TEXT NOT NULL,
+    uploader    TEXT,
+    received_at INTEGER NOT NULL,
+    channel_id  INTEGER,
+    message_id  INTEGER,
+    PRIMARY KEY (key, level)
+);
+
 CREATE TABLE IF NOT EXISTS uploads (
     id         INTEGER PRIMARY KEY,
     at         INTEGER NOT NULL,

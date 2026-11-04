@@ -20,7 +20,9 @@ EVENTS = set(FOREVER["events"])
 
 
 def addon_source() -> str:
-    return "\n".join(p.read_text(encoding="utf-8") for p in sorted(ADDON.glob("*.lua")))
+    """Both addons' code: Noctis Loot Council's and Noctis Milestones'."""
+    files = sorted(ADDON.glob("*.lua")) + sorted((ROOT / "milestones").glob("*.lua"))
+    return "\n".join(p.read_text(encoding="utf-8") for p in files)
 
 
 def has(namespace: str, name: str) -> bool:

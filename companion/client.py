@@ -56,3 +56,12 @@ def post_upload(base_url: str, token: str, body: dict) -> dict:
 
 def get_decisions(base_url: str, token: str) -> dict:
     return _request("GET", f"{base_url}/api/decisions", token, timeout=30)
+
+
+def get_milestone_settings(base_url: str, token: str) -> dict:
+    """{"on": bool, "guild": name or None}: whether the bot takes milestones, and whose."""
+    return _request("GET", f"{base_url}/api/milestones", token, timeout=30)
+
+
+def post_milestones(base_url: str, token: str, body: dict) -> dict:
+    return _request("POST", f"{base_url}/api/milestones", token, body)

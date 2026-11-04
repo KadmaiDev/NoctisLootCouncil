@@ -637,23 +637,28 @@ class FakeDiscord:
         target["options"] = self._options(spec, values, focused)
         return data
 
-    async def slash(self, user: Member, path: str, channel: str | int = "", timeout: float = 10.0,
+    async def slash(self, user: Member, path: str, typed_in: str | int = "", timeout: float = 10.0,
                     **values: Any) -> Interaction:
         """`/loot add item_id:18000 ...` as `slash(user, "loot add", item_id=18000, ...)`, typed in
-        `channel` (default: #general if there is one)."""
-        ch = self._typing_channel(channel)
-        resolved = {}
+        `typed_in` (default: #general if there is one). A Channel as a value is a channel option."""
+        ch = self._typing_channel(typed_in)
+        resolved: dict[str, dict] = {}
         for name, value in list(values.items()):
             if isinstance(value, FileUpload):  # as Discord: the option is the attachment's id, resolved beside it
                 aid = str(next(_attachment_ids))
                 self.cdn[aid] = value.data
                 url = f"{self.url}/cdn/{aid}/{value.filename}"
-                resolved[aid] = {"id": aid, "filename": value.filename, "size": len(value.data), "url": url,
-                                 "proxy_url": url, "content_type": value.content_type}
+                resolved.setdefault("attachments", {})[aid] = {
+                    "id": aid, "filename": value.filename, "size": len(value.data), "url": url,
+                    "proxy_url": url, "content_type": value.content_type}
                 values[name] = aid
+            elif isinstance(value, Channel):  # a channel option: its id, the channel resolved beside it
+                resolved.setdefault("channels", {})[str(value.id)] = {
+                    **value.payload(self.guild_id), "permissions": str((1 << 41) - 1)}
+                values[name] = str(value.id)
         data = self._command_data(path, values)
         if resolved:
-            data["resolved"] = {"attachments": resolved}
+            data["resolved"] = resolved
         it = self._interaction_payload(2, user, ch, data)
         return await self._run(it, timeout)
 

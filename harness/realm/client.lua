@@ -14,11 +14,18 @@ io.stdout:setvbuf("full")
 
 wow = require("wow")
 
-local FILES = {}
-for line in io.lines("NoctisLootCouncil.toc") do
-    line = line:match("^%s*(.-)%s*$")
-    if line ~= "" and not line:match("^#") then FILES[#FILES + 1] = line end
+local function TocFiles(toc)
+    local files = {}
+    for line in io.lines(toc) do
+        line = line:match("^%s*(.-)%s*$")
+        if line ~= "" and not line:match("^#") then files[#files + 1] = line end
+    end
+    return files
 end
+local FILES = TocFiles("NoctisLootCouncil.toc")
+-- The officers' Noctis Milestones addon, for players who run it too.
+local MILESTONES_DIR = "../milestones/"
+local MILESTONES_FILES = TocFiles(MILESTONES_DIR .. "NoctisMilestones.toc")
 
 -- Fields --------------------------------------------------------------------
 
@@ -154,8 +161,9 @@ local BUTTONS = { Button = true, CheckButton = true }
 
 local commands = {}
 
--- load <first> <last> <class> <rank> <guild> <clock> <saved file> <decisions file>
-function commands.load(first, last, class, rank, guild, clock, savedPath, decisionsPath)
+-- load <first> <last> <class> <rank> <guild> <clock> <saved file> <decisions file> [<milestones file>]
+-- With a milestones file ("-" for none yet), Noctis Milestones runs too, with that saved file.
+function commands.load(first, last, class, rank, guild, clock, savedPath, decisionsPath, milestonesPath)
     NoctisLootCouncilDB = nil
     if savedPath ~= "" and io.open(savedPath) then dofile(savedPath) end
     wow.saved = NoctisLootCouncilDB
@@ -181,8 +189,28 @@ function commands.load(first, last, class, rank, guild, clock, savedPath, decisi
     end
     NoctisLootDecisions = nil
     if decisionsPath ~= "" and io.open(decisionsPath) then dofile(decisionsPath) end
-    wow.login()
+    wow.milestones = nil
+    if milestonesPath and milestonesPath ~= "" then
+        if milestonesPath ~= "-" and io.open(milestonesPath) then dofile(milestonesPath) end
+        local ms = {}
+        for _, file in ipairs(MILESTONES_FILES) do assert(loadfile(MILESTONES_DIR .. file))("NoctisMilestones", ms) end
+        wow.milestones = ms
+    end
+    wow.fire("ADDON_LOADED", "NoctisLootCouncil")
+    if wow.milestones then wow.fire("ADDON_LOADED", "NoctisMilestones") end
+    wow.fire("PLAYER_LOGIN")
     return ns.db and ns.db.me
+end
+
+-- roster <First Last,level,CLASS,rank> ...: the server sends the guild roster (Noctis Milestones
+-- reads it once the update has settled, a couple of seconds later).
+function commands.roster(...)
+    local members = {}
+    for _, m in ipairs({ ... }) do
+        local name, level, class, rank = m:match("^(.-),(%d+),(.-),(.*)$")
+        members[#members + 1] = { name = name, level = tonumber(level), class = class, rank = rank }
+    end
+    wow.rosterArrives(members)
 end
 
 -- raid <First,Last,CLASS,rank,guild,leader> ...  (the others in the raid; guild "" = outside the
@@ -261,14 +289,19 @@ function commands.stats(id, ...)
 end
 function commands.itemloads(id, name, q) wow.itemLoads(tonumber(id), name, tonumber(q)) end
 
--- save <path>: the game writes the saved file (at logout or /reload).
-function commands.save(path)
-    local out = { "\nNoctisLootCouncilDB = " }
-    serialize(NoctisLootCouncilDB, "", out)
+local function WriteSaved(path, variable)
+    local out = { "\n" .. variable .. " = " }
+    serialize(_G[variable], "", out)
     out[#out + 1] = "\n"
     local f = assert(io.open(path, "wb"))
     f:write(table.concat(out))
     f:close()
+end
+
+-- save <path> [<milestones path>]: the game writes the saved files (at logout or /reload).
+function commands.save(path, milestonesPath)
+    WriteSaved(path, "NoctisLootCouncilDB")
+    if wow.milestones and milestonesPath and milestonesPath ~= "" then WriteSaved(milestonesPath, "NoctisMilestonesDB") end
 end
 
 -- query <expression>: its value as JSON (ns is the addon's namespace).

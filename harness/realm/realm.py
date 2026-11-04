@@ -91,6 +91,7 @@ class Player:
     addon: bool = True
     leader: bool = False
     account: str = ""
+    milestones: bool = False  # runs the officers' Noctis Milestones addon too
     realm: "Realm | None" = None
     proc: subprocess.Popen | None = None
     printed: list[str] = field(default_factory=list)
@@ -113,6 +114,10 @@ class Player:
     @property
     def saved_file(self) -> Path:
         return self.wow_dir / "WTF" / "Account" / self.account / "SavedVariables" / "NoctisLootCouncil.lua"
+
+    @property
+    def milestones_file(self) -> Path:
+        return self.saved_file.with_name("NoctisMilestones.lua")
 
     @property
     def decisions_file(self) -> Path:
@@ -182,9 +187,10 @@ class Realm:
     # ---- the raid ------------------------------------------------------------
 
     def add_player(self, first: str, last: str, cls: str, rank: str = "Raider", guild: str | None = "Noctis",
-                   addon: bool = True, leader: bool = False, account: str | None = None) -> Player:
+                   addon: bool = True, leader: bool = False, account: str | None = None,
+                   milestones: bool = False) -> Player:
         p = Player(first, last, cls.upper(), rank, guild, addon, leader,
-                   account or f"{first}{last}".upper(), self)
+                   account or f"{first}{last}".upper(), milestones, self)
         self.players.append(p)
         return p
 
@@ -205,7 +211,8 @@ class Realm:
                                           encoding="utf-8", bufsize=1)
                 saved = p.saved_file if p.saved_file.exists() else ""
                 decisions = p.decisions_file if p.decisions_file.exists() else ""
-                p.call("load", p.first, p.last, p.cls, p.rank, p.guild or "", self.clock, saved, decisions)
+                milestones = (p.milestones_file if p.milestones_file.exists() else "-") if p.milestones else ""
+                p.call("load", p.first, p.last, p.cls, p.rank, p.guild or "", self.clock, saved, decisions, milestones)
         for p in self.clients:
             others = [f"{o.first},{o.last},{o.cls},{o.rank},{o.guild or ''},{'1' if o.leader else ''}"
                       for o in self.players if o is not p]
@@ -213,11 +220,19 @@ class Realm:
             if p.leader:
                 p.call("leader", "1")
 
+    def roster(self, members: list[tuple[str, int, str, str]]) -> None:
+        """The guild roster ((name, level, class, rank), ...) reaches everyone running Noctis Milestones,
+        and time passes until they've read it."""
+        for p in self.clients:
+            if p.milestones:
+                p.call("roster", *(f"{n},{lv},{c},{r}" for n, lv, c, r in members))
+        self.wait(3)
+
     def logout(self) -> None:
         """Everyone logs out: the game writes each player's saved file."""
         for p in self.clients:
             p.saved_file.parent.mkdir(parents=True, exist_ok=True)
-            p.call("save", str(p.saved_file))
+            p.call("save", str(p.saved_file), str(p.milestones_file) if p.milestones else "")
             self._stop(p)
 
     def close(self) -> None:

@@ -9,6 +9,7 @@ local KNOWN_EVENTS = {
     LOOT_READY = true, LOOT_OPENED = true, CHAT_MSG_LOOT = true, START_LOOT_ROLL = true,
     ENCOUNTER_LOOT_RECEIVED = true, CHAT_MSG_SYSTEM = true, GET_ITEM_INFO_RECEIVED = true,
     CHAT_MSG_ADDON = true, PLAYER_ENTERING_WORLD = true, TRAIT_CONFIG_UPDATED = true,
+    GUILD_ROSTER_UPDATE = true, PLAYER_GUILD_UPDATE = true,
 }
 
 -- A secret value: issecretvalue says so, and using it the ways the game forbids throws.
@@ -33,8 +34,11 @@ function M.object(objectID)
     return ("GameObject-0-4170-409-12345-%d-%010X"):format(objectID, spawn)
 end
 
-function M.load(files, addonName)
-    NoctisLootCouncilRunning, NoctisLootCouncilDB = nil, M.saved
+-- Loads an addon's files. savedVariable is the global its saved data is in (Noctis Loot
+-- Council's unless given); M.saved, if set, is what the game read back for it.
+function M.load(files, addonName, savedVariable)
+    NoctisLootCouncilRunning, NoctisMilestonesRunning, NoctisLootCouncilDB, NoctisMilestonesDB = nil, nil, nil, nil
+    _G[savedVariable or "NoctisLootCouncilDB"] = M.saved
     M.saved = nil
     for k in pairs(_G) do
         if type(k) == "string" and k:find("^SLASH_") then _G[k] = nil end
@@ -79,10 +83,36 @@ function M.load(files, addonName)
     end
     date = os.date
     NoctisLootDecisions = nil
+    -- The 4th value is the guild's realm, nil when it's the player's own (as in retail).
     GetGuildInfo = function(unit)
         local u = Unit(unit)
-        if u and u.guild then return u.guild, u.rank, 1 end
+        if u and u.guild then return u.guild, u.rank, 1, u.guildRealm end
     end
+    M.realm = "Forever"
+    GetRealmName = function() return M.realm end
+    IsInGuild = function() return M.player.guild ~= nil end
+    -- The guild roster as the client last heard it from the server: { name = "First Last",
+    -- level, class = "DRUID", rank = "Raider", online = true|nil }. The addon asks for a fresh
+    -- one with C_GuildInfo.GuildRoster (counted in M.rosterRequests); M.rosterArrives() is the
+    -- server's answer.
+    M.roster, M.rosterRequests = {}, 0
+    GetNumGuildMembers = function()
+        if not M.player.guild then return 0, 0 end
+        local online = 0
+        for _, m in ipairs(M.roster) do if m.online then online = online + 1 end end
+        return #M.roster, online
+    end
+    -- name, rankName, rankIndex, level, class (localised), zone, note, officer note, online,
+    -- status, class file name, achievement points, achievement rank, mobile, can Scroll of
+    -- Resurrection, reputation, GUID: retail's order, unchecked on Forever.
+    GetGuildRosterInfo = function(i)
+        local m = M.player.guild and M.roster[i]
+        if not m then return nil end
+        local class = m.class and (m.class:sub(1, 1) .. m.class:sub(2):lower())
+        return m.name, m.rank or "Member", m.rankIndex or 3, m.level, class, "Orgrimmar", "", "",
+            m.online or false, 0, m.class, 0, 0, false, false, 4, m.guid or ("Player-4170-" .. i)
+    end
+    C_GuildInfo = { GuildRoster = function() M.rosterRequests = M.rosterRequests + 1 end }
     M.leader = false
     -- Others lead or assist with leader = true or assist = true on their member table.
     UnitIsGroupLeader = function(unit)
@@ -281,9 +311,16 @@ function M.fire(event, ...)
     end
 end
 
-function M.login()
-    M.fire("ADDON_LOADED", "NoctisLootCouncil")
+function M.login(addonName)
+    M.fire("ADDON_LOADED", addonName or "NoctisLootCouncil")
     M.fire("PLAYER_LOGIN")
+end
+
+-- The server sends the guild roster (after C_GuildInfo.GuildRoster, or when someone in the guild
+-- logs on, levels, changes rank...). members, if given, replaces M.roster first.
+function M.rosterArrives(members)
+    if members then M.roster = members end
+    M.fire("GUILD_ROSTER_UPDATE", false)
 end
 
 -- Moves the clock on, running timers that come due on the way, in order.

@@ -1,0 +1,12 @@
+## Interface: 16001
+## Title: Noctis Milestones
+## Author: Kadmai
+## Notes: For officers: notes when guild members level up, so the Noctis bot can congratulate them on Discord. /nms
+## Version: 0.1.0
+## IconTexture: Interface\AddOns\NoctisMilestones\media\icon.tga
+## Category: Guild
+## SavedVariables: NoctisMilestonesDB
+
+Locales.lua
+Core.lua
+Roster.lua

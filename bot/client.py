@@ -22,7 +22,7 @@ from aiohttp import web
 from discord import app_commands
 from discord.ext import commands
 
-from . import importer, iteminfo, render, titleimage, warcraftlogs
+from . import importer, iteminfo, milestones, render, titleimage, warcraftlogs
 from .api import create_app
 from .checks import NotOfficer
 from .config import Config
@@ -82,6 +82,7 @@ class LootBot(commands.Bot):
 
     async def setup_hook(self) -> None:
         await self.load_extension("bot.cogs.loot")
+        await self.load_extension("bot.cogs.milestones")
         self.add_dynamic_items(*DYNAMIC_ITEMS)
         self.tree.error(self._on_app_error)
         self.tree.copy_global_to(guild=self.guild_obj)
@@ -139,6 +140,30 @@ class LootBot(commands.Bot):
         for inst, night, generation in self.store.dirty_log_groups():
             if await self.sync_log_group(inst, night):
                 self.store.clear_log_dirty(inst, night, generation)
+        await self.post_milestones()
+
+    async def post_milestones(self) -> None:
+        """Congratulate each milestone waiting, oldest first, while milestones are on. One that waited
+        past STALE_SECONDS (the channel was missing for a week) or from before milestones were last
+        turned on is dropped instead. A failed send stays waiting for the next pass."""
+        s = self.store.milestone_settings()
+        if not s.ready:
+            return
+        now = self.store.now()
+        for m in self.store.pending_milestones():
+            if m.at < s.since or m.at < now - milestones.STALE_SECONDS:
+                self.store.milestone_posted(m, s.channel_id, 0)
+                continue
+            channel = self._text_channel(s.channel_id)
+            if channel is None:
+                return
+            try:
+                msg = await channel.send(view=card_layout(milestones.card(m, s.levels, self.tz)),
+                                         allowed_mentions=NO_MENTIONS)
+            except discord.HTTPException as exc:
+                log.warning("Could not post %s's level %d: %s", m.name, m.level, exc)
+                return
+            self.store.milestone_posted(m, channel.id, msg.id)
 
     def _session(self) -> aiohttp.ClientSession:
         """The bot's own web session (Wowhead, Warcraft Logs), made when first needed."""

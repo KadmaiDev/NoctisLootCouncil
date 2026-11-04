@@ -78,10 +78,41 @@ def build_upload(db: dict) -> dict:
     }
 
 
-def read_saved_file(path: Path) -> dict:
-    """Parse a saved file and return its NoctisLootCouncilDB table (raises LuaError or ValueError)."""
+def read_saved_file(path: Path, variable: str = DB_VARIABLE) -> dict:
+    """Parse a saved file and return its NoctisLootCouncilDB table, or `variable`'s (raises LuaError or ValueError)."""
     variables = luaparse.load_file(path)
-    db = variables.get(DB_VARIABLE)
+    db = variables.get(variable)
     if not isinstance(db, dict):
-        raise ValueError(f"{path.name} has no {DB_VARIABLE} table")
+        raise ValueError(f"{path.name} has no {variable} table")
     return db
+
+
+# ---- Noctis Milestones (sync-format.md, section 5) -------------------------------------------------
+# Officers who use the milestones addon have a second saved file. Without it the companion does
+# nothing about milestones (it doesn't even ask the bot).
+
+MILESTONES_FILE = "NoctisMilestones.lua"
+MILESTONES_VARIABLE = "NoctisMilestonesDB"
+MEMBER_FIELDS = ("name", "class", "level", "rank")
+LEVEL_FIELDS = ("name", "class", "from", "to", "at")
+
+
+def find_milestone_files(wow_dir: Path) -> list[Path]:
+    return sorted(p for p in (wow_dir / "WTF" / "Account").glob(f"*/SavedVariables/{MILESTONES_FILE}") if p.is_file())
+
+
+def build_milestone_uploads(db: dict, guild: str) -> list[dict]:
+    """The bodies for POST /api/milestones: one per guild in the file with the bot's guild's name (one,
+    unless characters on two realms are in guilds of that name). Every other guild's roster stays here."""
+    want = guild.strip().casefold()
+    me = db.get("me") if isinstance(db.get("me"), str) else None
+    bodies = []
+    for _, g in sorted(_pairs(db.get("guilds")), key=lambda kv: str(kv[0])):
+        if not isinstance(g, dict) or not isinstance(g.get("name"), str) or g["name"].strip().casefold() != want:
+            continue
+        members = [_pick(m, MEMBER_FIELDS) for _, m in sorted(_pairs(g.get("members")), key=lambda kv: str(kv[0]))
+                   if isinstance(m, dict)]
+        levels = [_pick(e, LEVEL_FIELDS) for e in _entries(g.get("levels")) if isinstance(e, dict)]
+        bodies.append({"uploader": me, "guild": g["name"], "realm": g.get("realm") if isinstance(g.get("realm"), str) else None,
+                       "members": members, "levels": levels})
+    return bodies

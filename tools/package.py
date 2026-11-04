@@ -3,7 +3,8 @@ r"""Builds what each kind of user downloads, into dist/:
     python tools/package.py addon        NoctisLootCouncil-<version>.zip, for CurseForge (everyone in the raid)
     python tools/package.py companion    NoctisLootCompanion.exe, for officers (Windows; needs PyInstaller)
     python tools/package.py bot          NoctisLootBot.zip, for the server (Docker builds it there)
-    python tools/package.py all          all three
+    python tools/package.py milestones   NoctisMilestones-<version>.zip, the officers' milestones addon
+    python tools/package.py all          all four
 
 The addon zip holds one folder, NoctisLootCouncil, with the two .toc files, the files they list,
 the LICENSE and the icon, which is what CurseForge expects. Its version is the .toc's `## Version:`.
@@ -26,6 +27,9 @@ NAME = "NoctisLootCouncil"
 TOCS = [NAME + ".toc", NAME + "_Camelot.toc"]
 EXTRA = {"LICENSE": os.path.join(REPO, "LICENSE"),  # name in the addon -> source
          "media/icon.tga": os.path.join(ADDON, "media", "icon.tga")}  # the owl in the AddOns list
+MILESTONES = os.path.join(REPO, "milestones")
+MILESTONES_NAME = "NoctisMilestones"
+MILESTONES_TOCS = [MILESTONES_NAME + ".toc", MILESTONES_NAME + "_Camelot.toc"]
 BOT = "NoctisLootBot"
 BOT_FILES = {  # name in the bot folder -> source
     "Dockerfile": "Dockerfile",
@@ -71,6 +75,27 @@ def package_addon():
     return out
 
 
+def package_milestones():
+    """NoctisMilestones-<version>.zip: one NoctisMilestones folder, like the loot addon's zip (same icon)."""
+    with open(os.path.join(MILESTONES, MILESTONES_TOCS[0]), encoding="utf-8") as f:
+        toc = f.read()
+    m = re.search(r"^## Version:\s*(\S+)", toc, re.M)
+    if not m:
+        sys.exit("package: no ## Version: in " + MILESTONES_TOCS[0])
+    listed = [line.strip().replace("\\", "/") for line in toc.splitlines() if line.strip() and not line.startswith("#")]
+    files = [(name, os.path.join(MILESTONES, name)) for name in MILESTONES_TOCS + listed] + list(EXTRA.items())
+    missing = [name for name, path in files if not os.path.isfile(path)]
+    if missing:
+        sys.exit("package: missing " + ", ".join(missing))
+    os.makedirs(DIST, exist_ok=True)
+    out = os.path.join(DIST, "%s-%s.zip" % (MILESTONES_NAME, m.group(1)))
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, path in files:
+            z.write(path, MILESTONES_NAME + "/" + name)
+    print("milestones: " + out)
+    return out
+
+
 def package_companion():
     if os.path.isfile(os.path.join(REPO, "companion", "_guild.py")):
         print("companion: prefilling the bot address from companion/_guild.py")
@@ -112,7 +137,7 @@ def package_bot():
 
 def main():
     what = sys.argv[1] if len(sys.argv) == 2 else None
-    if what not in ("addon", "companion", "bot", "all"):
+    if what not in ("addon", "companion", "bot", "milestones", "all"):
         sys.exit(__doc__)
     if what in ("addon", "all"):
         package_addon()
@@ -120,6 +145,8 @@ def main():
         package_companion()
     if what in ("bot", "all"):
         package_bot()
+    if what in ("milestones", "all"):
+        package_milestones()
 
 
 if __name__ == "__main__":

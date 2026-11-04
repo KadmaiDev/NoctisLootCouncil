@@ -10,6 +10,8 @@ addon ──saved file──▶ companion app ──POST /api/upload──▶ bo
 addon ◀─NoctisLootDecisions addon── companion app ◀──GET /api/decisions── bot
 ```
 
+Officers who run the Noctis Milestones addon too send guild members' level-ups the same way (section 5).
+
 ## 1. The addon's saved file (read by the companion app)
 
 `<WoW>\_forever_\WTF\Account\<account>\SavedVariables\NoctisLootCouncil.lua`, a Lua
@@ -164,3 +166,51 @@ The addon applies them at login when `at` is newer than the last decisions it ap
 added as not seen yet); `"none"` clears an item's handling and note and adds nothing. Items
 decided only in game keep their decision. It then says
 "Decisions from 27 Oct, 18:40: 34 council, 112 roll."
+
+## 5. Level milestones: the Noctis Milestones addon → companion → bot
+
+An optional second addon for officers, Noctis Milestones (`milestones/`), notes guild members'
+level-ups from the guild roster. Officers without it are unaffected: the companion does nothing
+about milestones unless the addon's saved file exists.
+
+```
+milestones addon ──NoctisMilestones.lua──▶ companion ──GET, then POST /api/milestones──▶ bot ──▶ #milestones
+```
+
+**The saved file**, `WTF\Account\<ACCOUNT>\SavedVariables\NoctisMilestones.lua`, one per account
+(every character on it shares the file), holds `NoctisMilestonesDB`:
+
+| Field | Type | |
+|---|---|---|
+| `v` | number | 1 |
+| `me` | string | the character who last logged in |
+| `guilds` | table | by `"<guild>\|<realm>"`: each guild a character on the account is in, kept apart |
+| `guilds[k].name`, `.realm` | string | the guild's name and realm (`GetGuildInfo`, else `GetRealmName`) |
+| `guilds[k].scanned` | number / nil | the last roster read |
+| `guilds[k].members` | table | by lower-cased name: `{ name, class, level, rank, seen }` (`class` is the file name, e.g. `DRUID`) |
+| `guilds[k].levels` | list | level-ups, oldest first: `{ name, class, from, to, at, since }`: last seen at `from` (at `since`), at `to` when read at `at`. Kept 30 days |
+
+The first read of a guild, and the first sighting of a member, only note the level: nothing
+before the addon started is a level-up.
+
+**The settings:** `GET /api/milestones`, same header. Answer `{"on": true, "guild": "Noctis"}`, or
+`{"on": false, "guild": null}` while officers have it off or no guild set (`/milestones settings`).
+The companion asks at most every 10 minutes, and only when a milestones file has changed.
+
+**The upload:** while it's on, for each changed file, one `POST /api/milestones` per guild in it
+whose name is the bot's guild (case doesn't matter); other guilds' rosters are never sent:
+
+```json
+{ "uploader": "Kadmai Moonwhisper", "guild": "Noctis", "realm": "Forever",
+  "members": [ { "name": "Vespera Ashward", "class": "DRUID", "level": 20, "rank": "Raider" } ],
+  "levels": [ { "name": "Vespera Ashward", "class": "DRUID", "from": 19, "to": 20, "at": 1793070000 } ] }
+```
+
+The bot ignores it (`200 {"ok": true, "ignored": "...", "new_milestones": 0}`) while milestones
+are off or the guild isn't its own. Otherwise it keeps each character at the highest level any
+roster showed, and for each level-up picks the highest milestone level in (`from`, `to`]: 18 to
+31 earns 30, not 20 and 30. It posts that milestone unless the character already has it or a
+higher one (another officer's roster saw it first), it was noticed more than 7 days ago, or
+before milestones were last turned on. The top milestone (60 by default) records how many
+characters in the guild had reached it. Answer `200 {"ok": true, "new_milestones": n}`; `401`
+bad token; `400` bad body.
