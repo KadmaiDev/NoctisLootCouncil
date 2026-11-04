@@ -7,12 +7,11 @@ The Noctis guild's loot system for WoW: Forever: loot rolls and a loot council i
 | **Noctis Loot Council**, the addon (`/nlc`) | [`addon/`](addon/README.md) | everyone in the raid | CurseForge (a beta, once approved), or the zip on [Releases](../../releases) |
 | **The companion app** | `companion/` | officers, on their Windows PCs | `NoctisLootCompanion.exe` from [Releases](../../releases), built by GitHub Actions |
 | **The loot bot** | `bot/` | the server | `docker compose up -d --build` (below) |
-| **Noctis Milestones**, an officers' addon (`/nms`) | `milestones/` | officers who want it | the zip on [Releases](../../releases) |
 
 - The **addon** runs the rolls and the council in game and keeps the list of raid drops; its README is the player's guide.
 - The **loot bot**, always on, keeps the official item list, runs the officers' votes in Discord and posts the loot log. It also serves a small HTTP API.
 - The **companion app**, a small window and a tray icon, uploads what the addon saw in the raid and writes the latest decisions where the game can load them.
-- **Noctis Milestones** notes guild members' level-ups from the guild roster; the companion sends them and the bot congratulates them in Discord ([Level milestones](#level-milestones)).
+- **Level milestones**, an officers' part of the addon (off until turned on), notes guild members' level-ups from the guild roster; the companion sends them and the bot congratulates them in Discord ([Level milestones](#level-milestones)).
 
 ### How it hangs together
 
@@ -203,11 +202,14 @@ An item that hasn't dropped for us yet is behind a spoiler on #loot-items and #l
 
 The bot congratulates guild members in a channel of your choice when they reach level 10, 20, 30, 40, 50 and 60: "Vespera Ashward reached level 40", in their class colour, with their class and rank. Reaching the top level also says how many in the guild got there before them.
 
-It takes three things: officers who want to help run the **Noctis Milestones** addon (it reads the guild roster every minute, so it sees anyone's level, not only theirs), the companion app (which sends what the addon noticed), and one officer setting it up in Discord:
+It takes three things: officers who want to help turn it on in the addon, the companion app (which sends what the addon noticed), and one officer setting it up in Discord:
 
 ```
-/milestones settings guild:Noctis channel:#milestones announce:True
+/nlc milestones on                                                      (in game, each officer)
+/milestones settings guild:Noctis channel:#milestones announce:True     (in Discord, once)
 ```
+
+- **In game** it's off for everyone until `/nlc milestones on` (it then counts for every character on that WoW account), and even then it only works on characters whose guild rank is an officer's (the game's own permission: officer chat or officer notes). On anyone else's character it doesn't read the roster, save it or say anything. While it's on, the addon reads the guild roster every minute, so it sees anyone's level, not only yours. `/nlc milestones off` stops it.
 
 - **guild** is the in-game guild's name. An officer's characters in other guilds are kept apart by the addon, and the companion sends only this guild's roster, so forgetting to switch the addon off on an alt does no harm.
 - **levels** changes which levels are congratulated, e.g. `levels:10, 20, 30, 40, 50, 60`.
@@ -221,11 +223,11 @@ Things to know:
 - Each milestone is posted once, whichever officer noticed it first, and never after a higher one. Level-ups noticed more than 7 days before they reach the bot aren't posted.
 - The first time the addon reads a guild it notes everyone's level and posts nothing.
 
-In game, the addon can also tell you, both off until you turn them on (`/nms` alone shows where things stand):
+In game, the addon can also tell you, both off until you turn them on (`/nlc milestones` alone shows where things stand):
 
-- `/nms tell on`: a line in your own chat window when someone reaches a milestone. Nothing is sent; only you see it. Level-ups found at login after time away say so ("caught up: last seen at level 18").
-- `/nms guildchat on`: "Congratulations to Vespera Ashward on reaching level 20!" in guild chat, for this character's guild only. If several officers turn it on, their addons agree that the one online longest posts (a `/reload` keeps your place); when that officer logs off, the next takes over. Only level-ups seen as they happen are posted, not ones caught up on at login. If the game won't let the addon post, it tells you instead.
-- `/nms levels 10, 20, 30` changes the levels told about in game (`/nms levels default` puts back 10 to 60). The bot's levels are set in Discord.
+- `/nlc milestones tell on`: a line in your own chat window when someone reaches a milestone. Nothing is sent; only you see it. Level-ups found at login after time away say so ("caught up: last seen at level 18").
+- `/nlc milestones guildchat on`: "Congratulations to Vespera Ashward on reaching level 20!" in guild chat, for this character's guild only. If several officers turn it on, their addons agree that the one online longest posts (a `/reload` keeps your place); when that officer logs off, the next takes over. Only level-ups seen as they happen are posted, not ones caught up on at login. If the game won't let the addon post, it tells you instead.
+- `/nlc milestones levels 10, 20, 30` changes the levels told about in game (`/nlc milestones levels default` puts back 10 to 60). The bot's levels are set in Discord.
 
 ---
 
@@ -252,7 +254,7 @@ It keeps its settings and token in `companion.ini`, and its log in `companion.lo
 What it does each pass:
 
 - For every `WTF\Account\*\SavedVariables\NoctisLootCouncil.lua` that changed since it last uploaded: reads it and sends it to the bot. (The game writes it at `/reload` and logout.)
-- If you use Noctis Milestones: for every `NoctisMilestones.lua` that changed, sends your guild's roster and level-ups (only while the bot has milestones on).
+- If you turned milestones on in game: from each of those files, sends your guild's roster and level-ups (only while the bot has milestones on).
 - Fetches the decisions, and if they changed, writes `Interface\AddOns\NoctisLootDecisions\` (two `.toc` files and `Decisions.lua`). The game loads it at the next `/reload` or login. It shows in the AddOns list as "Noctis Loot Decisions"; leave it enabled.
 
 ### What it reads, writes and sends
@@ -266,8 +268,7 @@ All of it is in a few short files: `companion/savedfile.py` (what it takes from 
 
 It **reads**:
 
-- `WTF\Account\*\SavedVariables\NoctisLootCouncil.lua`, the addon's saved file, for each account on the PC.
-- `WTF\Account\*\SavedVariables\NoctisMilestones.lua`, only if you use the Noctis Milestones addon. Without that file the companion does nothing about milestones, and doesn't even ask the bot about them.
+- `WTF\Account\*\SavedVariables\NoctisLootCouncil.lua`, the addon's saved file, for each account on the PC. Its milestones part is there only if you typed `/nlc milestones on`; without it, or while it's off, the companion does nothing about milestones and doesn't even ask the bot about them.
 - Nothing else in the game folder.
 - At setup only: whether WoW is in the usual folders, and where Battle.net installed it (from the registry), to suggest the `_forever_` folder.
 
@@ -281,7 +282,7 @@ It **talks to** the bot address in `companion.ini`, and nowhere else:
 
 - `POST /api/upload`, with what the saved file holds about raid loot: the items (name, link, quality, where and when they dropped, the decision and note), the drops it saw and the awards (who won what, their class, how, the roll, the note and bid tags) and those taken back with `/nlc undo`, and the name of the character that uploaded. The account folder's name stays on your PC.
 - `GET /api/decisions`: the council and roll decisions.
-- With Noctis Milestones only: `GET /api/milestones` (whether the bot is taking level-ups, and for which guild; asked at most every 10 minutes), then, while it is, `POST /api/milestones` with that guild's roster as your addon saw it (each member's name, class, level and rank), the level-ups it noticed (who, from which level to which, when) and the name of the character that uploaded. The rosters of any other guild your characters are in stay on your PC.
+- With milestones on in game only: `GET /api/milestones` (whether the bot is taking level-ups, and for which guild; asked at most every 10 minutes), then, while it is, `POST /api/milestones` with that guild's roster as your addon saw it (each member's name, class, level and rank), the level-ups it noticed (who, from which level to which, when) and the name of the character that uploaded. The rosters of any other guild your characters are in stay on your PC.
 
 All of these carry your token. It tells the bot the upload is yours, and does nothing else: the bot accepts it for these requests only, and it gives no access to your Discord or Battle.net account. `/loot token` replaces it.
 
@@ -314,8 +315,7 @@ python -m companion                  # bot address http://127.0.0.1:8080, the to
 python -m pip install -r requirements-dev.txt
 python -m pytest                          # the bot, the companion and the harness (below)
 cd addon && luajit tests/run.lua          # the addon, against a fake WoW: Forever client
-cd milestones && luajit tests/run.lua     # Noctis Milestones, against the same fake client
-python tools/package.py all               # dist/: both addon zips, NoctisLootCompanion.exe, NoctisLootBot.zip
+python tools/package.py all               # dist/: the addon zip, NoctisLootCompanion.exe, NoctisLootBot.zip
 python addon/tools/install_dev.py "<WoW>\_forever_"   # a dev copy of the addon in game
 ```
 
@@ -342,5 +342,5 @@ The realm needs LuaJIT on the PATH (or in `LUAJIT`); without it those tests are 
 - No way to remove an item from the list or revoke a token other than issuing a new one (`/loot token` replaces the old one; deleting a row from the `tokens` table revokes it).
 - Only the winner's bid tags (BIS, Sidegrade...) reach the bot, with the award; the other bidders' tags stay in game. "NEW IN OUR RAID" posts show how many wanted an item, not what they tagged.
 - The CSV export for oxm.gg from the bot isn't built; the addon's `/nlc export` makes it for now.
-- Milestones are levels only. The roster also shows rank changes and the guild's event log shows who joined, so promotions (a trial passed) and welcomes could follow; they're held back while the guild fills up. Noctis Milestones has no release yet: `python tools/package.py milestones` makes its zip.
+- Milestones are levels only. The roster also shows rank changes and the guild's event log shows who joined, so promotions (a trial passed) and welcomes could follow; they're held back while the guild fills up.
 - The addon isn't on CurseForge yet: the project is being set up, and the first file goes up as a beta.

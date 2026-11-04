@@ -79,7 +79,7 @@ def build_upload(db: dict) -> dict:
 
 
 def read_saved_file(path: Path, variable: str = DB_VARIABLE) -> dict:
-    """Parse a saved file and return its NoctisLootCouncilDB table, or `variable`'s (raises LuaError or ValueError)."""
+    """Parse a saved file and return its NoctisLootCouncilDB table (raises LuaError or ValueError)."""
     variables = luaparse.load_file(path)
     db = variables.get(variable)
     if not isinstance(db, dict):
@@ -87,27 +87,31 @@ def read_saved_file(path: Path, variable: str = DB_VARIABLE) -> dict:
     return db
 
 
-# ---- Noctis Milestones (sync-format.md, section 5) -------------------------------------------------
-# Officers who use the milestones addon have a second saved file. Without it the companion does
-# nothing about milestones (it doesn't even ask the bot).
+# ---- Level milestones (sync-format.md, section 5) ---------------------------------------------------
+# Officers who turn milestones on in game (/nlc milestones on) have a `milestones` section in the same
+# saved file. Without it, or while it's off, the companion does nothing about milestones (it doesn't even
+# ask the bot).
 
-MILESTONES_FILE = "NoctisMilestones.lua"
-MILESTONES_VARIABLE = "NoctisMilestonesDB"
 MEMBER_FIELDS = ("name", "class", "level", "rank")
 LEVEL_FIELDS = ("name", "class", "from", "to", "at")
 
 
-def find_milestone_files(wow_dir: Path) -> list[Path]:
-    return sorted(p for p in (wow_dir / "WTF" / "Account").glob(f"*/SavedVariables/{MILESTONES_FILE}") if p.is_file())
+def milestones_on(db: dict) -> bool:
+    """True if this file's milestones are turned on (/nlc milestones on) and hold a guild."""
+    ms = db.get("milestones")
+    return isinstance(ms, dict) and ms.get("on") is True and any(True for _ in _pairs(ms.get("guilds")))
 
 
 def build_milestone_uploads(db: dict, guild: str) -> list[dict]:
-    """The bodies for POST /api/milestones: one per guild in the file with the bot's guild's name (one,
-    unless characters on two realms are in guilds of that name). Every other guild's roster stays here."""
+    """The bodies for POST /api/milestones from a parsed NoctisLootCouncilDB: one per guild in its
+    milestones section with the bot's guild's name (one, unless characters on two realms are in guilds of
+    that name). Every other guild's roster stays here, and nothing is sent while milestones are off."""
+    if not milestones_on(db):
+        return []
     want = guild.strip().casefold()
     me = db.get("me") if isinstance(db.get("me"), str) else None
     bodies = []
-    for _, g in sorted(_pairs(db.get("guilds")), key=lambda kv: str(kv[0])):
+    for _, g in sorted(_pairs(db["milestones"].get("guilds")), key=lambda kv: str(kv[0])):
         if not isinstance(g, dict) or not isinstance(g.get("name"), str) or g["name"].strip().casefold() != want:
             continue
         members = [_pick(m, MEMBER_FIELDS) for _, m in sorted(_pairs(g.get("members")), key=lambda kv: str(kv[0]))

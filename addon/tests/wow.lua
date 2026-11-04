@@ -34,11 +34,8 @@ function M.object(objectID)
     return ("GameObject-0-4170-409-12345-%d-%010X"):format(objectID, spawn)
 end
 
--- Loads an addon's files. savedVariable is the global its saved data is in (Noctis Loot
--- Council's unless given); M.saved, if set, is what the game read back for it.
-function M.load(files, addonName, savedVariable)
-    NoctisLootCouncilRunning, NoctisMilestonesRunning, NoctisLootCouncilDB, NoctisMilestonesDB = nil, nil, nil, nil
-    _G[savedVariable or "NoctisLootCouncilDB"] = M.saved
+function M.load(files, addonName)
+    NoctisLootCouncilRunning, NoctisLootCouncilDB = nil, M.saved
     M.saved = nil
     for k in pairs(_G) do
         if type(k) == "string" and k:find("^SLASH_") then _G[k] = nil end
@@ -112,7 +109,15 @@ function M.load(files, addonName, savedVariable)
         return m.name, m.rank or "Member", m.rankIndex or 3, m.level, class, "Orgrimmar", "", "",
             m.online or false, 0, m.class, 0, 0, false, false, 4, m.guid or ("Player-4170-" .. i)
     end
-    C_GuildInfo = { GuildRoster = function() M.rosterRequests = M.rosterRequests + 1 end }
+    -- Officer: what the guild's rank permissions say (M.player.officer; else rank "Officer" or
+    -- "Guild Master"); a character outside a guild isn't one.
+    local function Officer()
+        if not M.player.guild then return false end
+        if M.player.officer ~= nil then return M.player.officer end
+        return M.player.rank == "Officer" or M.player.rank == "Guild Master"
+    end
+    C_GuildInfo = { GuildRoster = function() M.rosterRequests = M.rosterRequests + 1 end,
+        IsGuildOfficer = Officer, CanViewOfficerNote = Officer }
     M.leader = false
     -- Others lead or assist with leader = true or assist = true on their member table.
     UnitIsGroupLeader = function(unit)
@@ -314,8 +319,8 @@ function M.fire(event, ...)
     end
 end
 
-function M.login(addonName)
-    M.fire("ADDON_LOADED", addonName or "NoctisLootCouncil")
+function M.login()
+    M.fire("ADDON_LOADED", "NoctisLootCouncil")
     M.fire("PLAYER_LOGIN")
 end
 

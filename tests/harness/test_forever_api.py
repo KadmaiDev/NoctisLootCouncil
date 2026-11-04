@@ -21,7 +21,7 @@ EVENTS = set(FOREVER["events"])
 
 def addon_source() -> str:
     """Both addons' code: Noctis Loot Council's and Noctis Milestones'."""
-    files = sorted(ADDON.glob("*.lua")) + sorted((ROOT / "milestones").glob("*.lua"))
+    files = sorted(ADDON.glob("*.lua"))
     return "\n".join(p.read_text(encoding="utf-8") for p in files)
 
 

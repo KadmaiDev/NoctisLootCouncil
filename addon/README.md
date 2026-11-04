@@ -76,3 +76,16 @@ The council window shows each candidate's gear, earlier loot, tags, note and vot
 - **`/nlc export [all]`** puts tonight's awards (or all of them) in a box to copy, in RCLootCouncil's CSV format, for oxm.gg's RCLootCouncil import.
 - **Decisions from Discord**: officers vote council or roll in Discord; the Noctis Loot companion app writes them into a small `NoctisLootDecisions` addon that this one reads at login, and uploads the saved loot log back.
 - **`/nlc scale [50-300]`** sets the size of the windows. They take EllesmereUI's or ElvUI's look if you use one, and work with the Gamepad UI.
+
+## For officers: level milestones
+
+Off for everyone until an officer turns it on, and it only ever works on characters whose guild rank is an officer's (the game's officer permissions). On anyone else's character it does nothing at all, even if turned on.
+
+| Command | |
+|---|---|
+| `/nlc milestones on` / `off` | read the guild roster every minute and note level-ups, which the companion app sends to the Noctis bot for its Discord congratulations (every character on this account) |
+| `/nlc milestones` | what's been noted, and the settings below |
+| `/nlc milestones tell on` / `off` | a line in your own chat window when someone reaches a milestone (only you see it) |
+| `/nlc milestones guildchat on` / `off` | congratulate in guild chat (this guild only; if several officers have it on, the one online longest posts) |
+| `/nlc milestones levels 10, 20, 30` | the levels told about in game (`default`: 10 to 60) |
+| `/nlc milestones scan` | read the roster now |

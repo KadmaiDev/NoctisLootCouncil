@@ -1,5 +1,10 @@
 # Changelog
 
+## Noctis Loot Council 0.1.3
+
+- **Level milestones, for officers.** `/nlc milestones on` makes the addon read the guild roster every minute and note level-ups; the companion app sends them to the Noctis bot, which congratulates 10, 20 ... 60 in Discord. Off for everyone until turned on, and it only works on characters whose guild rank has officer permissions: for raiders it does nothing at all.
+- **Milestones in game too**, both off until turned on: `/nlc milestones tell on` puts a line in your own chat window, `/nlc milestones guildchat on` congratulates in guild chat. With several officers on, their addons agree that the one online longest posts, and the next takes over when they log off.
+
 ## Noctis Loot Council 0.1.2
 
 - **A Disenchant button.** Set the guild's disenchanter with `/nlc disenchanter First Last`; each drop in the loot master's window then has a Disenchant button for items nobody wants. Raid chat is told who it goes to, and the loot log, the export (RCLootCouncil's "Disenchant" award reason) and Discord's #loot-log show it as disenchanted. It never counts as a win, tonight or in the council's "Before tonight".

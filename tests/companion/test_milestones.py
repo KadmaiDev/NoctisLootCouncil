@@ -1,5 +1,5 @@
-"""The companion and the Noctis Milestones addon's saved file: nothing at all without the addon, nothing
-while the bot has milestones off, and only the bot's guild's roster when it's on."""
+"""The companion and level milestones in the addon's saved file: nothing at all unless an officer turned
+them on in game, nothing while the bot has milestones off, and only the bot's guild's roster when it's on."""
 from __future__ import annotations
 
 import asyncio
@@ -20,14 +20,19 @@ from companion.config import Settings
 from .test_savedfile import make_wow
 
 
-def write_milestones(wow: Path, at: int, account: str = "ACCOUNT1", vespera: int = 20) -> Path:
-    """A saved file as the game writes it: Noctis, and an alt's other guild."""
-    path = wow / "WTF" / "Account" / account / "SavedVariables" / savedfile.MILESTONES_FILE
+def write_milestones(wow: Path, at: int, account: str = "ACCOUNT1", vespera: int = 20, on: bool = True) -> Path:
+    """A saved file as the game writes it, milestones on: Noctis, and an alt's other guild."""
+    path = wow / "WTF" / "Account" / account / "SavedVariables" / savedfile.SAVED_FILE
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f"""
-NoctisMilestonesDB = {{
+NoctisLootCouncilDB = {{
 ["me"] = "Kadmai Moonwhisper",
 ["v"] = 1,
+["items"] = {{
+}},
+["milestones"] = {{
+["on"] = {"true" if on else "nil"},
+["tell"] = true,
 ["guilds"] = {{
 ["Noctis|Forever"] = {{
 ["name"] = "Noctis",
@@ -80,6 +85,7 @@ NoctisMilestonesDB = {{
 }},
 }},
 }},
+}},
 }}
 """, encoding="utf-8")
     return path
@@ -113,12 +119,22 @@ def companion(wow: Path, bot: FakeBot, clock=None) -> Companion:
                      milestone_settings=bot.settings, upload_milestones=bot.upload)
 
 
-def test_without_the_addon_it_does_nothing_and_asks_nothing(tmp_path):
+def test_without_milestones_on_in_game_it_does_nothing_and_asks_nothing(tmp_path):
     bot = FakeBot()
-    comp = companion(make_wow(tmp_path), bot)
+    wow = make_wow(tmp_path)  # a raider's file: no milestones section
+    comp = companion(wow, bot)
     assert comp.upload_milestones() == 0
     assert comp.upload_milestones(force=True) == 0
+    write_milestones(wow, 1_800_000_000, on=False)  # turned off again: what was noted stays home
+    assert comp.upload_milestones(force=True) == 0
     assert bot.asked == 0 and bot.sent == []
+
+
+def test_the_loot_upload_never_carries_the_roster(tmp_path):
+    wow = make_wow(tmp_path)
+    path = write_milestones(wow, 1_800_000_000)
+    body = savedfile.build_upload(savedfile.read_saved_file(path))
+    assert "Vespera" not in repr(body) and "milestones" not in body
 
 
 def test_only_the_bots_guild_is_sent(tmp_path):

@@ -1,4 +1,4 @@
-"""Level milestones end to end: officers running Noctis Milestones see the guild roster, log out, their
+"""Level milestones end to end: officers with milestones on in the addon see the guild roster, log out, their
 companion apps send the level-ups, and the bot congratulates each milestone once in #milestones. An
 officer's alt in another guild runs the addon too, and none of that guild reaches the bot."""
 from __future__ import annotations
@@ -32,7 +32,7 @@ async def test_level_ups_are_congratulated_once_for_the_guild_only(guild, runnin
     # Two officers run the addon; so does an alt of Doran's in another guild.
     realm.clock = int(time.time())
     realm.lm.milestones = realm.seren.milestones = True
-    alt = realm.add_player("Secret", "Alt", "MAGE", guild="Other Guild", milestones=True)
+    alt = realm.add_player("Secret", "Alt", "MAGE", rank="Officer", guild="Other Guild", milestones=True)
     realm.login()
     realm.roster(LEVELS_BEFORE)  # first read: nothing to announce
     realm.wait(600)
@@ -70,7 +70,7 @@ def test_one_officer_congratulates_in_guild_chat_and_another_takes_over(realm):
     realm.login()
     realm.roster(LEVELS_BEFORE)
     for p in (realm.lm, realm.seren):
-        p.type("/nms guildchat on")
+        p.type("/nlc milestones guildchat on")
     realm.wait(60)
     realm.roster(roster(vespera=20))
     realm.wait(5)

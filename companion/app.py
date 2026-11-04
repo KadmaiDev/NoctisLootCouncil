@@ -171,27 +171,34 @@ class Companion:
         return self._ms_guild
 
     def upload_milestones(self, force: bool = False) -> int:
-        """Send the bot's guild's roster and level-ups from each changed Noctis Milestones saved file.
-        Without that addon's saved file this does nothing at all; while the bot has milestones off,
-        nothing is sent. Other guilds' rosters never leave the PC. Returns how many files went up."""
-        paths = savedfile.find_milestone_files(self.settings.wow_dir)
+        """Send the bot's guild's roster and level-ups from each changed saved file that has milestones on
+        (/nlc milestones on in game). Without that this does nothing at all, not even ask the bot; while
+        the bot has milestones off, nothing is sent. Other guilds' rosters never leave the PC. Returns how
+        many files went up."""
+        paths = savedfile.find_saved_files(self.settings.wow_dir)
         self._cleared(*(k for k in self._problems if k.startswith("ms:") and Path(k[3:]) not in paths))
         changed = [(p, sig) for p in paths
                    if (sig := self._signature(p)) is not None and (force or self._ms_uploaded.get(p) != sig)]
-        if not changed:
+        files = []
+        for path, signature in changed:
+            try:
+                db = savedfile.read_saved_file(path)
+            except (LuaError, ValueError, OSError):
+                continue  # the loot upload says so; tried again at the next change
+            if savedfile.milestones_on(db):
+                files.append((path, signature, db))
+            else:
+                self._ms_uploaded[path] = signature
+                self._cleared(f"ms:{path}")
+        if not files:
             return 0
         guild = self._milestones_guild()
         if guild is None:
             return 0  # the files stay changed: they go up once the bot takes them
         done = 0
-        for path, signature in changed:
+        for path, signature, db in files:
             what = f"ms:{path}"
-            try:
-                db = savedfile.read_saved_file(path, savedfile.MILESTONES_VARIABLE)
-                bodies = savedfile.build_milestone_uploads(db, guild)
-            except (LuaError, ValueError, OSError) as exc:
-                self._problem(what, f"Couldn't read {self._label(path)} yet ({exc}); trying again shortly.")
-                continue
+            bodies = savedfile.build_milestone_uploads(db, guild)
             try:
                 for body in bodies:
                     answer = self._ms_upload(self.settings.bot_url, self.settings.token, body)

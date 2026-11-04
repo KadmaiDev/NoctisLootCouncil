@@ -79,13 +79,22 @@ end)
 --   popupOff = true|nil,                -- no Main spec / Off spec / Pass pop-up (Popup.lua)
 --   autoOpenOff = true|nil,             -- the loot master's window doesn't open by itself (LootWindow.lua)
 --   disenchanter = "First Last"|nil,    -- who items nobody wants go to (Rolls.lua)
+--   milestones = nil | {                -- only once an officer has typed /nlc milestones on (Milestones.lua)
+--     on = true|nil, tell = true|nil, levels = { 10, 20, ... }|nil, onlineSince = time()|nil,
+--     guilds = { ["Guild|Realm"] = {     -- each guild a character on this account is in, apart
+--       name, realm, scanned = time()|nil, guildChat = true|nil,
+--       members = { ["first last"] = { name = "First Last", class = "DRUID", level, rank, seen = time() } },
+--       levels = { { name, class, from, to, at = time(), since = time() } }, -- level-ups, oldest first
+--     } },
+--   },
 -- }
 -- The companion app reads this file; its format is in the repository's docs/sync-format.md.
 -- Each field's type, so a damaged save is repaired at load instead of breaking things.
 local DB_FIELDS = { v = "number", items = "table", encounters = "table", bossSources = "table",
     instances = "table", minQuality = "number", dungeons = "boolean", log = "table", night = "number",
     trialRanks = "table", drops = "table", me = "string", decisionsAt = "number", scale = "number",
-    council = "table", popupOff = "boolean", autoOpenOff = "boolean", undone = "table", disenchanter = "string" }
+    council = "table", popupOff = "boolean", autoOpenOff = "boolean", undone = "table", disenchanter = "string",
+    milestones = "table" }
 ns.ITEM_FIELDS = { link = "string", q = "number", first = "number", last = "number", seen = "number",
     from = "table", inst = "number", handling = "string", note = "string",
     slot = "string", sub = "string" }
@@ -95,6 +104,11 @@ local LOG_FIELDS = { id = "number", link = "string", who = "string", class = "st
     tags = "string" }
 local DROP_FIELDS = { id = "number", at = "number", src = "string", inst = "number", n = "number" }
 local UNDONE_FIELDS = { id = "number", who = "string", at = "number" }
+local MS_FIELDS = { on = "boolean", tell = "boolean", levels = "table", onlineSince = "number", guilds = "table" }
+local MS_GUILD_FIELDS = { name = "string", realm = "string", scanned = "number", members = "table", levels = "table",
+    guildChat = "boolean" }
+local MS_MEMBER_FIELDS = { name = "string", class = "string", level = "number", rank = "string", seen = "number" }
+local MS_LEVEL_FIELDS = { name = "string", class = "string", from = "number", to = "number", at = "number", since = "number" }
 
 local function KeepTyped(t, fields)
     for k, v in pairs(t) do
@@ -124,6 +138,37 @@ local function Compact(list, keep)
         end
     end
     return out
+end
+
+local function RepairMilestones(ms)
+    KeepTyped(ms, MS_FIELDS)
+    if ms.levels then
+        ms.levels = Compact(ms.levels, function(n) return type(n) == "number" and n >= 2 and n <= 200 end)
+        if #ms.levels == 0 then ms.levels = nil else table.sort(ms.levels) end
+    end
+    ms.guilds = ms.guilds or {}
+    for key, g in pairs(ms.guilds) do
+        if type(key) ~= "string" or type(g) ~= "table" then
+            ms.guilds[key] = nil
+        else
+            KeepTyped(g, MS_GUILD_FIELDS)
+            if not g.name then
+                ms.guilds[key] = nil
+            else
+                g.realm = g.realm or ""
+                g.members = g.members or {}
+                KeepMap(g.members, "string", "table", MS_MEMBER_FIELDS)
+                for k, m in pairs(g.members) do
+                    if not (m.name and m.level and m.seen) then g.members[k] = nil end
+                end
+                g.levels = Compact(g.levels or {}, function(e)
+                    if type(e) ~= "table" then return false end
+                    KeepTyped(e, MS_LEVEL_FIELDS)
+                    return e.name ~= nil and e.from ~= nil and e.to ~= nil and e.at ~= nil
+                end)
+            end
+        end
+    end
 end
 
 function ns.Repair(db)
@@ -161,6 +206,7 @@ function ns.Repair(db)
     if db.council then
         db.council = Compact(db.council, function(r) return type(r) == "string" end)
     end
+    if db.milestones then RepairMilestones(db.milestones) end
     return db
 end
 

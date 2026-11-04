@@ -1,4 +1,4 @@
-"""Level milestones: the officers' Noctis Milestones addon notes guild members' level-ups, the
+"""Level milestones: the addon (for officers who turn it on) notes guild members' level-ups, the
 companion uploads them (POST /api/milestones, sync-format.md section 5) and the bot congratulates
 in its milestones channel. This module is pure: the upload's shape, the settings, which milestone
 a level-up earns, and the post's wording. The database side is in store.py."""

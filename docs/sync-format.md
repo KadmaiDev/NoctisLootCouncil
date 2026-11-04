@@ -10,7 +10,7 @@ addon ──saved file──▶ companion app ──POST /api/upload──▶ bo
 addon ◀─NoctisLootDecisions addon── companion app ◀──GET /api/decisions── bot
 ```
 
-Officers who run the Noctis Milestones addon too send guild members' level-ups the same way (section 5).
+Officers who turn level milestones on in the addon send guild members' level-ups the same way (section 5).
 
 ## 1. The addon's saved file (read by the companion app)
 
@@ -167,27 +167,28 @@ added as not seen yet); `"none"` clears an item's handling and note and adds not
 decided only in game keep their decision. It then says
 "Decisions from 27 Oct, 18:40: 34 council, 112 roll."
 
-## 5. Level milestones: the Noctis Milestones addon → companion → bot
+## 5. Level milestones: the addon → companion → bot
 
-An optional second addon for officers, Noctis Milestones (`milestones/`), notes guild members'
-level-ups from the guild roster. Officers without it are unaffected: the companion does nothing
-about milestones unless the addon's saved file exists.
+The addon's milestones part (`addon/Milestones.lua`, `MilestonesChat.lua`) notes guild members'
+level-ups from the guild roster. It's off until an officer types `/nlc milestones on`, and works
+only on characters the game says are guild officers (`C_GuildInfo.IsGuildOfficer` or
+`CanViewOfficerNote`). Everyone else is unaffected: the companion does nothing about milestones
+unless a saved file has them on.
 
 ```
-milestones addon ──NoctisMilestones.lua──▶ companion ──GET, then POST /api/milestones──▶ bot ──▶ #milestones
+addon ──NoctisLootCouncil.lua, milestones──▶ companion ──GET, then POST /api/milestones──▶ bot ──▶ #milestones
 ```
 
-**The saved file**, `WTF\Account\<ACCOUNT>\SavedVariables\NoctisMilestones.lua`, one per account
-(every character on it shares the file), holds `NoctisMilestonesDB`:
+**The saved file** is the addon's own (section 1): `NoctisLootCouncilDB.milestones`, absent until
+`/nlc milestones on` (every character on the account shares it). `/api/upload` never carries it.
 
 | Field | Type | |
 |---|---|---|
-| `v` | number | 1 |
-| `me` | string | the character who last logged in |
+| `on` | `true` / nil | turned on in game; the companion sends nothing from a file without it |
 | `guilds` | table | by `"<guild>\|<realm>"`: each guild a character on the account is in, kept apart |
 | `guilds[k].name`, `.realm` | string | the guild's name and realm (`GetGuildInfo`, else `GetRealmName`) |
 | `guilds[k].scanned` | number / nil | the last roster read |
-| `tell`, `levels`, `onlineSince`, `guilds[k].guildChat` | | the addon's own in-game settings (`/nms tell`, `/nms levels`, `/nms guildchat`); the companion ignores them |
+| `tell`, `levels`, `onlineSince`, `guilds[k].guildChat` | | the addon's own in-game settings (`/nlc milestones tell`, `levels`, `guildchat`); the companion ignores them |
 | `guilds[k].members` | table | by lower-cased name: `{ name, class, level, rank, seen }` (`class` is the file name, e.g. `DRUID`) |
 | `guilds[k].levels` | list | level-ups, oldest first: `{ name, class, from, to, at, since }`: last seen at `from` (at `since`), at `to` when read at `at`. Kept 30 days |
 
@@ -196,7 +197,7 @@ before the addon started is a level-up.
 
 **The settings:** `GET /api/milestones`, same header. Answer `{"on": true, "guild": "Noctis"}`, or
 `{"on": false, "guild": null}` while officers have it off or no guild set (`/milestones settings`).
-The companion asks at most every 10 minutes, and only when a milestones file has changed.
+The companion asks at most every 10 minutes, and only when a saved file with milestones on has changed.
 
 **The upload:** while it's on, for each changed file, one `POST /api/milestones` per guild in it
 whose name is the bot's guild (case doesn't matter); other guilds' rosters are never sent:

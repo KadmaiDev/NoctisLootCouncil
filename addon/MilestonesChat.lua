@@ -1,6 +1,7 @@
--- Telling people about milestones in game, both off until an officer turns them on:
---   /nms tell on       a line in your own chat window (nothing is sent; every character on the account)
---   /nms guildchat on  "Congratulations to X on reaching level 20!" in guild chat (this guild only)
+-- Telling people about milestones in game (Milestones.lua reads them), both off until an
+-- officer turns them on, and only while milestones are active (on, and an officer):
+--   /nlc milestones tell on       a line in your own chat window (nothing is sent)
+--   /nlc milestones guildchat on  "Congratulations to X on reaching level 20!" in guild chat (this guild only)
 --
 -- Several officers may have guild chat on; one of them, the announcer, posts. The addons with it
 -- on say hello to each other over the guild's addon channel (at login, then every HEARTBEAT
@@ -28,7 +29,8 @@ local ALONE_MIN, ALONE_SPREAD = 1, 7     -- without addon messages: 1 to 8 secon
 if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then pcall(C_ChatInfo.RegisterAddonMessagePrefix, PREFIX) end
 
 function ns.Levels()
-    return ns.db.levels or ns.DEFAULT_LEVELS
+    local ms = ns.MS()
+    return ms and ms.levels or ns.DEFAULT_LEVELS
 end
 
 -- The highest milestone a level-up from `from` to `to` passed (18 to 31: 30), or nil.
@@ -53,7 +55,8 @@ ns.peers = peers
 local messagesWork = false -- our last hello went out
 
 local function GuildChatOn()
-    local g = ns.Guild and ns.Guild(false)
+    if not ns.MilestonesActive() then return nil end
+    local g = ns.Guild(false)
     return g and g.guildChat and g
 end
 
@@ -92,7 +95,7 @@ function ns.SeenOffline(key)
 end
 
 ns.On("CHAT_MSG_ADDON", function(prefix, text, channel, sender)
-    if prefix ~= PREFIX or channel ~= "GUILD" then return end
+    if not ns.Plain(prefix) or prefix ~= PREFIX or channel ~= "GUILD" then return end
     text = ns.Typed(text, "string")
     local name = ns.CleanName(sender)
     local key = ns.NameKey(name)
@@ -121,8 +124,11 @@ end
 ns.On("PLAYER_ENTERING_WORLD", function(isInitialLogin, isReloadingUi)
     if entered then return end -- it fires again at every loading screen
     entered = true
-    if isReloadingUi == true and ns.Typed(ns.db.onlineSince, "number") then ns.onlineSince = ns.db.onlineSince end
-    ns.db.onlineSince = ns.onlineSince
+    local ms = ns.MS()
+    if ms then
+        if isReloadingUi == true and ns.Typed(ms.onlineSince, "number") then ns.onlineSince = ms.onlineSince end
+        ms.onlineSince = ns.onlineSince
+    end
     Heartbeat()
 end)
 
@@ -166,7 +172,7 @@ end
 function ns.Celebrate(g, e)
     local level = ns.MilestoneFor(e.from, e.to)
     if not level then return end
-    if ns.db.tell then
+    if ns.MS().tell then
         local line = L["%s reached level %d."]:format(e.name, level)
         if not Fresh(e) then
             line = line .. " " .. ns.GREY .. L["(caught up: last seen at level %d, %s)"]
@@ -177,27 +183,37 @@ function ns.Celebrate(g, e)
     if g.guildChat and Fresh(e) then Congratulate(e.name, level) end
 end
 
+-- /nlc milestones off: a goodbye first, so another officer takes over at once.
+function ns.MilestonesOff()
+    if GuildChatOn() then Send("B") end
+end
+
 ---------------------------------------------------------------------------
--- /nms tell, guildchat, levels
+-- /nlc milestones tell, guildchat, levels
 ---------------------------------------------------------------------------
 local function OnOff(word)
     word = (word or ""):lower()
     if word == "on" then return true elseif word == "off" then return false end
 end
 
-ns.Command("tell", function(rest)
+ns.MilestoneCommand("tell", function(rest)
+    local ms = ns.MS()
     local on = OnOff(rest)
     if on == nil then
-        ns.Say(L["tell is %s. /nms tell on/off"]:format(ns.db.tell and L["on"] or L["off"]))
+        ns.Say(L["tell is %s. /nlc milestones tell on/off"]:format(ms.tell and L["on"] or L["off"]))
         return
     end
-    ns.db.tell = on or nil
+    ms.tell = on or nil
     ns.Say(on and L["you'll be told in your chat window when someone reaches a milestone (only you see it)."]
         or L["you won't be told about milestones in chat."])
 end, L["on/off: a line in your own chat window when someone reaches a milestone (only you see it)"])
 
-ns.Command("guildchat", function(rest)
+ns.MilestoneCommand("guildchat", function(rest)
     local on = OnOff(rest)
+    if on == true and not ns.MilestonesActive() then -- off, or not an officer here: says which
+        ns.MilestoneStatus()
+        return
+    end
     local g = ns.Guild(on ~= nil)
     if not g then
         ns.Say(L["this character isn't in a guild (or the guild hasn't loaded yet)."])
@@ -214,7 +230,7 @@ ns.Command("guildchat", function(rest)
         return
     end
     if not g.guildChat then
-        ns.Say(L["guild chat for %s is off. /nms guildchat on/off"]:format(g.name))
+        ns.Say(L["guild chat for %s is off. /nlc milestones guildchat on/off"]:format(g.name))
         return
     end
     local others = 0
@@ -227,25 +243,25 @@ ns.Command("guildchat", function(rest)
     end
 end, L["on/off: congratulate milestones in guild chat (this guild only; the officer online longest posts)"])
 
-ns.Command("levels", function(rest)
+ns.MilestoneCommand("levels", function(rest)
     if rest == "" then
-        ns.Say(L["milestone levels: %s. /nms levels 10, 20, 30 (or default)"]:format(table.concat(ns.Levels(), ", ")))
+        ns.Say(L["milestone levels: %s. /nlc milestones levels 10, 20, 30 (or default)"]:format(table.concat(ns.Levels(), ", ")))
         return
     end
     if rest:lower() == "default" then
-        ns.db.levels = nil
+        ns.MS().levels = nil
     else
         local levels, seen = {}, {}
         for part in rest:gmatch("[^%s,;]+") do
             local n = tonumber(part)
             if not n or n ~= math.floor(n) or n < 2 or n > 200 then
-                ns.Say(L["levels are whole numbers from 2 to 200, like: /nms levels 10, 20, 30"])
+                ns.Say(L["levels are whole numbers from 2 to 200, like: /nlc milestones levels 10, 20, 30"])
                 return
             end
             if not seen[n] then levels[#levels + 1], seen[n] = n, true end
         end
         table.sort(levels)
-        ns.db.levels = levels
+        ns.MS().levels = levels
     end
     ns.Say(L["milestone levels: %s. (These are for chat here; the bot's own are set in Discord.)"]:format(table.concat(ns.Levels(), ", ")))
 end, L["the levels told about in game (default 10, 20, 30, 40, 50, 60)"])
