@@ -26,6 +26,7 @@ class Settings:
     bot_url: str
     token: str
     poll_seconds: int = POLL_SECONDS
+    skip_update: str = ""  # "Not now" on this version's update notice
 
     @property
     def complete(self) -> bool:
@@ -79,7 +80,7 @@ def load(path: Path) -> Settings | None:
     except ValueError:
         poll = POLL_SECONDS
     return Settings(wow_dir=Path(s.get("wow_folder", "").strip()), bot_url=s.get("bot_url", "").strip().rstrip("/"),
-                    token=s.get("token", "").strip(), poll_seconds=poll)
+                    token=s.get("token", "").strip(), poll_seconds=poll, skip_update=s.get("skip_update", "").strip())
 
 
 def save(path: Path, settings: Settings) -> None:
@@ -90,6 +91,8 @@ def save(path: Path, settings: Settings) -> None:
         "token": settings.token,
         "poll_seconds": str(settings.poll_seconds),
     }
+    if settings.skip_update:
+        cp[SECTION]["skip_update"] = settings.skip_update
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write("# Noctis Loot companion app. Get a token with /loot token in Discord.\n")

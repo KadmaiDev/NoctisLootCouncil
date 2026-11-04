@@ -12,13 +12,13 @@ import pystray
 import webview
 from PIL import Image
 
-from . import autostart, instance
+from . import __version__, autostart, instance
 from .config import Settings
 from .controller import Controller
 
 HERE = Path(__file__).resolve().parent
 ASSETS = HERE / "assets"
-TITLE = "Noctis Loot"
+TITLE = "Noctis Loot"  # the window's title; the tray's tooltip adds the version
 TRAY_STATUS = {"ok": "Connected", "down": "Can't reach the bot", "checking": "Checking…"}
 
 
@@ -54,6 +54,9 @@ class Api:
     def set_autostart(self, on: bool) -> bool:
         return self._controller.set_autostart(bool(on))
 
+    def dismiss_update(self) -> None:
+        self._controller.dismiss_update()
+
     def browse(self, current: str = "") -> str | None:
         start = current if current and Path(current).is_dir() else ""
         picked = self._ui.window.create_file_dialog(webview.FileDialog.FOLDER, directory=start)
@@ -86,13 +89,17 @@ class Ui:
         self.window.hide()
         return False
 
+    def tray_update(self, item=None) -> str:
+        return f"Update: {self.controller.update()} is out…"
+
     def tray_status(self, item=None) -> str:
         state = self.controller.state()
+        name = f"{TITLE} {__version__}"
         if state["view"] == "setup":
-            return f"{TITLE} · Not set up"
+            return f"{name} · Not set up"
         if state["view"] == "token":
-            return f"{TITLE} · Not connected"
-        return f"{TITLE} · {TRAY_STATUS.get(state['link']['state'], '')}"
+            return f"{name} · Not connected"
+        return f"{name} · {TRAY_STATUS.get(state['link']['state'], '')}"
 
     def toggle_autostart(self) -> None:
         self.controller.set_autostart(not autostart.enabled())
@@ -113,6 +120,7 @@ class Ui:
     def make_icon(self) -> pystray.Icon:
         menu = pystray.Menu(
             pystray.MenuItem(self.tray_status, None, enabled=False),
+            pystray.MenuItem(self.tray_update, self.show, visible=lambda item: bool(self.controller.update())),
             pystray.MenuItem("Open window", self.show, default=True),
             pystray.MenuItem("Upload now", self.controller.upload_now, enabled=lambda item: self.controller.ready),
             pystray.MenuItem("Start with Windows", self.toggle_autostart,

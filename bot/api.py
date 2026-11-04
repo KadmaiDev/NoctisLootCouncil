@@ -58,7 +58,12 @@ async def upload(request: web.Request) -> web.Response:
 async def decisions(request: web.Request) -> web.Response:
     if _owner(request) is None:
         return _error(401, "bad token")
-    return web.json_response(request.app[STORE_KEY].decisions())
+    store = request.app[STORE_KEY]
+    answer = store.decisions()
+    latest = store.companion_latest()
+    if latest:
+        answer["companion"] = latest  # the newest companion app, for its update notice (releases.py)
+    return web.json_response(answer)
 
 
 async def milestone_settings(request: web.Request) -> web.Response:

@@ -666,6 +666,15 @@ class Store:
 
     # ---- level milestones (milestones.py) ----------------------------------
 
+    # ---- the companion app's newest release (releases.py) ---------------------------------
+
+    def companion_latest(self) -> str | None:
+        return self._meta("companion_latest") or None
+
+    def set_companion_latest(self, version: str) -> None:
+        with self.conn:
+            self._set_meta("companion_latest", version)
+
     def milestone_settings(self) -> milestones.Settings:
         levels = self._meta("ms_levels")
         channel = self._meta("ms_channel")

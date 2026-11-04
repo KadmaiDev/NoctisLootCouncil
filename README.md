@@ -104,6 +104,7 @@ Copy `.env.example` to `.env` and fill it in. Turn on Developer Mode in Discord 
 | `DB_PATH` | the SQLite database (default `data/noctis-loot.db`) |
 | `WCL_CLIENT_ID`, `WCL_CLIENT_SECRET` | optional, for `/loot wcl`: a client from warcraftlogs.com → API clients (any redirect URL, not a public client) |
 | `TIMEZONE` | for raid nights and dates in posts (default `Europe/London`; a raid night runs until 06:00) |
+| `RELEASE_CHECK` | `0` turns off the companion's update notice (the bot asks GitHub for the newest companion release about once an hour; default on) |
 
 ### 4. Run it
 
@@ -245,7 +246,9 @@ The first run asks for three things, then **Connect** checks them with the bot b
 
 **Start with Windows**, on unless you untick it, starts it in the tray when you sign in.
 
-The window then shows whether it's connected to the bot, the last upload, which decisions the game has, the folder it watches and what it's done lately. **Upload now** sends the saved file again straight away, and the gear opens the settings. The tray icon pops up a notification when it uploads something new, when it writes new decisions, and when it needs a new token. If `/loot token` is used again for your Discord account, the old token stops working: the window turns red and asks for the new one. Uploads wait until then; nothing is lost.
+The window then shows whether it's connected to the bot, the last upload, which decisions the game has, the folder it watches and what it's done lately. **Upload now** sends the saved file again straight away, and the gear opens the settings. The tray icon pops up a notification when it uploads something new, when it writes new decisions, and when it needs a new token.
+
+**Version and updates:** the window's header and the tray icon's tooltip show the version (the `.exe`'s Properties → Details too). When a newer one is released, the window shows "Companion 0.2.3 is out" with a link to its page on GitHub to copy, and the tray tells you once. It downloads nothing and opens nothing: you download the new `.exe` and put it in place of the old one (quit first, from the tray), and your settings stay. **Not now** hides the notice until the next version. The companion doesn't ask GitHub itself: the bot does, and adds the version number to the decisions it sends anyway, so there's no extra check; the link is built into the app, so it always points at this project's releases. If `/loot token` is used again for your Discord account, the old token stops working: the window turns red and asks for the new one. Uploads wait until then; nothing is lost.
 
 It keeps its settings and token in `companion.ini`, and its log in `companion.log`, next to the app (or in `%APPDATA%\NoctisLoot\` if that folder isn't writable). Starting it again while it runs brings up the window of the copy that's running.
 
@@ -281,12 +284,12 @@ It **writes**:
 It **talks to** the bot address in `companion.ini`, and nowhere else:
 
 - `POST /api/upload`, with what the saved file holds about raid loot: the items (name, link, quality, where and when they dropped, the decision and note), the drops it saw and the awards (who won what, their class, how, the roll, the note and bid tags) and those taken back with `/nlc undo`, and the name of the character that uploaded. The account folder's name stays on your PC.
-- `GET /api/decisions`: the council and roll decisions.
+- `GET /api/decisions`: the council and roll decisions, and the newest companion version (for the update notice).
 - With milestones on in game only: `GET /api/milestones` (whether the bot is taking level-ups, and for which guild; asked at most every 10 minutes), then, while it is, `POST /api/milestones` with that guild's roster as your addon saw it (each member's name, class, level and rank), the level-ups it noticed (who, from which level to which, when) and the name of the character that uploaded. The rosters of any other guild your characters are in stay on your PC.
 
 All of these carry your token. It tells the bot the upload is yours, and does nothing else: the bot accepts it for these requests only, and it gives no access to your Discord or Battle.net account. `/loot token` replaces it.
 
-The window loads nothing: its page, pictures and font are inside the app, shown by WebView2 in private mode (no cookies or history kept), and the page's Content-Security-Policy refuses to load anything from anywhere. There's no auto-update and no analytics. A new version is a new download, when you choose. To see the connections for yourself, Resource Monitor's Network tab (or Sysinternals TCPView) shows it connecting to the bot alone.
+The window loads nothing: its page, pictures and font are inside the app, shown by WebView2 in private mode (no cookies or history kept), and the page's Content-Security-Policy refuses to load anything from anywhere. There's no auto-update and no analytics. A new version is a new download, when you choose: the update notice only tells you one is out. To see the connections for yourself, Resource Monitor's Network tab (or Sysinternals TCPView) shows it connecting to the bot alone.
 
 ### Checking the .exe
 

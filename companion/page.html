@@ -33,6 +33,7 @@ button, input { font-family: inherit; }
 .icon-btn:hover, .icon-btn:focus-visible { background: var(--raised); color: var(--text); }
 
 main { flex: 1; overflow-y: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+main > * { flex-shrink: 0; } /* scroll rather than squash when there's more to show */
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
 .link { display: flex; align-items: center; gap: 14px; padding: 16px; }
 .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; background: var(--muted); }
@@ -102,6 +103,17 @@ code { font-family: Consolas, monospace; background: var(--raised); color: var(-
 .alarm input { flex: 1; min-width: 0; height: 44px; padding: 0 12px; background: var(--bg); border: 1px solid var(--red-line);
   border-radius: 8px; color: var(--text); font-size: 13px; }
 .alarm input:focus { outline: 2px solid var(--amber); outline-offset: -1px; }
+
+/* A newer version */
+.update { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--amber); }
+.update .big { color: var(--amber); }
+.update p { margin: 0; color: var(--muted); font-size: 13px; }
+.update .pair { display: flex; gap: 8px; }
+.update input { flex: 1; min-width: 0; height: 40px; padding: 0 10px; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 8px; color: var(--text); font-size: 12px; }
+.update .quiet { height: 40px; }
+.update .text-btn { align-self: flex-start; padding: 2px 0; }
 </style>
 </head>
 <body>
@@ -109,7 +121,7 @@ code { font-family: Consolas, monospace; background: var(--raised); color: var(-
 <section class="view" id="status" aria-label="Status">
   <header class="bar">
     <img class="owl" src="data:image/png;base64,{{OWL}}" width="44" height="44" alt="">
-    <div class="brand"><b>Noctis Loot</b><span>Companion</span></div>
+    <div class="brand"><b>Noctis Loot</b><span class="version">Companion</span></div>
     <button class="icon-btn" id="gear" type="button" title="Settings" aria-label="Settings">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
     </button>
@@ -120,6 +132,15 @@ code { font-family: Consolas, monospace; background: var(--raised); color: var(-
       <div><div class="big" id="linkTitle"></div><div class="hint" id="linkDetail"></div></div>
     </div>
     <div class="note" id="note" hidden></div>
+    <div class="update" id="update" role="status" hidden>
+      <div class="big">Companion <span id="updateVersion"></span> is out</div>
+      <p>Download it from the guild's releases on GitHub. To update, quit this one (tray icon, Quit) and put the new <code>NoctisLootCompanion.exe</code> in its place: your settings stay.</p>
+      <div class="pair">
+        <input id="updateUrl" type="text" readonly aria-label="Download page" spellcheck="false">
+        <button class="quiet" id="copyUpdate" type="button">Copy link</button>
+      </div>
+      <button class="text-btn" id="skipUpdate" type="button">Not now (until the next version)</button>
+    </div>
     <div class="card">
       <div class="row">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FBBF24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M5 20h14"/></svg>
@@ -149,7 +170,7 @@ code { font-family: Consolas, monospace; background: var(--raised); color: var(-
 <section class="view" id="token" aria-label="Not connected">
   <header class="bar">
     <img class="owl" src="data:image/png;base64,{{OWL}}" width="44" height="44" alt="">
-    <div class="brand"><b>Noctis Loot</b><span>Companion</span></div>
+    <div class="brand"><b>Noctis Loot</b><span class="version">Companion</span></div>
   </header>
   <main>
     <div class="alarm" role="alert">
@@ -293,8 +314,14 @@ function render(state) {
     if (want === "token") { $("newToken").value = ""; $("reconnectError").hidden = true; }
     show(want);
   }
+  document.querySelectorAll(".version").forEach((v) => { v.textContent = `Companion ${state.version}`; });
   if (state.view === "setup") return;
   fillAutostart(state.autostart);
+  $("update").hidden = !state.update;
+  if (state.update) {
+    $("updateVersion").textContent = state.update.version;
+    if ($("updateUrl").value !== state.update.url) $("updateUrl").value = state.update.url;
+  }
   fillActivity(state.activity);
   $("dot").className = "dot " + state.link.state;
   $("linkTitle").textContent = state.link.title;
@@ -370,6 +397,18 @@ async function reconnect() {
   $("reconnectError").hidden = false;
 }
 $("reconnect").addEventListener("click", reconnect);
+
+// The link is only shown and copied: the app opens nothing itself.
+$("copyUpdate").addEventListener("click", () => {
+  const box = $("updateUrl");
+  box.focus();
+  box.select();
+  let copied = false;
+  try { copied = document.execCommand("copy"); } catch (e) { copied = false; }
+  $("copyUpdate").textContent = copied ? "Copied" : "Press Ctrl+C";
+  setTimeout(() => { $("copyUpdate").textContent = "Copy link"; }, 2000);
+});
+$("skipUpdate").addEventListener("click", async () => { await api().dismiss_update(); await refresh(); });
 $("newToken").addEventListener("keydown", (e) => { if (e.key === "Enter") reconnect(); });
 
 window.addEventListener("pywebviewready", poll);

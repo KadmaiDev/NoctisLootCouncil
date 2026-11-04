@@ -120,13 +120,19 @@ Answer: `200 {"ok": true, "new_items": n, "new_awards": n}`; `401` bad token; `4
 
 ```json
 { "at": 1793078967,
-  "items": { "18000": { "handling": "council", "note": "Warlock priority", "name": "Sash of the Unseen" } } }
+  "items": { "18000": { "handling": "council", "note": "Warlock priority", "name": "Sash of the Unseen" } },
+  "companion": "0.2.3" }
 ```
 
 `at` is the time of the newest decision change. Every item with a decision is listed;
 `handling` is `"council"`, `"roll"`, or `"none"` for an item whose decision was taken back in
 Discord (so the game forgets it too). Items never decided are not listed, so a decision made
 in game and not yet uploaded survives. `note` is the priority text, may be missing.
+
+`companion`, once the bot knows it (it asks GitHub about once an hour; `RELEASE_CHECK=0` turns that
+off), is the newest companion release's version, from the tags `companion-v<x.y.z>` (no drafts or
+pre-releases). A companion older than it shows an update notice. It takes only a plain `x.y.z` and
+builds the download link itself, so the bot can't point it anywhere else.
 
 ## 4. The decisions addon: companion → game
 

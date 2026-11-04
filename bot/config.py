@@ -24,6 +24,7 @@ class Config:
     wowhead: bool = True  # look items up on Wowhead for icons and links (iteminfo.py)
     wcl_client_id: str = ""  # Warcraft Logs API client, for /loot wcl (warcraftlogs.py)
     wcl_client_secret: str = ""
+    release_check: bool = True  # ask GitHub for the newest companion app, for its update notice (releases.py)
 
 
 def _int(name: str, default: int = 0) -> int:
@@ -54,6 +55,7 @@ def load(require_discord: bool = True) -> Config:
         wowhead=os.getenv("WOWHEAD_LOOKUP", "1").strip().lower() not in ("0", "no", "off", "false"),
         wcl_client_id=os.getenv("WCL_CLIENT_ID", "").strip(),
         wcl_client_secret=os.getenv("WCL_CLIENT_SECRET", "").strip(),
+        release_check=os.getenv("RELEASE_CHECK", "1").strip().lower() not in ("0", "no", "off", "false"),
     )
     if require_discord:
         missing = [name for name, value in (

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import sys
 import time
 from dataclasses import dataclass
@@ -9,7 +10,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Callable
 
-from . import client, decisions, savedfile
+from . import RELEASES, __version__, client, decisions, savedfile
 from .config import Settings
 from .luaparse import LuaError
 
@@ -47,6 +48,19 @@ class Status:
     new_items: int = 0
     decisions: tuple[str, int, int] | None = None  # decisions.counts() of the latest the bot sent
     new_milestones: int = 0  # in the last milestones upload
+    update: str | None = None  # a newer companion version the bot knows of
+
+
+def newer_version(named: object, ours: str = __version__) -> str | None:
+    """`named` if it's a plain version number ("0.2.3") higher than ours, else None."""
+    if not isinstance(named, str) or not re.fullmatch(r"\d{1,4}\.\d{1,4}\.\d{1,4}", named):
+        return None
+    as_tuple = lambda v: tuple(int(x) for x in v.split("."))  # noqa: E731
+    return named if as_tuple(named) > as_tuple(ours) else None
+
+
+def release_page(version: str) -> str:
+    return f"{RELEASES}/tag/companion-v{version}"
 
 
 def _count(answer: dict, key: str) -> int:
@@ -231,6 +245,10 @@ class Companion:
             self._problem(DECISIONS, f"Couldn't fetch decisions: {exc}. Trying again shortly.")
             return False
         self._answered(True)
+        update = newer_version(answer.get("companion"))
+        if update and update != self.status.update:
+            log.info("Companion %s is out (this is %s): download it from %s", update, __version__, release_page(update))
+        self.status.update = update
         at = answer.get("at")
         if not isinstance(at, int) or not isinstance(answer.get("items"), dict):
             self._problem(DECISIONS, "The bot's decisions answer didn't look right; trying again shortly.")
@@ -251,7 +269,8 @@ class Companion:
         self.update_decisions()
 
     def run_forever(self, sleep: Callable[[float], None] = time.sleep) -> None:
-        log.info("Watching %s every %d seconds. Ctrl+C stops.", self.settings.wow_dir, self.settings.poll_seconds)
+        log.info("Companion %s. Watching %s every %d seconds. Ctrl+C stops.", __version__, self.settings.wow_dir,
+                 self.settings.poll_seconds)
         while True:
             try:
                 self.run_once()

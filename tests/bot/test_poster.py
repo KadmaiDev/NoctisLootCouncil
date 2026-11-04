@@ -89,7 +89,8 @@ def buttons(msg: dict) -> list[str]:
 def make_bot(tmp_path, channels) -> LootBot:
     cfg = Config(token="x", guild_id=1, officer_role_id=2, ch_officers=OFFICERS, ch_items=ITEMS,
                  ch_priorities=PRIORITIES, ch_log=LOG, api_host="127.0.0.1", api_port=0, votes_to_decide=3,
-                 db_path=tmp_path / "loot.db", timezone="Europe/London", wowhead=False)
+                 db_path=tmp_path / "loot.db", timezone="Europe/London", wowhead=False,
+                 release_check=False)
     bot = LootBot(cfg)
     bot._text_channel = lambda cid: channels.get(cid)  # type: ignore[method-assign]
     return bot

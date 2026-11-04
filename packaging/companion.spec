@@ -5,10 +5,32 @@
 # The result is dist/NoctisLootCompanion.exe, a windowed app (no console). companion.ini and companion.log
 # are created next to it. Releases are built by .github/workflows/companion-release.yml, not by hand.
 import os
+import re
 
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 COMPANION = os.path.join(ROOT, "companion")
 ASSETS = os.path.join(COMPANION, "assets")
+
+# The version in the .exe's Properties > Details, from companion/__init__.py.
+with open(os.path.join(COMPANION, "__init__.py"), encoding="utf-8") as f:
+    VERSION = re.search(r'__version__ = "(\d+)\.(\d+)\.(\d+)"', f.read()).groups()
+NUMBERS = ", ".join(VERSION) + ", 0"
+DOTTED = ".".join(VERSION)
+VERSION_FILE = os.path.join(workpath, "version_info.txt")
+os.makedirs(workpath, exist_ok=True)
+with open(VERSION_FILE, "w", encoding="utf-8") as f:
+    f.write(f"""VSVersionInfo(
+  ffi=FixedFileInfo(filevers=({NUMBERS}), prodvers=({NUMBERS})),
+  kids=[StringFileInfo([StringTable("040904B0", [
+    StringStruct("CompanyName", "Noctis"),
+    StringStruct("FileDescription", "Noctis Loot companion app"),
+    StringStruct("FileVersion", "{DOTTED}"),
+    StringStruct("ProductName", "Noctis Loot companion"),
+    StringStruct("ProductVersion", "{DOTTED}"),
+    StringStruct("OriginalFilename", "NoctisLootCompanion.exe")])]),
+    VarFileInfo([VarStruct("Translation", [1033, 1200])])]
+)
+""")
 
 a = Analysis(
     [os.path.join(SPECPATH, "companion_entry.py")],
@@ -37,6 +59,7 @@ exe = EXE(
     [],
     name="NoctisLootCompanion",
     icon=os.path.join(ASSETS, "owl.ico"),
+    version=VERSION_FILE,
     debug=False,
     strip=False,
     upx=False,

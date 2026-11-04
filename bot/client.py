@@ -22,7 +22,7 @@ from aiohttp import web
 from discord import app_commands
 from discord.ext import commands
 
-from . import importer, iteminfo, milestones, render, titleimage, warcraftlogs
+from . import importer, iteminfo, milestones, releases, render, titleimage, warcraftlogs
 from .api import create_app
 from .checks import NotOfficer
 from .config import Config
@@ -66,6 +66,8 @@ class LootBot(commands.Bot):
         self._locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._runner: web.AppRunner | None = None
         self._poster_task: asyncio.Task | None = None
+        self._release_task: asyncio.Task | None = None
+        self.fetch_newest_companion = releases.fetch_newest  # tests swap it
         self._missing_channels: set[int] = set()
         # Item icons and links (iteminfo.py); tests swap these for fakes.
         self.lookup = iteminfo.fetch
@@ -96,10 +98,14 @@ class LootBot(commands.Bot):
         # come out the same are skipped by their digest).
         self.store.mark_all_dirty()
         self._poster_task = asyncio.create_task(self._poster())
+        if self.config.release_check:
+            self._release_task = asyncio.create_task(self._watch_releases())
 
     async def close(self) -> None:
         if self._poster_task:
             self._poster_task.cancel()
+        if self._release_task:
+            self._release_task.cancel()
         if self._runner:
             await self._runner.cleanup()
         if self._http:
@@ -109,6 +115,18 @@ class LootBot(commands.Bot):
     async def on_ready(self) -> None:
         log.info("Logged in as %s (%s)", self.user, self.user.id if self.user else "?")
         self.notify()
+
+    async def _watch_releases(self) -> None:
+        """The newest companion app on GitHub, about once an hour, for the companion's update notice."""
+        while not self.is_closed():
+            try:
+                version = await self.fetch_newest_companion(self._session())
+                if version and version != self.store.companion_latest():
+                    self.store.set_companion_latest(version)
+                    log.info("Newest companion app: %s", version)
+            except Exception:  # noqa: BLE001 - a nicety: try again later
+                log.exception("Checking for a new companion app failed")
+            await asyncio.sleep(releases.CHECK_SECONDS)
 
     # ---- posting -----------------------------------------------------------
 

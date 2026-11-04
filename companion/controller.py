@@ -9,8 +9,8 @@ from collections import deque
 from pathlib import Path
 from typing import Callable
 
-from . import autostart, client, config
-from .app import Companion, Status
+from . import __version__, autostart, client, config
+from .app import Companion, Status, release_page
 from .config import Settings
 
 log = logging.getLogger("companion")
@@ -90,6 +90,7 @@ class Controller:
         self._stop = threading.Event()
         self._force = False
         self._thread: threading.Thread | None = None
+        self._told_update: str | None = None  # the update the tray has announced (once per version)
 
     @property
     def ready(self) -> bool:
@@ -108,7 +109,8 @@ class Controller:
         log.removeHandler(self._handler)
 
     def _run(self) -> None:
-        log.info("Watching %s every %d seconds.", self.settings.wow_dir, self.settings.poll_seconds)
+        log.info("Companion %s. Watching %s every %d seconds.", __version__, self.settings.wow_dir,
+                 self.settings.poll_seconds)
         while not self._stop.is_set():
             companion = self.companion
             self.run_pass()
@@ -139,7 +141,27 @@ class Controller:
             _, council, roll = status.decisions
             self.notify("New decisions for the game",
                         f"{council} council, {roll} roll. In game after your next /reload or login.")
+        update = self.update()
+        if update and update != self._told_update:
+            self._told_update = update
+            self.notify("Companion update", f"Version {update} is out. Open Noctis Loot for the download link.")
         self.changed()
+
+    def update(self) -> str | None:
+        """A newer version to tell about: one the bot knows of that isn't the one "Not now" was clicked on."""
+        if not self.ready:
+            return None
+        update = self.companion.status.update
+        return update if update and update != self.settings.skip_update else None
+
+    def dismiss_update(self) -> None:
+        """"Not now": no more notice until a newer version than this one."""
+        update = self.update()
+        if update:
+            self.settings.skip_update = update
+            config.save(self.path, self.settings)
+            log.info("Not telling about companion %s again; a later version will be.", update)
+            self.changed()
 
     def upload_now(self) -> None:
         self._force = True
@@ -177,7 +199,8 @@ class Controller:
         if problem:
             return {"ok": False, "field": problem[0], "error": problem[1]}
         poll = self._draft.poll_seconds if self._draft else config.POLL_SECONDS
-        settings = Settings(wow_dir=wow_dir, bot_url=url, token=token, poll_seconds=poll)
+        skip = self._draft.skip_update if self._draft else ""
+        settings = Settings(wow_dir=wow_dir, bot_url=url, token=token, poll_seconds=poll, skip_update=skip)
         config.save(self.path, settings)
         if start_with_windows is not None:
             self.set_autostart(start_with_windows)
@@ -227,7 +250,7 @@ class Controller:
     def state(self) -> dict:
         auto = {"available": autostart.available(), "on": autostart.enabled()}
         if not self.ready:
-            return {"view": "setup", "setup": self._setup_state(), "autostart": auto}
+            return {"view": "setup", "setup": self._setup_state(), "autostart": auto, "version": __version__}
         now = self._clock()
         status = self.companion.status
         address = host(self.settings.bot_url)
@@ -259,4 +282,6 @@ class Controller:
                          for at, text in list(self.activity)[:ACTIVITY_SHOWN]],
             "autostart": auto,
             "setup": self._setup_state(),
+            "version": __version__,
+            "update": ({"version": update, "url": release_page(update)} if (update := self.update()) else None),
         }
