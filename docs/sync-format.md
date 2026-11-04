@@ -187,6 +187,7 @@ milestones addon ──NoctisMilestones.lua──▶ companion ──GET, then P
 | `guilds` | table | by `"<guild>\|<realm>"`: each guild a character on the account is in, kept apart |
 | `guilds[k].name`, `.realm` | string | the guild's name and realm (`GetGuildInfo`, else `GetRealmName`) |
 | `guilds[k].scanned` | number / nil | the last roster read |
+| `tell`, `levels`, `onlineSince`, `guilds[k].guildChat` | | the addon's own in-game settings (`/nms tell`, `/nms levels`, `/nms guildchat`); the companion ignores them |
 | `guilds[k].members` | table | by lower-cased name: `{ name, class, level, rank, seen }` (`class` is the file name, e.g. `DRUID`) |
 | `guilds[k].levels` | list | level-ups, oldest first: `{ name, class, from, to, at, since }`: last seen at `from` (at `since`), at `to` when read at `at`. Kept 30 days |
 

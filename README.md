@@ -221,6 +221,12 @@ Things to know:
 - Each milestone is posted once, whichever officer noticed it first, and never after a higher one. Level-ups noticed more than 7 days before they reach the bot aren't posted.
 - The first time the addon reads a guild it notes everyone's level and posts nothing.
 
+In game, the addon can also tell you, both off until you turn them on (`/nms` alone shows where things stand):
+
+- `/nms tell on`: a line in your own chat window when someone reaches a milestone. Nothing is sent; only you see it. Level-ups found at login after time away say so ("caught up: last seen at level 18").
+- `/nms guildchat on`: "Congratulations to Vespera Ashward on reaching level 20!" in guild chat, for this character's guild only. If several officers turn it on, their addons agree that the one online longest posts (a `/reload` keeps your place); when that officer logs off, the next takes over. Only level-ups seen as they happen are posted, not ones caught up on at login. If the game won't let the addon post, it tells you instead.
+- `/nms levels 10, 20, 30` changes the levels told about in game (`/nms levels default` puts back 10 to 60). The bot's levels are set in Discord.
+
 ---
 
 ## For officers: the companion app

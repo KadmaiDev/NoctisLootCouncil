@@ -52,11 +52,12 @@ function ns.Scan()
     local g = ns.Guild(true)
     if not g then return 0 end
     local total = ns.Typed(GetNumGuildMembers(), "number") or 0
-    local now, ups = time(), 0
+    local now, ups, found = time(), 0, {}
     for i = 1, total do
-        local name, rank, _, level, _, _, _, _, _, _, class = GetGuildRosterInfo(i)
+        local name, rank, _, level, _, _, _, _, online, _, class = GetGuildRosterInfo(i)
         name, level = ns.CleanName(name), ns.Typed(level, "number")
         local key = ns.NameKey(name)
+        if key and ns.Typed(online, "boolean") == false and ns.SeenOffline then ns.SeenOffline(key) end
         if key and level and level > 0 then
             rank, class = ns.Typed(rank, "string"), ns.Typed(class, "string")
             local m = g.members[key]
@@ -64,9 +65,10 @@ function ns.Scan()
                 g.members[key] = { name = name, class = class, level = level, rank = rank, seen = now }
             else
                 if level > m.level then
-                    g.levels[#g.levels + 1] = { name = name, class = class or m.class, from = m.level, to = level,
-                        at = now, since = m.seen }
+                    local e = { name = name, class = class or m.class, from = m.level, to = level, at = now, since = m.seen }
+                    g.levels[#g.levels + 1] = e
                     ups = ups + 1
+                    found[#found + 1] = e
                 end
                 m.name, m.level, m.seen = name, level, now
                 m.class, m.rank = class or m.class, rank or m.rank
@@ -74,6 +76,10 @@ function ns.Scan()
         end
     end
     if total > 0 then g.scanned = now end
+    -- Told about once the whole roster is read, so who's online (the announcer) is up to date.
+    if ns.Celebrate then
+        for _, e in ipairs(found) do ns.Celebrate(g, e) end
+    end
     g.levels = Prune(g.levels, now)
     return ups
 end
@@ -127,6 +133,8 @@ function ns.Status()
         for _ in pairs(g.members) do members = members + 1 end
         ns.Say(L["%s (%s): %d members, roster read %s; %d level-ups noted in the last 30 days."]
             :format(g.name, realm, members, Ago(time() - g.scanned), #g.levels))
+        ns.Say(L["told in your chat: %s; guild chat: %s; levels %s."]:format(ns.db.tell and L["on"] or L["off"],
+            g.guildChat and L["on"] or L["off"], table.concat(ns.Levels and ns.Levels() or {}, ", ")))
         for i = #g.levels, math.max(1, #g.levels - SHOWN + 1), -1 do
             local e = g.levels[i]
             print("  " .. ns.WHITE .. e.name .. "|r " .. L["%d to %d"]:format(e.from, e.to) .. ns.GREY .. "  "

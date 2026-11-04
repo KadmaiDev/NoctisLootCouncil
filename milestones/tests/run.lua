@@ -22,9 +22,12 @@ end
 
 -- Loads the addon (with this saved data, if any) and logs in. roster, if given, is the guild;
 -- player, if given, who logs in (else Kadmai Moonwhisper of Noctis).
+-- The clock carries on from the last load, as it would between two sessions.
 function start(saved, roster, player)
     wow.saved = saved
+    local resume = wow.clock and wow.now and (wow.clock + math.floor(wow.now))
     local ns = wow.load(FILES, ADDON_NAME, SAVED)
+    if resume then wow.clock = resume end
     wow.roster = roster or {}
     if player then wow.player = player end
     wow.login(ADDON_NAME)
@@ -41,7 +44,7 @@ function printed() return table.concat(wow.printed, "\n") end
 
 function clearPrinted() wow.printed = {} end
 
-CASES = { "01_files.lua", "02_roster.lua" }
+CASES = { "01_files.lua", "02_roster.lua", "03_announce.lua" }
 for _, file in ipairs(CASES) do assert(loadfile("tests/cases/" .. file))() end
 
 for _, t in ipairs(tests) do

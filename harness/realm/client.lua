@@ -207,8 +207,10 @@ end
 function commands.roster(...)
     local members = {}
     for _, m in ipairs({ ... }) do
-        local name, level, class, rank = m:match("^(.-),(%d+),(.-),(.*)$")
-        members[#members + 1] = { name = name, level = tonumber(level), class = class, rank = rank }
+        local name, level, class, rank, online = m:match("^(.-),(%d+),(.-),(.-),([01])$")
+        if not name then name, level, class, rank = m:match("^(.-),(%d+),(.-),(.*)$") end
+        members[#members + 1] = { name = name, level = tonumber(level), class = class, rank = rank,
+            online = online ~= "0" }
     end
     wow.rosterArrives(members)
 end

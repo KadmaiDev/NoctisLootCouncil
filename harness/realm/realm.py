@@ -220,17 +220,22 @@ class Realm:
             if p.leader:
                 p.call("leader", "1")
 
-    def roster(self, members: list[tuple[str, int, str, str]]) -> None:
-        """The guild roster ((name, level, class, rank), ...) reaches everyone running Noctis Milestones,
-        and time passes until they've read it."""
+    def roster(self, members: list[tuple]) -> None:
+        """The guild roster ((name, level, class, rank[, online]), ...; online unless False) reaches
+        everyone running Noctis Milestones, and time passes until they've read it."""
+        rows = [f"{m[0]},{m[1]},{m[2]},{m[3]},{'0' if len(m) > 4 and m[4] is False else '1'}" for m in members]
         for p in self.clients:
             if p.milestones:
-                p.call("roster", *(f"{n},{lv},{c},{r}" for n, lv, c, r in members))
+                p.call("roster", *rows)
         self.wait(3)
 
-    def logout(self) -> None:
-        """Everyone logs out: the game writes each player's saved file."""
-        for p in self.clients:
+    def guild_said(self) -> list[str]:
+        """Guild chat so far."""
+        return [text for _, chat_type, text in self.chat if chat_type == "GUILD"]
+
+    def logout(self, *only: Player) -> None:
+        """Everyone (or only these players) logs out: the game writes each one's saved file."""
+        for p in (list(only) or self.clients):
             p.saved_file.parent.mkdir(parents=True, exist_ok=True)
             p.call("save", str(p.saved_file), str(p.milestones_file) if p.milestones else "")
             self._stop(p)
@@ -362,6 +367,10 @@ class Realm:
         elif kind == "chat":
             chat_type, text = out[1], out[2]
             self.chat.append((sender.name, chat_type, text))
+            if chat_type == "GUILD":  # the whole guild sees it, the sender too
+                for p in self.clients:
+                    if p.guild and p.guild == sender.guild:
+                        self._deliver(p, "CHAT_MSG_GUILD", text, sender.name, "", "", "", "", 0, 0, "", 0, 1, None, 0)
         elif kind == "roll":
             self._roll(sender, int(out[1]), int(out[2]))
         elif kind == "addon":
@@ -371,6 +380,8 @@ class Realm:
                 recipients = self.clients
             elif channel == "WHISPER":
                 recipients = [p for p in self.clients if p.key == target.lower()]
+            elif channel == "GUILD":
+                recipients = [p for p in self.clients if p.guild and p.guild == sender.guild]
             else:
                 recipients = []
             for p in recipients:

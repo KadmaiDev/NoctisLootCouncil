@@ -61,16 +61,22 @@ end)
 -- NoctisMilestonesDB = {
 --   v = 1,
 --   me = "First Last",                 -- who last logged in with this file
+--   tell = true|nil,                   -- /nms tell: milestones in your own chat window (Announce.lua)
+--   levels = { 10, 20, ... }|nil,      -- /nms levels (nil = ns.DEFAULT_LEVELS)
+--   onlineSince = time()|nil,          -- when this session began, kept across /reload (Announce.lua)
 --   guilds = { ["Guild|Realm"] = {     -- each guild a character on this account is in, apart
 --     name = "Noctis", realm = "...",  -- (the bot takes only its own guild's)
 --     scanned = time()|nil,            -- the last roster read
+--     guildChat = true|nil,            -- /nms guildchat: congratulate in this guild's chat
 --     members = { ["first last"] = { name = "First Last", class = "DRUID", level, rank, seen = time() } },
 --     levels = { { name, class, from, to, at = time(), since = time() } }, -- level-ups seen, oldest first:
 --   } },                               -- from `from` (last seen at `since`) to `to`, noticed at `at`
 -- }
 -- The companion app reads this file; its format is in the repository's docs/sync-format.md.
-local DB_FIELDS = { v = "number", me = "string", guilds = "table" }
-local GUILD_FIELDS = { name = "string", realm = "string", scanned = "number", members = "table", levels = "table" }
+local DB_FIELDS = { v = "number", me = "string", guilds = "table", tell = "boolean", levels = "table",
+    onlineSince = "number" }
+local GUILD_FIELDS = { name = "string", realm = "string", scanned = "number", members = "table", levels = "table",
+    guildChat = "boolean" }
 local MEMBER_FIELDS = { name = "string", class = "string", level = "number", rank = "string", seen = "number" }
 local LEVEL_FIELDS = { name = "string", class = "string", from = "number", to = "number", at = "number", since = "number" }
 
@@ -94,6 +100,10 @@ end
 function ns.Repair(db)
     KeepTyped(db, DB_FIELDS)
     db.v = 1
+    if db.levels then
+        db.levels = Compact(db.levels, function(n) return type(n) == "number" and n >= 2 and n <= 200 end)
+        if #db.levels == 0 then db.levels = nil else table.sort(db.levels) end
+    end
     db.guilds = db.guilds or {}
     for key, g in pairs(db.guilds) do
         if type(key) ~= "string" or type(g) ~= "table" then
