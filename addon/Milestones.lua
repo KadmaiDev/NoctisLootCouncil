@@ -196,7 +196,7 @@ function ns.MilestoneStatus()
     for _ in pairs(g.members) do members = members + 1 end
     ns.Say(L["%s (%s): %d members, roster read %s; %d level-ups noted in the last 30 days."]
         :format(g.name, realm, members, Ago(time() - g.scanned), #g.levels))
-    ns.Say(L["told in your chat: %s; levels %s."]:format(OnOffText(ms.tell),
+    ns.Say(L["told in your chat: %s; sound: %s; levels %s."]:format(OnOffText(ms.tell), OnOffText(ms.sound),
         table.concat(ns.Levels and ns.Levels() or {}, ", ")))
     for i = #g.levels, math.max(1, #g.levels - SHOWN + 1), -1 do
         local e = g.levels[i]
@@ -253,4 +253,4 @@ ns.Command("milestones", function(text)
         return
     end
     c.fn(rest)
-end, L["[on/off/tell/levels]: guild level milestones, for officers (/nlc milestones help)"])
+end, L["[on/off/tell/sound/levels]: guild level milestones, for officers (/nlc milestones help)"])

@@ -228,6 +228,7 @@ Things to know:
 In game, the addon can also tell you, off until you turn it on (`/nlc milestones` alone shows where things stand):
 
 - `/nlc milestones tell on`: a line in your own chat window when someone reaches a milestone. Nothing is sent; only you see it. Level-ups found at login after time away say so ("caught up: last seen at level 18").
+- `/nlc milestones sound on`: a sound when someone reaches a milestone, your cue to `/reload`, since the companion can only send it to Discord after the game saves. Turning it on plays it once so you know what to listen for. It uses your sound effects volume.
 - `/nlc milestones levels 10, 20, 30` changes the levels told about in game (`/nlc milestones levels default` puts back 10 to 60). The bot's levels are set in Discord.
 
 ---

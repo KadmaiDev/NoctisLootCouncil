@@ -104,7 +104,7 @@ local LOG_FIELDS = { id = "number", link = "string", who = "string", class = "st
     tags = "string" }
 local DROP_FIELDS = { id = "number", at = "number", src = "string", inst = "number", n = "number" }
 local UNDONE_FIELDS = { id = "number", who = "string", at = "number" }
-local MS_FIELDS = { on = "boolean", tell = "boolean", levels = "table", guilds = "table" }
+local MS_FIELDS = { on = "boolean", tell = "boolean", sound = "boolean", levels = "table", guilds = "table" }
 local MS_GUILD_FIELDS = { name = "string", realm = "string", scanned = "number", members = "table", levels = "table" }
 local MS_MEMBER_FIELDS = { name = "string", class = "string", level = "number", rank = "string", seen = "number" }
 local MS_LEVEL_FIELDS = { name = "string", class = "string", from = "number", to = "number", at = "number", since = "number" }

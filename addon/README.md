@@ -86,5 +86,6 @@ Off for everyone until an officer turns it on, and it only ever works on charact
 | `/nlc milestones on` / `off` | read the guild roster every minute and note level-ups, which the companion app sends to the Noctis bot for its Discord congratulations (every character on this account) |
 | `/nlc milestones` | what's been noted, and the settings below |
 | `/nlc milestones tell on` / `off` | a line in your own chat window when someone reaches a milestone (only you see it) |
+| `/nlc milestones sound on` / `off` | a sound when someone reaches a milestone, your cue to `/reload` so it reaches Discord (once per roster read, at your sound effects volume; turning it on plays it once) |
 | `/nlc milestones levels 10, 20, 30` | the levels told about in game (`default`: 10 to 60) |
 | `/nlc milestones scan` | read the roster now |

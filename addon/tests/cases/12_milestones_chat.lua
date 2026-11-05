@@ -86,6 +86,48 @@ test("tell: a line in your own chat for a milestone, nothing for other levels, a
     eq(ns.db.milestones.tell, nil)
 end)
 
+test("sound: off until turned on, then once per read of the roster, catch-ups too, and nothing is said", function()
+    local ns = Online()
+    Levels(20)
+    eq(#wow.sounds, 0)
+    wow.type("/nlc milestones sound on")
+    eq(ns.db.milestones.sound, true)
+    eq(#wow.sounds, 1) -- a sample, so you know what to listen for
+    eq(wow.sounds[1][1], SOUNDKIT.ALARM_CLOCK_WARNING_3)
+    eq(wow.sounds[1][2], "SFX")
+    clearPrinted()
+    Levels(21)
+    eq(#wow.sounds, 1) -- not a milestone
+    Levels(30)
+    eq(#wow.sounds, 2)
+    eq(printed(), "") -- tell is its own setting
+    eq(#wow.sent, 0)
+    wow.type("/nlc milestones levels 40, 50, 70")
+    Levels(40, { level = 70 })
+    eq(#wow.sounds, 3) -- two milestones, one sound
+    -- Away for a day: what's found at the next login still has to reach Discord.
+    local saved = ns.db
+    wow.wait(86400)
+    ns = start(saved, Roster(50))
+    arrives()
+    eq(#wow.sounds, 1)
+    wow.type("/nlc milestones sound off")
+    eq(ns.db.milestones.sound, nil)
+    eq(#wow.sounds, 1)
+    Levels(70)
+    eq(#wow.sounds, 1)
+end)
+
+test("sound: the next one along if the client lacks the first, and silence if it has none", function()
+    Online()
+    SOUNDKIT = { READY_CHECK = 8960 }
+    wow.type("/nlc milestones sound on")
+    eq(wow.sounds[1][1], 8960)
+    SOUNDKIT = nil
+    wow.type("/nlc milestones sound on")
+    eq(#wow.sounds, 1)
+end)
+
 test("guild chat is gone: an old save's setting is dropped and nothing is posted or sent", function()
     local ns = Online({ milestones = { on = true, onlineSince = 5, guilds = {
         ["Noctis|Forever"] = { name = "Noctis", realm = "Forever", guildChat = true } } } })

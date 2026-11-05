@@ -3,6 +3,7 @@
 ## Noctis Loot Council 0.1.4
 
 - **Guild chat congratulations are gone.** The game doesn't let an addon post in guild chat by itself, so they only ever gave an error. Level milestones are congratulated in Discord, and `/nlc milestones tell on` still puts a line in your own chat window.
+- **A sound for milestones, if you want one.** `/nlc milestones sound on` plays a sound when someone reaches a milestone: your cue to `/reload`, because the companion app can only send it to Discord after the game saves. Off until turned on, and turning it on plays it once so you know what to listen for.
 
 ## Noctis Loot Council 0.1.3
 

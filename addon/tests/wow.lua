@@ -162,6 +162,9 @@ function M.load(files, addonName)
         M.rolled = { low, high }
         M.fire("CHAT_MSG_SYSTEM", RANDOM_ROLL_RESULT:format(M.player[1] .. " " .. M.player[2], M.nextRoll, low, high))
     end
+    M.sounds = {}      -- sounds played: { id, channel }
+    SOUNDKIT = { ALARM_CLOCK_WARNING_3 = 12889, READY_CHECK = 8960, RAID_WARNING = 8959 }
+    PlaySound = function(id, channel) M.sounds[#M.sounds + 1] = { id, channel } end
     M.gear = {}        -- [slot] = item link the player wears
     M.stats = {}       -- [itemID] = { ITEM_MOD_..._SHORT = value }
     GetInventoryItemLink = function(unit, slot) if unit == "player" then return M.gear[slot] end end
