@@ -210,7 +210,7 @@ end)
 
 test("a damaged milestones save is repaired at load, keeping what's sound", function()
     local ns = start({ milestones = {
-        on = "yes", tell = true, levels = { 30, "x", 1, 10 }, onlineSince = "now",
+        on = "yes", tell = true, levels = { 30, "x", 1, 10 },
         guilds = {
             ["Noctis|Forever"] = {
                 name = "Noctis", scanned = "today",
@@ -227,7 +227,6 @@ test("a damaged milestones save is repaired at load, keeping what's sound", func
     eq(db.on, nil)
     eq(db.tell, true)
     eq(table.concat(db.levels, ","), "10,30")
-    eq(db.onlineSince, nil)
     local g = db.guilds["Noctis|Forever"]
     eq(g.realm, "")
     eq(g.scanned, nil)
@@ -261,7 +260,7 @@ test("off until turned on: no roster asked for, read or saved", function()
     eq(Noctis(ns).members["thorn gale"].level, 60)
 end)
 
-test("on, but not an officer: nothing is asked for, read or said, even guild chat", function()
+test("on, but not an officer: nothing is asked for, read or said", function()
     local raider = { "Vespera", "Ashward", guild = "Noctis", rank = "Raider", class = "DRUID" }
     local ns = start({}, Roster(), raider)
     clearPrinted()
@@ -269,7 +268,7 @@ test("on, but not an officer: nothing is asked for, read or said, even guild cha
     assert(printed():find("isn't an officer in Noctis, so it stays quiet here", 1, true), printed())
     wow.type("/nlc milestones tell on")
     clearPrinted()
-    wow.type("/nlc milestones guildchat on")
+    wow.type("/nlc milestones")
     assert(printed():find("isn't an officer in Noctis, so nothing is read or said here", 1, true), printed())
     wow.fire("PLAYER_ENTERING_WORLD", true, false)
     arrives()

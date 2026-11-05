@@ -226,10 +226,6 @@ class Realm:
                 p.call("roster", *rows)
         self.wait(3)
 
-    def guild_said(self) -> list[str]:
-        """Guild chat so far."""
-        return [text for _, chat_type, text in self.chat if chat_type == "GUILD"]
-
     def logout(self, *only: Player) -> None:
         """Everyone (or only these players) logs out: the game writes each one's saved file."""
         for p in (list(only) or self.clients):
@@ -364,10 +360,6 @@ class Realm:
         elif kind == "chat":
             chat_type, text = out[1], out[2]
             self.chat.append((sender.name, chat_type, text))
-            if chat_type == "GUILD":  # the whole guild sees it, the sender too
-                for p in self.clients:
-                    if p.guild and p.guild == sender.guild:
-                        self._deliver(p, "CHAT_MSG_GUILD", text, sender.name, "", "", "", "", 0, 0, "", 0, 1, None, 0)
         elif kind == "roll":
             self._roll(sender, int(out[1]), int(out[2]))
         elif kind == "addon":

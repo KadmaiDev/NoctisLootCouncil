@@ -1,5 +1,4 @@
--- Level milestones in game (MilestonesChat.lua): your own chat window, and guild chat with one
--- announcer.
+-- Level milestones in game (MilestonesChat.lua): your own chat window. Nothing goes to guild chat.
 
 -- Shared by the milestones cases: log in with this saved data (default: milestones turned on),
 -- this guild roster and player; the clock carries on from the last load, as between sessions.
@@ -40,14 +39,6 @@ local function GuildLines()
     return out
 end
 
-local function Hellos(kind)
-    local n = 0
-    for _, a in ipairs(wow.addon) do
-        if a.prefix == "NoctisMS" and a.channel == "GUILD" and a.text:match("^" .. kind .. "\t") then n = n + 1 end
-    end
-    return n
-end
-
 -- Logs in (the loading screen included) with Vespera at 19, read once.
 local function Online(saved, player)
     local ns = start(saved, Roster(), player)
@@ -63,19 +54,13 @@ local function Levels(level, extra)
     wow.wait(9)
 end
 
-local function Seren(kind, since)
-    wow.fire("CHAT_MSG_ADDON", "NoctisMS", kind .. "\t" .. since, "GUILD", "Seren Vale", "", 0, 0, "", 0)
-end
-
-local CONGRATS = "Congratulations to Vespera Ashward on reaching level 20!"
-
-test("both are off until turned on: nothing said, nothing sent", function()
+test("tell is off until turned on: nothing said, nothing sent", function()
     Online()
     clearPrinted()
     Levels(20)
     eq(printed(), "")
     eq(#GuildLines(), 0)
-    eq(Hellos("[HRB]"), 0)
+    eq(#wow.addon, 0)
 end)
 
 test("tell: a line in your own chat for a milestone, nothing for other levels, and catch-ups marked", function()
@@ -101,132 +86,19 @@ test("tell: a line in your own chat for a milestone, nothing for other levels, a
     eq(ns.db.milestones.tell, nil)
 end)
 
-test("guild chat on, alone: says hello and congratulates a fresh milestone once", function()
-    local ns = Online()
-    wow.type("/nlc milestones guildchat on")
-    eq(ns.db.milestones.guilds["Noctis|Forever"].guildChat, true)
-    eq(Hellos("H"), 1)
+test("guild chat is gone: an old save's setting is dropped and nothing is posted or sent", function()
+    local ns = Online({ milestones = { on = true, onlineSince = 5, guilds = {
+        ["Noctis|Forever"] = { name = "Noctis", realm = "Forever", guildChat = true } } } })
+    eq(ns.db.milestones.onlineSince, nil)
+    eq(ns.db.milestones.guilds["Noctis|Forever"].guildChat, nil)
     Levels(20)
-    eq(table.concat(GuildLines(), "\n"), CONGRATS)
+    eq(#ns.db.milestones.guilds["Noctis|Forever"].levels, 1) -- still noted for Discord
+    eq(#wow.sent, 0)
+    eq(#wow.addon, 0)
     clearPrinted()
-    wow.type("/nlc milestones guildchat")
-    assert(printed():find("you're the one posting (0 other officers", 1, true), printed())
-end)
-
-test("guild chat leaves out catch-ups found after time away", function()
-    local ns = Online()
-    wow.type("/nlc milestones guildchat on")
-    local saved = ns.db
-    wow.wait(86400)
-    start(saved, Roster(20))
-    wow.fire("PLAYER_ENTERING_WORLD", true, false)
-    arrives()
-    wow.wait(9)
-    eq(#GuildLines(), 0)
-end)
-
-test("the officer online longest posts; the others stay quiet and take over when they log off", function()
-    Online()
-    wow.type("/nlc milestones guildchat on")
-    Seren("H", time() - 3600) -- online an hour longer than us
-    eq(Hellos("R"), 1)        -- we answer, so Seren's addon knows about us
-    Levels(20)
-    eq(#GuildLines(), 0)
-    clearPrinted()
-    wow.type("/nlc milestones guildchat")
-    assert(printed():find("Seren Vale is posting", 1, true), printed())
-    -- Seren logs off: the roster says so, and we post the next one.
-    Levels(30, { online = false })
-    eq(table.concat(GuildLines(), "\n"), "Congratulations to Vespera Ashward on reaching level 30!")
-end)
-
-test("an announcer who goes quiet (a crash) or says goodbye is replaced", function()
-    Online()
-    wow.type("/nlc milestones guildchat on")
-    Seren("H", time() - 3600)
-    wow.wait(700) -- no heartbeat from Seren for over 11 minutes
-    arrives()
-    Levels(20)
-    eq(#GuildLines(), 1)
-    Seren("H", time() - 3600)
-    Levels(30)
-    eq(#GuildLines(), 1) -- back, and longest online again
-    Seren("B", time() - 3600)
-    Levels(40)
-    eq(#GuildLines(), 2)
-end)
-
-test("a newer officer leaves it to us", function()
-    Online()
-    wow.type("/nlc milestones guildchat on")
-    Seren("H", time() + 10)
-    Levels(20)
-    eq(#GuildLines(), 1)
-end)
-
-test("without addon messages, each waits a moment and stays quiet if someone else said it", function()
-    Online()
-    wow.addonResult = 9
-    wow.type("/nlc milestones guildchat on")
-    wow.wait(60)
-    arrives(Roster(20))
-    wow.fire("CHAT_MSG_GUILD", CONGRATS, "Seren Vale", "", "", "", "", 0, 0, "", 0, 1, nil, 0)
-    wow.wait(9)
-    eq(#GuildLines(), 0)
-    Levels(30)
-    eq(table.concat(GuildLines(), "\n"), "Congratulations to Vespera Ashward on reaching level 30!")
-end)
-
-test("guild chat is per guild: an alt elsewhere doesn't post", function()
-    local ns = Online()
-    wow.type("/nlc milestones guildchat on")
-    local saved = ns.db
-    ns = start(saved, Roster(), { "Secret", "Alt", guild = "Other Guild", rank = "Officer", class = "MAGE" })
-    wow.fire("PLAYER_ENTERING_WORLD", true, false)
-    arrives()
-    Levels(20)
-    eq(#GuildLines(), 0)
-    eq(ns.db.milestones.guilds["Other Guild|Forever"].guildChat, nil)
-end)
-
-test("a /reload keeps your place as announcer; a new login doesn't", function()
-    local ns = Online()
-    local first = ns.onlineSince
-    eq(ns.db.milestones.onlineSince, first)
-    local saved = ns.db
-    wow.wait(600)
-    ns = start(saved, Roster())
-    wow.fire("PLAYER_ENTERING_WORLD", false, true)
-    eq(ns.onlineSince, first)
-    saved = ns.db
-    wow.wait(600)
-    ns = start(saved, Roster())
-    wow.fire("PLAYER_ENTERING_WORLD", true, false)
-    assert(ns.onlineSince > first)
-    wow.fire("PLAYER_ENTERING_WORLD", false, false) -- a later loading screen changes nothing
-    eq(ns.db.milestones.onlineSince, ns.onlineSince)
-end)
-
-test("hellos go out every five minutes while guild chat is on", function()
-    Online()
-    wow.type("/nlc milestones guildchat on")
-    local before = Hellos("H")
-    wow.wait(900)
-    eq(Hellos("H"), before + 3)
-    wow.type("/nlc milestones guildchat off")
-    eq(Hellos("B"), 1)
-    wow.wait(900)
-    eq(Hellos("H"), before + 3)
-end)
-
-test("when the game won't let addons post, the officer is told instead", function()
-    Online()
-    wow.type("/nlc milestones guildchat on")
-    wow.lockdown = true
-    clearPrinted()
-    Levels(20)
-    eq(#GuildLines(), 0)
-    assert(printed():find("couldn't post this in guild chat: " .. CONGRATS, 1, true), printed())
+    wow.type("/nlc milestones guildchat on") -- not a command any more: the help
+    assert(printed():find("level milestones (officers):", 1, true), printed())
+    assert(not printed():find("guildchat", 1, true), printed())
 end)
 
 test("/nlc milestones levels sets the milestones told about in game", function()

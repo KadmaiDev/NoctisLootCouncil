@@ -1,32 +1,18 @@
--- Telling people about milestones in game (Milestones.lua reads them), both off until an
--- officer turns them on, and only while milestones are active (on, and an officer):
+-- Telling an officer about milestones in game (Milestones.lua reads them): off until turned on,
+-- and only while milestones are active (on, and an officer):
 --   /nlc milestones tell on       a line in your own chat window (nothing is sent)
---   /nlc milestones guildchat on  "Congratulations to X on reaching level 20!" in guild chat (this guild only)
 --
--- Several officers may have guild chat on; one of them, the announcer, posts. The addons with it
--- on say hello to each other over the guild's addon channel (at login, then every HEARTBEAT
--- seconds; those already online answer a newcomer), and the announcer is whoever has been online
--- longest (a /reload keeps your place). When the announcer logs off, the guild roster shows them
--- offline (or they stop being heard from) and the next one takes over: nothing is handed over.
--- If addon messages can't be sent (Forever may restrict them), every addon thinks it's alone, so
--- each waits a random moment first and stays quiet if the same line appears in guild chat.
--- Only fresh level-ups go to guild chat: ones seen happen within FRESH seconds, not ones caught up
--- on at login after time away.
+-- Nothing goes to guild chat: Forever blocks an addon's SendChatMessage to GUILD from a timer
+-- (ADDON_ACTION_BLOCKED, seen in game 2026-11-05; pcall doesn't notice, the call just does
+-- nothing), and Discord has the congratulations anyway.
 local ADDON, ns = ...
 if ns.disabled then return end
 local L = ns.L
 
-local type, pairs, ipairs, tonumber, date, pcall, random = type, pairs, ipairs, tonumber, date, pcall, math.random
+local ipairs, tonumber, date = ipairs, tonumber, date
 
-local PREFIX = "NoctisMS"
 ns.DEFAULT_LEVELS = { 10, 20, 30, 40, 50, 60 } -- the bot's default too
-local FRESH = 300           -- a level-up seen within this long of the last sighting is news
-local HEARTBEAT = 300       -- seconds between hellos while guild chat is on
-local GONE = 2 * HEARTBEAT + 60 -- an announcer not heard from for this long has gone
-local DELAY_MIN, DELAY_SPREAD = 0.5, 1.5 -- the announcer waits 0.5 to 2 seconds (in case another posts)
-local ALONE_MIN, ALONE_SPREAD = 1, 7     -- without addon messages: 1 to 8 seconds
-
-if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then pcall(C_ChatInfo.RegisterAddonMessagePrefix, PREFIX) end
+local FRESH = 300 -- a level-up seen within this long of the last sighting is news
 
 function ns.Levels()
     local ms = ns.MS()
@@ -47,149 +33,22 @@ local function Fresh(e)
 end
 
 ---------------------------------------------------------------------------
--- Who announces
+-- Called by Milestones.lua for each level-up in the guild the player is in
 ---------------------------------------------------------------------------
--- Other officers' addons with guild chat on, in this guild: [name key] = { name, since = time(), heard = GetTime() }
-local peers = {}
-ns.peers = peers
-local messagesWork = false -- our last hello went out
-
-local function GuildChatOn()
-    if not ns.MilestonesActive() then return nil end
-    local g = ns.Guild(false)
-    return g and g.guildChat and g
-end
-
--- Says hello ("H", answered by those online) or answers one ("R"), or goodbye ("B").
-local function Send(kind)
-    local send = C_ChatInfo and C_ChatInfo.SendAddonMessage
-    if not send or not ns.onlineSince then return false end
-    local ok, result = pcall(send, PREFIX, kind .. "\t" .. ns.onlineSince, "GUILD")
-    messagesWork = ok and (result == 0 or result == true)
-    return messagesWork
-end
-
-local function Before(aSince, aKey, bSince, bKey)
-    if aSince ~= bSince then return aSince < bSince end
-    return aKey < bKey
-end
-
--- The officer who posts: name, and true if it's us.
-function ns.Announcer()
-    local me = ns.NameKey(ns.PlayerName())
-    local bestKey, bestSince, bestName = me, ns.onlineSince or time(), ns.PlayerName()
-    local now = GetTime()
-    for key, p in pairs(peers) do
-        if now - p.heard > GONE then
-            peers[key] = nil
-        elseif Before(p.since, key, bestSince, bestKey) then
-            bestKey, bestSince, bestName = key, p.since, p.name
-        end
-    end
-    return bestName, bestKey == me
-end
-
--- Roster.lua tells us who's offline, so an announcer who logged off is dropped at once.
-function ns.SeenOffline(key)
-    peers[key] = nil
-end
-
-ns.On("CHAT_MSG_ADDON", function(prefix, text, channel, sender)
-    if not ns.Plain(prefix) or prefix ~= PREFIX or channel ~= "GUILD" then return end
-    text = ns.Typed(text, "string")
-    local name = ns.CleanName(sender)
-    local key = ns.NameKey(name)
-    if not text or not key or key == ns.NameKey(ns.PlayerName()) then return end
-    local kind, since = text:match("^(%u)\t(%d+)$")
-    since = tonumber(since)
-    if not kind or not since then return end
-    if kind == "B" then
-        peers[key] = nil
-    elseif kind == "H" or kind == "R" then
-        peers[key] = { name = name, since = since, heard = GetTime() }
-        if kind == "H" and GuildChatOn() then Send("R") end -- so the newcomer knows we're here
-    end
-end)
-
--- When this session started: kept across /reload (PLAYER_ENTERING_WORLD says which it was).
-ns.On("PLAYER_LOGIN", function()
-    ns.onlineSince = time()
-end)
-
-local entered = false
-local function Heartbeat()
-    if GuildChatOn() then Send("H") end
-    C_Timer.After(HEARTBEAT, Heartbeat)
-end
-ns.On("PLAYER_ENTERING_WORLD", function(isInitialLogin, isReloadingUi)
-    if entered then return end -- it fires again at every loading screen
-    entered = true
-    local ms = ns.MS()
-    if ms then
-        if isReloadingUi == true and ns.Typed(ms.onlineSince, "number") then ns.onlineSince = ms.onlineSince end
-        ms.onlineSince = ns.onlineSince
-    end
-    Heartbeat()
-end)
-
----------------------------------------------------------------------------
--- Posting
----------------------------------------------------------------------------
-local said = {} -- guild chat lines seen lately: [text] = GetTime()
-local pending = {} -- [text] = true while waiting to post it
-
-ns.On("CHAT_MSG_GUILD", function(text)
-    text = ns.Typed(text, "string")
-    if text then said[text] = GetTime() end
-end)
-
-local function SendGuild(text)
-    local locked = C_ChatInfo and C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown()
-    local send = C_ChatInfo and C_ChatInfo.SendChatMessage or SendChatMessage
-    if locked or not send or not pcall(send, text, "GUILD") then
-        ns.Say(L["couldn't post this in guild chat: %s"]:format(text))
-    end
-end
-
-local function Congratulate(name, level)
-    local _, mine = ns.Announcer()
-    if not mine then return end
-    local text = L["Congratulations to %s on reaching level %d!"]:format(name, level)
-    if pending[text] then return end
-    pending[text] = true
-    local asked = GetTime()
-    local wait = messagesWork and (DELAY_MIN + random() * DELAY_SPREAD) or (ALONE_MIN + random() * ALONE_SPREAD)
-    C_Timer.After(wait, function()
-        pending[text] = nil
-        if said[text] and said[text] >= asked - 60 then return end -- another officer's addon said it
-        SendGuild(text)
-    end)
-end
-
----------------------------------------------------------------------------
--- Called by Roster.lua for each level-up in the guild the player is in
----------------------------------------------------------------------------
-function ns.Celebrate(g, e)
+function ns.Celebrate(e)
     local level = ns.MilestoneFor(e.from, e.to)
     if not level then return end
-    if ns.MS().tell then
-        local line = L["%s reached level %d."]:format(e.name, level)
-        if not Fresh(e) then
-            line = line .. " " .. ns.GREY .. L["(caught up: last seen at level %d, %s)"]
-                :format(e.from, date("%d %b %H:%M", e.since or e.at)) .. "|r"
-        end
-        ns.Say(line)
+    if not ns.MS().tell then return end
+    local line = L["%s reached level %d."]:format(e.name, level)
+    if not Fresh(e) then
+        line = line .. " " .. ns.GREY .. L["(caught up: last seen at level %d, %s)"]
+            :format(e.from, date("%d %b %H:%M", e.since or e.at)) .. "|r"
     end
-    if g.guildChat and Fresh(e) then Congratulate(e.name, level) end
-end
-
--- /nlc milestones off: a goodbye first, so another officer takes over at once.
-function ns.MilestonesOff()
-    if GuildChatOn() then Send("B") end
+    ns.Say(line)
 end
 
 ---------------------------------------------------------------------------
--- /nlc milestones tell, guildchat, levels
+-- /nlc milestones tell, levels
 ---------------------------------------------------------------------------
 local function OnOff(word)
     word = (word or ""):lower()
@@ -207,41 +66,6 @@ ns.MilestoneCommand("tell", function(rest)
     ns.Say(on and L["you'll be told in your chat window when someone reaches a milestone (only you see it)."]
         or L["you won't be told about milestones in chat."])
 end, L["on/off: a line in your own chat window when someone reaches a milestone (only you see it)"])
-
-ns.MilestoneCommand("guildchat", function(rest)
-    local on = OnOff(rest)
-    if on == true and not ns.MilestonesActive() then -- off, or not an officer here: says which
-        ns.MilestoneStatus()
-        return
-    end
-    local g = ns.Guild(on ~= nil)
-    if not g then
-        ns.Say(L["this character isn't in a guild (or the guild hasn't loaded yet)."])
-        return
-    end
-    if on == true then
-        g.guildChat = true
-        Send("H")
-        ns.Say(L["milestones will be congratulated in %s's guild chat. If other officers have this on, the one online longest posts."]:format(g.name))
-    elseif on == false then
-        Send("B")
-        g.guildChat = nil
-        ns.Say(L["no more milestones in %s's guild chat from you."]:format(g.name))
-        return
-    end
-    if not g.guildChat then
-        ns.Say(L["guild chat for %s is off. /nlc milestones guildchat on/off"]:format(g.name))
-        return
-    end
-    local others = 0
-    for _ in pairs(peers) do others = others + 1 end
-    local who, mine = ns.Announcer()
-    if mine then
-        ns.Say(L["guild chat for %s is on, and you're the one posting (%d other officers with it on are online)."]:format(g.name, others))
-    else
-        ns.Say(L["guild chat for %s is on; %s is posting (online longest). You take over if they log off."]:format(g.name, who))
-    end
-end, L["on/off: congratulate milestones in guild chat (this guild only; the officer online longest posts)"])
 
 ns.MilestoneCommand("levels", function(rest)
     if rest == "" then

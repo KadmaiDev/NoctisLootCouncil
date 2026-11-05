@@ -61,26 +61,3 @@ async def test_level_ups_are_congratulated_once_for_the_guild_only(guild, runnin
     # Off: uploads are ignored. /milestones settings shows where it stands.
     r = await guild.slash(seren, "milestones settings", announce=False)
     assert "Level milestones: **Off**" in r.text and "milestones posted: 3" in r.text
-
-
-def test_one_officer_congratulates_in_guild_chat_and_another_takes_over(realm):
-    """Two officers turn guild chat on: the addons agree that one posts, and when that one logs off
-    the other carries on. Raiders' loot addons ignore it all."""
-    realm.lm.milestones = realm.seren.milestones = True
-    realm.login()
-    realm.roster(LEVELS_BEFORE)
-    for p in (realm.lm, realm.seren):
-        p.type("/nlc milestones guildchat on")
-    realm.wait(60)
-    realm.roster(roster(vespera=20))
-    realm.wait(5)
-    assert realm.guild_said() == ["Congratulations to Vespera Ashward on reaching level 20!"]
-
-    # Kadmai (the one posting: online as long, first by name) logs off; the roster shows it.
-    realm.logout(realm.lm)
-    realm.wait(60)
-    realm.roster([(n, 30 if n.startswith("Vespera") else lv, c, r, not n.startswith("Kadmai"))
-                  for n, lv, c, r in LEVELS_BEFORE])
-    realm.wait(5)
-    assert realm.guild_said()[1:] == ["Congratulations to Vespera Ashward on reaching level 30!"]
-    assert sum(1 for who, _, _ in realm.chat if who == "Seren Vale") == 1

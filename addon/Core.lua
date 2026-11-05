@@ -80,9 +80,9 @@ end)
 --   autoOpenOff = true|nil,             -- the loot master's window doesn't open by itself (LootWindow.lua)
 --   disenchanter = "First Last"|nil,    -- who items nobody wants go to (Rolls.lua)
 --   milestones = nil | {                -- only once an officer has typed /nlc milestones on (Milestones.lua)
---     on = true|nil, tell = true|nil, levels = { 10, 20, ... }|nil, onlineSince = time()|nil,
+--     on = true|nil, tell = true|nil, levels = { 10, 20, ... }|nil,
 --     guilds = { ["Guild|Realm"] = {     -- each guild a character on this account is in, apart
---       name, realm, scanned = time()|nil, guildChat = true|nil,
+--       name, realm, scanned = time()|nil,
 --       members = { ["first last"] = { name = "First Last", class = "DRUID", level, rank, seen = time() } },
 --       levels = { { name, class, from, to, at = time(), since = time() } }, -- level-ups, oldest first
 --     } },
@@ -104,9 +104,8 @@ local LOG_FIELDS = { id = "number", link = "string", who = "string", class = "st
     tags = "string" }
 local DROP_FIELDS = { id = "number", at = "number", src = "string", inst = "number", n = "number" }
 local UNDONE_FIELDS = { id = "number", who = "string", at = "number" }
-local MS_FIELDS = { on = "boolean", tell = "boolean", levels = "table", onlineSince = "number", guilds = "table" }
-local MS_GUILD_FIELDS = { name = "string", realm = "string", scanned = "number", members = "table", levels = "table",
-    guildChat = "boolean" }
+local MS_FIELDS = { on = "boolean", tell = "boolean", levels = "table", guilds = "table" }
+local MS_GUILD_FIELDS = { name = "string", realm = "string", scanned = "number", members = "table", levels = "table" }
 local MS_MEMBER_FIELDS = { name = "string", class = "string", level = "number", rank = "string", seen = "number" }
 local MS_LEVEL_FIELDS = { name = "string", class = "string", from = "number", to = "number", at = "number", since = "number" }
 

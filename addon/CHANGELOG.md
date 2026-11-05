@@ -1,5 +1,9 @@
 # Changelog
 
+## Noctis Loot Council 0.1.4
+
+- **Guild chat congratulations are gone.** The game doesn't let an addon post in guild chat by itself, so they only ever gave an error. Level milestones are congratulated in Discord, and `/nlc milestones tell on` still puts a line in your own chat window.
+
 ## Noctis Loot Council 0.1.3
 
 - **Level milestones, for officers.** `/nlc milestones on` makes the addon read the guild roster every minute and note level-ups; the companion app sends them to the Noctis bot, which congratulates 10, 20 ... 60 in Discord. Off for everyone until turned on, and it only works on characters whose guild rank has officer permissions: for raiders it does nothing at all.

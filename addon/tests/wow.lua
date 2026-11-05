@@ -9,7 +9,7 @@ local KNOWN_EVENTS = {
     LOOT_READY = true, LOOT_OPENED = true, CHAT_MSG_LOOT = true, START_LOOT_ROLL = true,
     ENCOUNTER_LOOT_RECEIVED = true, CHAT_MSG_SYSTEM = true, GET_ITEM_INFO_RECEIVED = true,
     CHAT_MSG_ADDON = true, PLAYER_ENTERING_WORLD = true, TRAIT_CONFIG_UPDATED = true,
-    GUILD_ROSTER_UPDATE = true, PLAYER_GUILD_UPDATE = true, CHAT_MSG_GUILD = true,
+    GUILD_ROSTER_UPDATE = true, PLAYER_GUILD_UPDATE = true,
 }
 
 -- A secret value: issecretvalue says so, and using it the ways the game forbids throws.
@@ -138,9 +138,6 @@ function M.load(files, addonName)
         SendChatMessage = function(text, chatType)
             assert(#text <= 255, "chat line over 255 characters")
             M.sent[#M.sent + 1] = { text, chatType }
-            if chatType == "GUILD" then -- the guild sees it, the sender too
-                M.fire("CHAT_MSG_GUILD", text, M.player[1] .. " " .. M.player[2], "", "", "", "", 0, 0, "", 0, 1, nil, 0)
-            end
         end,
         RegisterAddonMessagePrefix = function(prefix) assert(#prefix <= 16) return 0 end,
         -- Recorded; raid, party and guild messages come back to the sender, as in the game.

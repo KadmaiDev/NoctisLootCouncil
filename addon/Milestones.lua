@@ -98,12 +98,11 @@ function ns.Scan()
     local g = ns.Guild(true)
     if not g then return 0 end
     local total = ns.Typed(GetNumGuildMembers(), "number") or 0
-    local now, ups, found = time(), 0, {}
+    local now, ups = time(), 0
     for i = 1, total do
-        local name, rank, _, level, _, _, _, _, online, _, class = GetGuildRosterInfo(i)
+        local name, rank, _, level, _, _, _, _, _, _, class = GetGuildRosterInfo(i)
         name, level = ns.CleanName(name), ns.Typed(level, "number")
         local key = ns.NameKey(name)
-        if key and ns.Typed(online, "boolean") == false and ns.SeenOffline then ns.SeenOffline(key) end
         if key and level and level > 0 then
             rank, class = ns.Typed(rank, "string"), ns.Typed(class, "string")
             local m = g.members[key]
@@ -114,7 +113,7 @@ function ns.Scan()
                     local e = { name = name, class = class or m.class, from = m.level, to = level, at = now, since = m.seen }
                     g.levels[#g.levels + 1] = e
                     ups = ups + 1
-                    found[#found + 1] = e
+                    if ns.Celebrate then ns.Celebrate(e) end
                 end
                 m.name, m.level, m.seen = name, level, now
                 m.class, m.rank = class or m.class, rank or m.rank
@@ -122,10 +121,6 @@ function ns.Scan()
         end
     end
     if total > 0 then g.scanned = now end
-    -- Told about once the whole roster is read, so who's online (the announcer) is up to date.
-    if ns.Celebrate then
-        for _, e in ipairs(found) do ns.Celebrate(g, e) end
-    end
     g.levels = Prune(g.levels, now)
     return ups
 end
@@ -161,7 +156,7 @@ end)
 ---------------------------------------------------------------------------
 local subcommands, order = {}, {}
 
--- MilestonesChat.lua adds tell, guildchat and levels.
+-- MilestonesChat.lua adds tell and levels.
 function ns.MilestoneCommand(name, fn, help)
     if not subcommands[name] then order[#order + 1] = name end
     subcommands[name] = { fn = fn, help = help }
@@ -201,8 +196,8 @@ function ns.MilestoneStatus()
     for _ in pairs(g.members) do members = members + 1 end
     ns.Say(L["%s (%s): %d members, roster read %s; %d level-ups noted in the last 30 days."]
         :format(g.name, realm, members, Ago(time() - g.scanned), #g.levels))
-    ns.Say(L["told in your chat: %s; guild chat: %s; levels %s."]:format(OnOffText(ms.tell),
-        OnOffText(g.guildChat), table.concat(ns.Levels and ns.Levels() or {}, ", ")))
+    ns.Say(L["told in your chat: %s; levels %s."]:format(OnOffText(ms.tell),
+        table.concat(ns.Levels and ns.Levels() or {}, ", ")))
     for i = #g.levels, math.max(1, #g.levels - SHOWN + 1), -1 do
         local e = g.levels[i]
         print("  " .. ns.WHITE .. e.name .. "|r " .. L["%d to %d"]:format(e.from, e.to) .. ns.GREY .. "  "
@@ -234,7 +229,6 @@ end, L["read the guild roster and note level-ups (officers only; every character
 
 ns.MilestoneCommand("off", function()
     local ms = ns.MS()
-    if ms and ms.on and ns.MilestonesOff then ns.MilestonesOff() end
     if ms then ms.on = nil end
     ns.Say(L["milestones are off: the roster isn't read. What was noted stays, for when it's turned on again."])
 end, L["stop"])
@@ -259,4 +253,4 @@ ns.Command("milestones", function(text)
         return
     end
     c.fn(rest)
-end, L["[on/off/tell/guildchat/levels]: guild level milestones, for officers (/nlc milestones help)"])
+end, L["[on/off/tell/levels]: guild level milestones, for officers (/nlc milestones help)"])
