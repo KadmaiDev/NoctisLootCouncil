@@ -255,7 +255,8 @@ class Companion:
             return False
         self.status.decisions = decisions.counts(answer)
         folder = decisions.addon_dir(self.settings.wow_dir)
-        if decisions.current_at(folder) == at and all((folder / n).is_file() for n in decisions.TOC_NAMES):
+        if decisions.current_at(folder) == at:
+            decisions.refresh_tocs(folder, at)
             self._cleared(DECISIONS)
             return False
         decisions.write_addon(folder, answer)

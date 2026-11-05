@@ -64,6 +64,13 @@ async def test_full_round_trip(setup):
     assert len(uploads) == 1
     assert os.stat(decisions_file(settings)).st_mtime_ns == before
 
+    # A .toc from an older companion is brought up to date, and that isn't news of new decisions.
+    old_toc = decisions.addon_dir(settings.wow_dir) / "NoctisLootDecisions.toc"
+    old_toc.write_text("## Title: Noctis Loot Decisions\n", encoding="utf-8")
+    assert await asyncio.to_thread(comp.update_decisions) is False
+    assert "## Category: Loot" in old_toc.read_text(encoding="utf-8")
+    assert os.stat(decisions_file(settings)).st_mtime_ns == before
+
     # The officers decide in Discord: the next pass rewrites the addon.
     for uid in (1, 2, 3):
         store.cast_vote(16805, uid, f"O{uid}", COUNCIL)

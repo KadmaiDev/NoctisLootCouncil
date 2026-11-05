@@ -16,10 +16,24 @@ TOC_NAMES = (f"{ADDON}.toc", f"{ADDON}_Camelot.toc")
 LUA_NAME = "Decisions.lua"
 HEADER = "-- Written by the Noctis Loot companion app. Don't edit; it's rewritten."
 
-TOC = """## Interface: 16001
+# The icon is the main addon's file, so this folder stays just these files. The category lines match
+# its .toc (test_decisions.py checks), so the two sit together in the AddOns list in every language.
+TOC = r"""## Interface: 16001
 ## Title: Noctis Loot Decisions
 ## Notes: Council and roll decisions from Discord, written by the Noctis Loot companion app. Don't edit; it's rewritten.
 ## Version: {at}
+## IconTexture: Interface\AddOns\NoctisLootCouncil\media\icon.tga
+## Category: Loot
+## Category-deDE: Beute
+## Category-esES: Botín
+## Category-esMX: Botín
+## Category-frFR: Butin
+## Category-itIT: Bottino
+## Category-koKR: 전리품
+## Category-ptBR: Saque
+## Category-ruRU: Добыча
+## Category-zhCN: 战利品
+## Category-zhTW: 戰利品
 Decisions.lua
 """
 
@@ -90,8 +104,20 @@ def write_addon(folder: Path, decisions: dict) -> None:
     at = int(decisions.get("at") or 0)
     # Decisions.lua first: a .toc with the new version never points at old data for long.
     _write_atomic(folder / LUA_NAME, render(decisions))
+    refresh_tocs(folder, at)
+
+
+def refresh_tocs(folder: Path, at: int) -> None:
+    """Writes any .toc that's missing or differs: a new version of this app can change them while
+    the decisions stay the same."""
+    text = toc(at)
     for name in TOC_NAMES:
-        _write_atomic(folder / name, toc(at))
+        try:
+            same = (folder / name).read_bytes() == text.encode("utf-8")
+        except OSError:
+            same = False
+        if not same:
+            _write_atomic(folder / name, text)
 
 
 def current_at(folder: Path) -> int | None:

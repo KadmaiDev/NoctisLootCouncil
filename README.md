@@ -258,7 +258,7 @@ What it does each pass:
 
 - For every `WTF\Account\*\SavedVariables\NoctisLootCouncil.lua` that changed since it last uploaded: reads it and sends it to the bot. (The game writes it at `/reload` and logout.)
 - If you turned milestones on in game: from each of those files, sends your guild's roster and level-ups (only while the bot has milestones on).
-- Fetches the decisions, and if they changed, writes `Interface\AddOns\NoctisLootDecisions\` (two `.toc` files and `Decisions.lua`). The game loads it at the next `/reload` or login. It shows in the AddOns list as "Noctis Loot Decisions"; leave it enabled.
+- Fetches the decisions, and if they changed, writes `Interface\AddOns\NoctisLootDecisions\` (two `.toc` files and `Decisions.lua`). The game loads it at the next `/reload` or login. It shows in the AddOns list as "Noctis Loot Decisions", beside the main addon with its icon; leave it enabled.
 
 ### What it reads, writes and sends
 

@@ -1,5 +1,9 @@
+from pathlib import Path
+
 from companion import decisions
 from companion.luaparse import load_file, parse_assignments
+
+ROOT = Path(__file__).resolve().parents[2]
 
 CONTRACT_EXAMPLE = {
     "at": 1793078967,
@@ -58,20 +62,42 @@ def test_write_addon(tmp_path):
     assert names == ["Decisions.lua", "NoctisLootDecisions.toc", "NoctisLootDecisions_Camelot.toc"]  # no .tmp left
     toc = (folder / "NoctisLootDecisions.toc").read_text(encoding="utf-8")
     assert toc == (folder / "NoctisLootDecisions_Camelot.toc").read_text(encoding="utf-8")
-    assert toc.splitlines() == [
+    lines = toc.splitlines()
+    assert lines[:4] == [
         "## Interface: 16001",
         "## Title: Noctis Loot Decisions",
         "## Notes: Council and roll decisions from Discord, written by the Noctis Loot companion app. "
         "Don't edit; it's rewritten.",
         "## Version: 1793078967",
-        "Decisions.lua",
     ]
+    assert lines[-1] == "Decisions.lua"
     assert decisions.current_at(folder) == 1793078967
     assert load_file(folder / "Decisions.lua")["NoctisLootDecisions"]["items"][18000]["note"] == "Warlock priority"
     # Rewriting replaces the files in place.
     decisions.write_addon(folder, {"at": 1793080000, "items": {}})
     assert decisions.current_at(folder) == 1793080000
     assert len(list(folder.iterdir())) == 3
+
+
+def test_the_toc_shows_beside_the_main_addon():
+    """Same icon and every same category line, or a translated client would list them apart."""
+    def beside(text):
+        return [line for line in text.splitlines() if line.startswith(("## IconTexture:", "## Category"))]
+
+    main = (ROOT / "addon" / "NoctisLootCouncil.toc").read_text(encoding="utf-8")
+    assert len(beside(main)) == 12
+    assert beside(decisions.toc(1)) == beside(main)
+    assert (ROOT / "addon" / "media" / "icon.tga").is_file()
+
+
+def test_refresh_tocs_changes_only_what_differs(tmp_path):
+    decisions.write_addon(tmp_path, CONTRACT_EXAMPLE)
+    old, kept = tmp_path / decisions.TOC_NAMES[0], tmp_path / decisions.TOC_NAMES[1]
+    old.write_text("## Title: from an older companion\n", encoding="utf-8")
+    before = kept.stat().st_mtime_ns
+    decisions.refresh_tocs(tmp_path, 1793078967)
+    assert old.read_text(encoding="utf-8") == decisions.toc(1793078967)
+    assert kept.stat().st_mtime_ns == before
 
 
 def test_summary():

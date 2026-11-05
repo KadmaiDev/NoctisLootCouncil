@@ -146,8 +146,16 @@ The companion writes its own addon folder, so updating the main addon never dele
 ## Title: Noctis Loot Decisions
 ## Notes: Council and roll decisions from Discord, written by the Noctis Loot companion app. Don't edit; it's rewritten.
 ## Version: 1793078967
+## IconTexture: Interface\AddOns\NoctisLootCouncil\media\icon.tga
+## Category: Loot
+## Category-deDE: Beute
+(and the other languages, the same lines as the main addon's .toc)
 Decisions.lua
 ```
+
+The icon and category put it beside the main addon in the AddOns list. The icon is the main addon's
+file: nothing extra is written, and without the main addon the list just shows no icon. A companion
+that finds an older `.toc` rewrites it at its next check, without counting that as new decisions.
 
 `Decisions.lua`:
 
