@@ -78,7 +78,7 @@ Decisions made in Discord always win. A decision set in game (`/nlc council ...`
 ### 1. Create the Discord application
 
 1. Go to https://discord.com/developers/applications, **New Application**, name it "Noctis Loot".
-2. **Bot** tab: **Reset Token** and copy the token (it goes in `.env` as `DISCORD_TOKEN`). No privileged intents are needed.
+2. **Bot** tab: **Reset Token** and copy the token (it goes in `.env` as `DISCORD_TOKEN`). No privileged intents are needed (Message Content only if you use `CHANNEL_IN_GAME_CHAT`, below).
 3. **OAuth2 → URL Generator**: scopes **`bot`** and **`applications.commands`**; bot permissions **View Channels, Send Messages, Embed Links, Attach Files, Read Message History**. (Attach Files is for the drawn item titles on #loot-items and #loot-officers. Manage Messages isn't needed: the bot only edits its own posts.) Open the generated link and add the bot to the server. The same link by hand, with your application ID:
    `https://discord.com/oauth2/authorize?client_id=APPLICATION_ID&scope=bot+applications.commands&permissions=117760`
 
@@ -99,6 +99,7 @@ Copy `.env.example` to `.env` and fill it in. Turn on Developer Mode in Discord 
 | `GUILD_ID` | your server's ID |
 | `OFFICER_ROLE_ID` | the officers' role |
 | `CHANNEL_LOOT_OFFICERS`, `CHANNEL_LOOT_ITEMS`, `CHANNEL_LOOT_PRIORITIES`, `CHANNEL_LOOT_LOG` | channel IDs |
+| `CHANNEL_IN_GAME_CHAT` | optional: the channel the game's guild chat link posts in. The bot deletes that link's "Sent a message to guild chat but has not yet linked their Discord account." lines there, as they arrive and when it starts; nothing else in the channel is touched, and no text is kept. Needs **Message Content Intent** on (Bot tab; turn it on first, or the bot can't connect) and **Manage Messages** in that channel |
 | `API_HOST`, `API_PORT` | where the API listens (default `127.0.0.1:8080`) |
 | `VOTES_TO_DECIDE` | votes an option needs (default 3) |
 | `DB_PATH` | the SQLite database (default `data/noctis-loot.db`) |

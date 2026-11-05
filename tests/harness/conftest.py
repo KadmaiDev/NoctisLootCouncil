@@ -31,16 +31,16 @@ class RunningBot:
     api_url: str
 
 
-def make_config(fake: FakeDiscord, db_path) -> Config:
+def make_config(fake: FakeDiscord, db_path, **settings) -> Config:
     return Config(token="fake-token", guild_id=fake.guild_id, officer_role_id=fake.officer_role,
                   ch_officers=fake.channel("loot-officers").id, ch_items=fake.channel("loot-items").id,
                   ch_priorities=fake.channel("loot-priorities").id, ch_log=fake.channel("loot-log").id,
                   api_host="127.0.0.1", api_port=0, votes_to_decide=3, db_path=db_path, timezone="Europe/London",
-                  wowhead=False, release_check=False)
+                  wowhead=False, release_check=False, **settings)
 
 
-async def start_bot(fake: FakeDiscord, db_path) -> RunningBot:
-    bot = LootBot(make_config(fake, db_path))
+async def start_bot(fake: FakeDiscord, db_path, **settings) -> RunningBot:
+    bot = LootBot(make_config(fake, db_path, **settings))
     before = fake.gateway_connections
     task = asyncio.create_task(bot.start("fake-token"))
     try:

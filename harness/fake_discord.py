@@ -228,6 +228,9 @@ class FakeDiscord:
         self.cdn: dict[str, bytes] = {}  # files attached to slash commands, by attachment id
         self.requests: list[tuple[str, str]] = []  # (method, path), every REST call
         self.gateway_connections = 0
+        self.identified_intents = 0
+        self.forbid_deletes = False
+        self.refused_deletes = 0
         self._ws: web.WebSocketResponse | None = None
         self._seq = 0
         self._changed = asyncio.Condition()
@@ -369,6 +372,7 @@ class FakeDiscord:
             if op == 1:  # heartbeat
                 await ws.send_json({"op": 11, "d": None, "s": None, "t": None})
             elif op in (2, 6):  # identify, resume: always a fresh session
+                self.identified_intents = (frame.get("d") or {}).get("intents", self.identified_intents)
                 await self._dispatch("READY", {
                     "v": 10, "user": self.bot_user.user_payload(), "session_id": "fake-session",
                     "resume_gateway_url": str(self.url.replace("http", "ws", 1) + "/gateway"),
@@ -382,6 +386,16 @@ class FakeDiscord:
         if self._ws is ws:
             self._ws = None
         return ws
+
+    def post_as(self, member: Member, channel: Channel, content: str, flags: int = 0) -> Message:
+        """A message from someone other than the bot, already there when the bot looks."""
+        return self._new_message(channel, {"content": content, "flags": flags}, author=member)
+
+    async def say(self, member: Member, channel: Channel, content: str, flags: int = 0) -> Message:
+        """A message from someone other than the bot, arriving now."""
+        msg = self.post_as(member, channel, content, flags)
+        await self._dispatch("MESSAGE_CREATE", msg.payload)
+        return msg
 
     async def _dispatch(self, event: str, data: dict) -> None:
         if self._ws is None:
@@ -451,7 +465,7 @@ class FakeDiscord:
                                   type=c.get("type", 1)) for c in body or []]
             return 200, self.commands
         if p[0] == "channels":
-            return self._channel_route(method, p, body)
+            return self._channel_route(method, p, query, body)
         if p[0] == "interactions" and p[3] == "callback" and method == "POST":
             return self._interaction_callback(p[2], body)
         if p[0] == "webhooks":
@@ -479,7 +493,7 @@ class FakeDiscord:
         channel.messages[mid] = msg
         return msg
 
-    def _channel_route(self, method: str, p: list[str], body: Any) -> tuple[int, Any] | None:
+    def _channel_route(self, method: str, p: list[str], query: Any, body: Any) -> tuple[int, Any] | None:
         ch = self.channels.get(int(p[1])) if p[1].isdigit() else None
         if ch is None:
             return self._error(404, 10003, "Unknown Channel")
@@ -489,6 +503,10 @@ class FakeDiscord:
             return None
         if p[3] == "" and method == "POST":
             return 200, self._new_message(ch, body or {}).payload
+        if p[3] == "" and method == "GET":  # newest first, as Discord
+            before = int(query.get("before") or 0)
+            found = [m.payload for m in reversed(ch.posts) if not before or m.id < before]
+            return 200, found[:int(query.get("limit") or 50)]
         msg = ch.messages.get(int(p[3])) if p[3].isdigit() else None
         if msg is None or msg.deleted:
             return self._error(404, 10008, "Unknown Message")
@@ -498,6 +516,9 @@ class FakeDiscord:
             self._edit(msg, body or {})
             return 200, msg.payload
         if p[4] == "" and method == "DELETE":
+            if self.forbid_deletes:
+                self.refused_deletes += 1
+                return self._error(403, 50013, "Missing Permissions")
             msg.deleted = True
             return 204, None
         if p[4] == "threads" and method == "POST":

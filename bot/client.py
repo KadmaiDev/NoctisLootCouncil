@@ -57,7 +57,10 @@ class ImportPlan:
 
 class LootBot(commands.Bot):
     def __init__(self, config: Config):
-        super().__init__(command_prefix=commands.when_mentioned, intents=discord.Intents.default(), help_command=None)
+        intents = discord.Intents.default()
+        # Privileged: Discord refuses the connection unless it's switched on for the application.
+        intents.message_content = bool(config.ch_in_game_chat)
+        super().__init__(command_prefix=commands.when_mentioned, intents=intents, help_command=None)
         self.config = config
         self.tz = ZoneInfo(config.timezone)
         self.store = Store(connect(config.db_path), self.tz, config.votes_to_decide)
@@ -85,6 +88,8 @@ class LootBot(commands.Bot):
     async def setup_hook(self) -> None:
         await self.load_extension("bot.cogs.loot")
         await self.load_extension("bot.cogs.milestones")
+        if self.config.ch_in_game_chat:
+            await self.load_extension("bot.cogs.chatcleanup")
         self.add_dynamic_items(*DYNAMIC_ITEMS)
         self.tree.error(self._on_app_error)
         self.tree.copy_global_to(guild=self.guild_obj)
