@@ -24,24 +24,25 @@ class RosterCog(commands.Cog):
         channel="Where the roster is posted (the bot's posts there are edited as the guild changes)",
         min_level="List characters at this level and above (default 10)",
         hide_ranks="Ranks to leave out, e.g. Trial (none: show every rank)",
+        alt_ranks="Ranks listed apart in an alts post, e.g. Alt, Officer Alt (none: one roster)",
         show="On: keep the roster posted. Off: leave the posts as they are")
     @officer_only()
     async def settings(self, interaction: discord.Interaction, channel: discord.TextChannel | None = None,
                        min_level: app_commands.Range[int, 1, milestones.MAX_LEVEL] | None = None,
                        hide_ranks: app_commands.Range[str, 1, 200] | None = None,
+                       alt_ranks: app_commands.Range[str, 1, 200] | None = None,
                        show: bool | None = None) -> None:
         store = self.bot.store
-        hidden = None
-        if hide_ranks is not None:
-            try:
-                hidden = roster.parse_ranks(hide_ranks)
-            except ValueError as exc:
-                raise UserError(str(exc)) from exc
+        try:
+            hidden = roster.parse_ranks(hide_ranks) if hide_ranks is not None else None
+            alts = roster.parse_ranks(alt_ranks) if alt_ranks is not None else None
+        except ValueError as exc:
+            raise UserError(str(exc)) from exc
         before = store.roster_settings()
         if show and not (channel or before.channel_id):
             raise UserError("Set the channel first, e.g. `/roster settings channel:#roster show:True`.")
         s = store.set_roster_settings(on=show, channel_id=channel.id if channel else None, min_level=min_level,
-                                      hidden_ranks=hidden)
+                                      hidden_ranks=hidden, alt_ranks=alts)
         self.bot.notify()
         ms = store.milestone_settings()
         mention = self.bot.channel_mention(s.channel_id) if s.channel_id else None

@@ -34,6 +34,7 @@ BLANK = "\N{ZERO WIDTH SPACE}"  # an empty field's name or value (Discord refuse
 CLASS_TITLE_MAX = 100
 PEOPLE, STAR, CLOCK = "\N{BUSTS IN SILHOUETTE}", "\N{WHITE MEDIUM STAR}", "\N{CLOCK FACE TWO OCLOCK}"
 GAP = "  ·  "
+ALTS_COLOUR = 0x99AAB5  # the alts' post, grey beside the roster's gold
 
 # Class icons: Wowhead's picture `classicon_warrior` becomes the bot's emoji `class_warrior`.
 CLASS_ICON_PREFIX = "classicon_"
@@ -47,6 +48,7 @@ class Settings:
     channel_id: int | None = None
     min_level: int = DEFAULT_MIN_LEVEL       # characters at this level and above are listed
     hidden_ranks: tuple[str, ...] = ()       # rank names not listed; empty = every rank is listed
+    alt_ranks: tuple[str, ...] = ()          # rank names listed apart, in the alts' post; empty = one roster
 
     @property
     def ready(self) -> bool:
@@ -168,7 +170,7 @@ def emoji_name(icon: str) -> str:
     return CLASS_EMOJI_PREFIX + icon.removeprefix(CLASS_ICON_PREFIX)
 
 
-def _counts_row(chars: list[Character], scanned: int | None) -> str:
+def _counts_row(chars: list[Character], scanned: int | None, noun: str = "member") -> str:
     """The icon row under the title, as Raid-Helper's: how many, how many at the top level, and
     when the roster was read (Discord shows the time relative to the reader's clock)."""
     if scanned is not None:
@@ -180,7 +182,7 @@ def _counts_row(chars: list[Character], scanned: int | None) -> str:
         return GAP.join((f"{PEOPLE} Nobody is listed yet", clock))
     top = chars[0].level  # listed() puts the highest first
     at_top = sum(1 for c in chars if c.level == top)
-    people = f"{PEOPLE} **{n}** {'member' if n == 1 else 'members'}"
+    people = f"{PEOPLE} **{n}** {noun if n == 1 else noun + 's'}"
     if n == 1:
         star = f"{STAR} level **{top}**"
     elif at_top == n:
@@ -270,22 +272,42 @@ def boards(chars: Iterable[Character], s: Settings, guild: str, scanned: int | N
            icons: Mapping[str, str] | None = None) -> list[tuple[str, Board]]:
     """The roster channel's messages, in order, as (key, board): 'roster', then 'roster#2'... only
     when Discord's limits for one embed (25 fields, 6000 characters) force more. `chars` is the
-    whole guild; `icons` maps a class ('WARRIOR') to its emoji's markup, for the classes that have one."""
+    whole guild; `icons` maps a class ('WARRIOR') to its emoji's markup, for the classes that have one.
+    With alt ranks set, the characters in them come after, in posts of their own ('alts',
+    'alts#2'...), once there are any."""
     icons = icons or {}
     shown = listed(chars, s)
+    alt_ranks = {_key(r) for r in s.alt_ranks}
+    mains = [c for c in shown if not (c.rank and _key(c.rank) in alt_ranks)]
+    alts = [c for c in shown if c.rank and _key(c.rank) in alt_ranks]
     who = _who_line(s)
-    lines = (_counts_row(shown, scanned), _ranks_line(shown) if shown else "", render.small(who))
-    out = [Board(title=_cut(f"{render.md(guild)} · Guild roster", TITLE_LIMIT),
-                 description=_cut("\n".join(p for p in lines if p), DESCRIPTION_LIMIT), colour=GOLD)]
+    if alts:
+        who = f"{who} · alts are listed below" if who else "Alts are listed below"
+    title = f"{render.md(guild)} · Guild roster"
+    lines = (_counts_row(mains, scanned), _ranks_line(mains) if mains else "", render.small(who))
+    out = _section("roster", Board(title=_cut(title + (" · Mains" if alts else ""), TITLE_LIMIT),
+                                   description=_cut("\n".join(p for p in lines if p), DESCRIPTION_LIMIT), colour=GOLD),
+                   mains, icons)
+    if alts:
+        lines = (_counts_row(alts, scanned, "alt"), _ranks_line(alts))
+        out += _section("alts", Board(title=_cut(title + " · Alts", TITLE_LIMIT),
+                                      description=_cut("\n".join(lines), DESCRIPTION_LIMIT), colour=ALTS_COLOUR),
+                        alts, icons)
+    return out
+
+
+def _section(key: str, first: Board, shown: list[Character], icons: Mapping[str, str]) -> list[tuple[str, Board]]:
+    """A titled board and its grid, in as many messages as Discord's limits need."""
+    out = [first]
     if shown:
         for under, fresh in _grid(shown, icons):
             cur = out[-1]
             size = sum(text_length(n) + text_length(v) for n, v, _ in under)
             if len(cur.fields) + len(under) > FIELDS_LIMIT or cur.size() + size > EMBED_LIMIT:
-                out.append(Board(fields=fresh, colour=GOLD))  # a row never splits between messages
+                out.append(Board(fields=fresh, colour=first.colour))  # a row never splits between messages
             else:
                 out[-1] = dataclasses.replace(cur, fields=cur.fields + under)
-    return [("roster" if i == 0 else f"roster#{i + 1}", b) for i, b in enumerate(out)]
+    return [(key if i == 0 else f"{key}#{i + 1}", b) for i, b in enumerate(out)]
 
 
 def settings_text(s: Settings, channel_mention: str | None, counts: tuple[int, int], milestones_ready: bool) -> str:
@@ -307,6 +329,8 @@ def settings_text(s: Settings, channel_mention: str | None, counts: tuple[int, i
         f"Channel: {channel_mention or 'not set'}.",
         f"Minimum level: {s.min_level}.",
         "Hidden ranks: " + (", ".join(render.md(r) for r in s.hidden_ranks) if s.hidden_ranks else "none") + ".",
+        "Alt ranks: " + (", ".join(render.md(r) for r in s.alt_ranks) + " (listed in their own post)"
+                         if s.alt_ranks else "none (one roster)") + ".",
         f"Characters in the guild: {in_guild}; listed: {shown}.",
     ]
     if not s.on:

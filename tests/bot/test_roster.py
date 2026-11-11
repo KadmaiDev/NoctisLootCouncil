@@ -263,3 +263,23 @@ def test_settings_text_says_what_is_missing():
     ready = settings_text(Settings(on=True, channel_id=5, min_level=20, hidden_ranks=("Trial", "Alt")), "<#5>", (3, 2), True)
     assert "Guild roster: **On**." in ready and "Hidden ranks: Trial, Alt." in ready and "Minimum level: 20." in ready
     assert Settings(on=True, channel_id=5).ready and not Settings(on=True).ready and not Settings(channel_id=5).ready
+
+
+def test_alt_ranks_get_a_post_of_their_own():
+    chars = [Character("Thorn Gale", 60, "WARRIOR", "Officer"), Character("Vespera Ashward", 44, "DRUID", "Member"),
+             Character("Thornlet", 30, "MAGE", "Officer Alt"), Character("Vesper Two", 12, "ROGUE", "alt"),
+             Character("Tiny Alt", 5, "ROGUE", "Alt")]
+    s = Settings(on=True, channel_id=5, alt_ranks=("Alt", "Officer Alt"))
+    out = boards(chars, s, "Noctis", 1_700_000_000)
+    assert [k for k, _ in out] == ["roster", "alts"]
+    mains, alts = out[0][1], out[1][1]
+    assert mains.title == "Noctis · Guild roster · Mains" and alts.title == "Noctis · Guild roster · Alts"
+    assert "**2** members" in mains.description and "alts are listed below" in mains.description
+    assert "Thornlet" not in mains.text() and "Thorn Gale" in mains.text()
+    assert "**2** alts" in alts.description and "alt 1 · Officer Alt 1" in alts.description  # ranks match whatever the case
+    assert "Thornlet" in alts.text() and "Vesper Two" in alts.text() and "Tiny Alt" not in alts.text()
+    assert alts.colour != mains.colour
+    # No alt listed: one roster, titled as without the setting.
+    one = boards(chars[:2] + chars[4:], s, "Noctis", 1_700_000_000)
+    assert [k for k, _ in one] == ["roster"] and one[0][1].title == "Noctis · Guild roster"
+    assert boards(chars, Settings(on=True, channel_id=5), "Noctis", 1)[0][1].digest() != mains.digest()

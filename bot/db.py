@@ -206,7 +206,7 @@ CREATE TABLE IF NOT EXISTS ms_characters (
 );
 
 -- The guild roster channel's posts (roster.py), in channel order. The settings are in `meta` (rs_on,
--- rs_channel, rs_min_level, rs_hide), with rs_scanned (the newest roster read) and rs_dirty (a change
+-- rs_channel, rs_min_level, rs_hide, rs_alts), with rs_scanned (the newest roster read) and rs_dirty (a change
 -- counter, as items.dirty).
 CREATE TABLE IF NOT EXISTS roster_posts (
     key        TEXT PRIMARY KEY,                 -- roster, roster#2, ... (header, DRUID, ... before the embed)

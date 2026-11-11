@@ -448,3 +448,11 @@ async def test_without_lookups_no_icons_are_asked_for(tmp_path):
     upload(bot)
     await sync(bot)
     assert keys(bot) == ["roster"]
+
+
+def test_alt_ranks_are_kept_and_shown_in_the_settings(store):
+    s = store.set_roster_settings(alt_ranks=("Alt", "Officer Alt"), hidden_ranks=("Trial",))
+    assert s.alt_ranks == ("Alt", "Officer Alt") and s.hidden_ranks == ("Trial",)
+    assert store.set_roster_settings(min_level=20).alt_ranks == ("Alt", "Officer Alt")
+    assert "Alt ranks: Alt, Officer Alt" in roster.settings_text(s, None, (0, 0), True)
+    assert store.set_roster_settings(alt_ranks=()).alt_ranks == ()

@@ -194,7 +194,7 @@ Everything is in the one SQLite file. A consistent copy while the bot runs: `sql
 | `/loot status [item]` | everyone | Just for you: what's decided, or one item. |
 | `/loot token` | officers | Just for you: a token for the companion app. Running it again replaces the old one. |
 | `/milestones settings [guild] [channel] [levels] [announce]` | officers | Just for you: shows or changes the [level milestones](#level-milestones). |
-| `/roster settings [channel] [min_level] [hide_ranks] [show]` | officers | Just for you: shows or changes the [guild roster channel](#guild-roster-channel). |
+| `/roster settings [channel] [min_level] [hide_ranks] [alt_ranks] [show]` | officers | Just for you: shows or changes the [guild roster channel](#guild-roster-channel). |
 | `/loot wcl <link>` | officers | Links a Warcraft Logs report to its night's #loot-log post: "Warcraft Logs" under the heading, and each boss heading to that boss's kill (the last one before its loot went out). The post that takes it is the one on the report's night whose loot falls in the report's time; a report linked before the upload is used once the loot comes. Linking another report that holds that night's loot replaces it. The report must be public or unlisted. Needs `WCL_CLIENT_ID` and `WCL_CLIENT_SECRET`. |
 
 The posts are edited in place as votes, priorities, suggestions and uploads change things; restarting the bot never reposts. If a post is deleted, the bot posts it again on the next change.
@@ -242,6 +242,7 @@ The bot can keep one post in a channel listing the guild's characters, laid out 
 
 - **channel** is any channel you pick; the bot sets no permissions there, so it's for officers unless the channel is open to others. Give the bot View Channel and Send Messages. Changing it moves the posts: the old ones are deleted.
 - **min_level** lists characters at that level and above (default 10). **hide_ranks** leaves out these ranks, e.g. `Trial` (`none` shows every rank).
+- **alt_ranks** lists these ranks apart, e.g. `Alt, Officer Alt`: the roster becomes "Mains", with an "Alts" post under it (`none` puts everyone back in one roster).
 - **show:False** stops updating; the posts stay as they are.
 - Someone has left once a later roster read by any officer doesn't have them. When the roster grows into a second post or shrinks back to one, or a post was deleted, the bot deletes its roster posts and posts them again.
 - The class icons are Wowhead's, uploaded once as the bot's own emojis (`class_warrior`, ...); until they're there (or while Wowhead isn't answering) the columns are headed without them, and the post is edited when they arrive.

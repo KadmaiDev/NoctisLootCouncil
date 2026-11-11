@@ -805,21 +805,25 @@ class Store:
     # put anyone on the roster.
 
     def roster_settings(self) -> roster.Settings:
-        channel, level, hide = self._meta("rs_channel"), self._meta("rs_min_level"), self._meta("rs_hide")
-        try:
-            hidden = tuple(str(r) for r in json.loads(hide)) if hide else ()
-        except (ValueError, TypeError):
-            hidden = ()
+        channel, level = self._meta("rs_channel"), self._meta("rs_min_level")
+
+        def ranks(key: str) -> tuple[str, ...]:
+            try:
+                return tuple(str(r) for r in json.loads(self._meta(key) or "[]"))
+            except (ValueError, TypeError):
+                return ()
         return roster.Settings(
             on=self._meta("rs_on") == "1",
             channel_id=int(channel) if channel and channel.isdigit() else None,
             min_level=int(level) if level and level.isdigit() else roster.DEFAULT_MIN_LEVEL,
-            hidden_ranks=hidden,
+            hidden_ranks=ranks("rs_hide"),
+            alt_ranks=ranks("rs_alts"),
         )
 
     def set_roster_settings(self, *, on: bool | None = None, channel_id: int | None = None,
-                            min_level: int | None = None, hidden_ranks: tuple[str, ...] | None = None) -> roster.Settings:
-        """Change what's given (hidden_ranks=() shows every rank). Turning it back on rechecks every
+                            min_level: int | None = None, hidden_ranks: tuple[str, ...] | None = None,
+                            alt_ranks: tuple[str, ...] | None = None) -> roster.Settings:
+        """Change what's given (hidden_ranks=() shows every rank, alt_ranks=() lists everyone together). Turning it back on rechecks every
         post, so any deleted while it was off are put back."""
         before = self.roster_settings()
         with self.conn:
@@ -829,6 +833,8 @@ class Store:
                 self._set_meta("rs_min_level", str(min_level))
             if hidden_ranks is not None:
                 self._set_meta("rs_hide", json.dumps(list(hidden_ranks)))
+            if alt_ranks is not None:
+                self._set_meta("rs_alts", json.dumps(list(alt_ranks)))
             if on is not None:
                 self._set_meta("rs_on", "1" if on else "0")
                 if on and not before.on:
