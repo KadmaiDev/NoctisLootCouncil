@@ -209,7 +209,7 @@ CREATE TABLE IF NOT EXISTS ms_characters (
 -- rs_channel, rs_min_level, rs_hide), with rs_scanned (the newest roster read) and rs_dirty (a change
 -- counter, as items.dirty).
 CREATE TABLE IF NOT EXISTS roster_posts (
-    key        TEXT PRIMARY KEY,                 -- header, DRUID, WARRIOR#2, ...
+    key        TEXT PRIMARY KEY,                 -- roster, roster#2, ... (header, DRUID, ... before the embed)
     position   INTEGER NOT NULL,
     channel_id INTEGER NOT NULL,
     message_id INTEGER NOT NULL,

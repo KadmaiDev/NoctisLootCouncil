@@ -234,7 +234,7 @@ In game, the addon can also tell you, off until you turn it on (`/nlc milestones
 
 ### Guild roster channel
 
-The bot can keep a few posts in a channel listing the guild's characters: a header with the totals, then one post per class, by level. They're edited in place as people level, join or leave. The roster comes with the level milestones upload, so milestones must be on with a guild (above), and only companions from 0.2.4 send what it needs.
+The bot can keep one post in a channel listing the guild's characters, laid out like a Raid-Helper sign-up: a gold embed titled "Noctis · Guild roster", a row of counters (members, how many at the top level, when the roster was last read), the count per rank, then a column per class, three side by side in alphabetical order, each headed with the class's icon, name and count and listing its characters by level (`60` **Thorgar Ironvale**). It's edited in place as people level, join or leave. A class too long for its column carries on just below it; only a guild too big for one Discord message (25 columns or 6000 characters) gets a second post under the first. The roster comes with the level milestones upload, so milestones must be on with a guild (above), and only companions from 0.2.4 send what it needs.
 
 ```
 /roster settings channel:#roster hide_ranks:Trial show:True     (in Discord, once)
@@ -243,8 +243,8 @@ The bot can keep a few posts in a channel listing the guild's characters: a head
 - **channel** is any channel you pick; the bot sets no permissions there, so it's for officers unless the channel is open to others. Give the bot View Channel and Send Messages. Changing it moves the posts: the old ones are deleted.
 - **min_level** lists characters at that level and above (default 10). **hide_ranks** leaves out these ranks, e.g. `Trial` (`none` shows every rank).
 - **show:False** stops updating; the posts stay as they are.
-- Someone has left once a later roster read by any officer doesn't have them. When the posts need reordering (a new class, say), the bot deletes its roster posts and posts them again.
-
+- Someone has left once a later roster read by any officer doesn't have them. When the roster grows into a second post or shrinks back to one, or a post was deleted, the bot deletes its roster posts and posts them again.
+- The class icons are Wowhead's, uploaded once as the bot's own emojis (`class_warrior`, ...); until they're there (or while Wowhead isn't answering) the columns are headed without them, and the post is edited when they arrive.
 ---
 
 ## For officers: the companion app

@@ -29,7 +29,7 @@ from .config import Config
 from .db import connect
 from .model import Post, RosterPost
 from .store import Store
-from .views import DYNAMIC_ITEMS, card_layout
+from .views import DYNAMIC_ITEMS, board_embed, card_layout
 
 log = logging.getLogger("noctis")
 
@@ -177,28 +177,29 @@ class LootBot(commands.Bot):
 
     async def sync_roster(self) -> bool:
         """Make the roster channel's posts match the roster: the same posts in the same order are
-        edited where they changed; otherwise (a class more or less, a long one split, the channel
-        changed, a post deleted) the bot's roster posts are deleted and all sent again in order, as
-        Discord can't reorder messages. While it's off the posts are left as they are. Returns False
-        if something has to be retried."""
+        edited where they changed; otherwise (the roster grew into another message or shrank, the
+        channel changed, a post deleted) the bot's roster posts are deleted and all sent again in
+        order, as Discord can't reorder messages. While it's off the posts are left as they are.
+        Returns False if something has to be retried."""
         async with self._locks["roster"]:
             if not self.roster_ready():
                 return True
             s, ms = self.store.roster_settings(), self.store.milestone_settings()
-            cards = roster.cards(self.store.roster_characters(), s, ms.guild or "", self.store.roster_scanned())
+            chars = self.store.roster_characters()
+            boards = roster.boards(chars, s, ms.guild or "", self.store.roster_scanned(), self.class_emojis(chars, s))
             posts = self.store.roster_posts()
             channel = self._text_channel(s.channel_id)
             if channel is None:
                 return False
-            if [p.key for p in posts] == [k for k, _ in cards] and all(p.channel_id == channel.id for p in posts):
+            if [p.key for p in posts] == [k for k, _ in boards] and all(p.channel_id == channel.id for p in posts):
                 rebuild = False
-                for post, (_, card) in zip(posts, cards):
-                    digest = card.digest()
+                for post, (_, board) in zip(posts, boards):
+                    digest = board.digest()
                     if post.digest == digest:
                         continue
                     try:
                         await channel.get_partial_message(post.message_id).edit(
-                            content=None, embed=None, view=card_layout(card), allowed_mentions=NO_MENTIONS)
+                            embed=board_embed(board), allowed_mentions=NO_MENTIONS)
                     except discord.NotFound:
                         log.info("A roster post (%s) was deleted; posting the roster again", post.key)
                         rebuild = True
@@ -212,14 +213,20 @@ class LootBot(commands.Bot):
             for post in posts:
                 if not await self._delete_roster_post(post):
                     return False
-            for position, (key, card) in enumerate(cards):
+            for position, (key, board) in enumerate(boards):
                 try:
-                    msg = await channel.send(view=card_layout(card), allowed_mentions=NO_MENTIONS)
+                    msg = await channel.send(embed=board_embed(board), allowed_mentions=NO_MENTIONS)
                 except discord.HTTPException as exc:
                     log.warning("Could not post the roster (%s): %s", key, exc)
                     return False
-                self.store.save_roster_post(RosterPost(key, position, channel.id, msg.id, card.digest()))
+                self.store.save_roster_post(RosterPost(key, position, channel.id, msg.id, board.digest()))
             return True
+
+    def class_emojis(self, chars: list[roster.Character], s: roster.Settings) -> dict[str, str]:
+        """The class emojis the bot has for the classes listed ({'WARRIOR': '<:class_warrior:...>'})."""
+        icons = {key: icon for key in roster.classes(chars, s) if (icon := roster.class_icon(key))}
+        emojis = self.store.icon_emojis(icons.values())
+        return {key: emojis[icon] for key, icon in icons.items() if icon in emojis}
 
     async def _delete_roster_post(self, post: RosterPost) -> bool:
         channel = self._text_channel(post.channel_id)
@@ -332,10 +339,35 @@ class LootBot(commands.Bot):
                     self.store.save_icon_emoji(icon, emoji)
                 else:
                     self._emoji_failed.add(icon)  # not again until a restart
+        await self._look_up_class_icons()
 
-    async def _icon_emoji(self, icon: str) -> str | None:
+    async def _look_up_class_icons(self) -> None:
+        """The pictures of the classes the roster lists, as the bot's emojis for its headings. The
+        roster never waits for them: a heading goes without until its emoji is made, and the roster
+        is edited then (save_icon_emoji marks it). Only the game's classes are asked for."""
+        if not self.roster_ready():
+            return
+        chars = self.store.roster_characters()
+        icons = [icon for key in roster.classes(chars, self.store.roster_settings()) if (icon := roster.class_icon(key))]
+        have = self.store.icon_emojis(icons)
+        for icon in icons:
+            if icon in have or icon in self._emoji_failed:
+                continue
+            if self.store.icon_image(icon) is None:
+                image = await self.fetch_icon(self._session(), icon)
+                if image is None:
+                    self._lookup_paused_until = time.monotonic() + LOOKUP_PAUSE_SECONDS
+                    return
+                self.store.save_icon_image(icon, image)
+            emoji = await self._icon_emoji(icon, roster.emoji_name(icon))
+            if emoji:
+                self.store.save_icon_emoji(icon, emoji)
+            else:
+                self._emoji_failed.add(icon)  # not again until a restart
+
+    async def _icon_emoji(self, icon: str, name: str | None = None) -> str | None:
         """The bot's own (application) emoji for an icon, uploading it the first time."""
-        name = icon[:32]
+        name = (name or icon)[:32]
         try:
             if self._app_emojis is None:
                 self._app_emojis = {e.name: str(e) for e in await self.fetch_application_emojis()}

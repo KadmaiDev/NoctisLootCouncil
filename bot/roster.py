@@ -1,12 +1,16 @@
-"""The guild roster channel: a few posts, edited in place, listing the guild's characters by class.
-The roster comes from the level milestones upload (milestones.py). This module is pure: the
-settings, who is listed, and the posts' wording. Output depends only on what's passed in (never on
-the clock or the input's order), so the poster's digest skips edits when nothing changed."""
+"""The guild roster channel: one embed, edited in place, listing the guild's characters by class in
+three columns, laid out like Raid-Helper's sign-up posts (more messages only when Discord's limits
+force it). The roster comes from the level milestones upload (milestones.py). This module is pure:
+the settings, who is listed, and the posts' wording. Output depends only on what's passed in (never
+on the clock or the input's order), so the poster's digest skips edits when nothing changed."""
 from __future__ import annotations
 
+import dataclasses
+import hashlib
+import json
 from collections import defaultdict
-from collections.abc import Iterable
-from dataclasses import dataclass
+from collections.abc import Iterable, Mapping
+from dataclasses import asdict, dataclass
 
 from . import render
 from .milestones import CLASS_COLOURS, GOLD, class_name
@@ -17,6 +21,23 @@ MAX_RANKS = 20
 EVERY_RANK = {"all", "any", "*", "none"}  # words for "hide nothing"
 UNKNOWN = "UNKNOWN"
 NO_RANK = "No rank"
+
+# Discord's embed limits (characters; counted here in UTF-16 units, which is never fewer).
+TITLE_LIMIT = 256
+DESCRIPTION_LIMIT = 4096
+FIELD_NAME_LIMIT = 256
+FIELD_VALUE_LIMIT = 1024
+FIELDS_LIMIT = 25
+EMBED_LIMIT = 6000  # title + description + every field's name and value + footer
+COLUMNS = 3  # inline fields side by side
+BLANK = "\N{ZERO WIDTH SPACE}"  # an empty field's name or value (Discord refuses empty ones)
+CLASS_TITLE_MAX = 100
+PEOPLE, STAR, CLOCK = "\N{BUSTS IN SILHOUETTE}", "\N{WHITE MEDIUM STAR}", "\N{CLOCK FACE TWO OCLOCK}"
+GAP = "  ·  "
+
+# Class icons: Wowhead's picture `classicon_warrior` becomes the bot's emoji `class_warrior`.
+CLASS_ICON_PREFIX = "classicon_"
+CLASS_EMOJI_PREFIX = "class_"
 
 
 @dataclass(frozen=True)
@@ -79,6 +100,46 @@ def listed(chars: Iterable[Character], s: Settings) -> list[Character]:
 
 # ---- the posts -----------------------------------------------------------------------------------
 
+Field = tuple[str, str, bool]  # (name, value, inline)
+
+
+@dataclass(frozen=True)
+class Board:
+    """One roster message, a classic embed (views.board_embed draws it). The first has the title and
+    the counters; further ones, when Discord's limits force them, only carry on the grid."""
+    title: str = ""
+    description: str = ""
+    fields: tuple[Field, ...] = ()
+    colour: int = GOLD
+
+    def size(self) -> int:
+        """What counts towards Discord's 6000 characters per embed."""
+        return text_length(self.title) + text_length(self.description) + sum(
+            text_length(n) + text_length(v) for n, v, _ in self.fields)
+
+    def digest(self) -> str:
+        return hashlib.sha256(json.dumps(asdict(self), sort_keys=True).encode()).hexdigest()
+
+    def text(self) -> str:
+        """Everything it says, as markdown: the title, the description, then each field's name and value."""
+        parts = [self.title, self.description] + [f"{n}\n{v}" for n, v, _ in self.fields]
+        return "\n".join(p for p in parts if p)
+
+
+def text_length(text: str) -> int:
+    """A length as Discord counts it, or more: UTF-16 units (an emoji like the people icon counts two)."""
+    return len(text.encode("utf-16-le")) // 2
+
+
+def _cut(text: str, limit: int) -> str:
+    if text_length(text) <= limit:
+        return text
+    text = text[:limit]
+    while text_length(text) > limit - 1:
+        text = text[:-1]
+    return text + "…"
+
+
 def _class_key(c: Character) -> str:
     return (c.cls or "").strip().upper() or UNKNOWN
 
@@ -87,17 +148,46 @@ def _class_title(key: str) -> str:
     return "Unknown class" if key == UNKNOWN else class_name(key)
 
 
-def _totals(chars: list[Character]) -> str:
+def _class_order(keys: Iterable[str]) -> list[str]:
+    """Alphabetical by the name shown, 'Unknown class' last."""
+    return sorted(set(keys), key=lambda k: (k == UNKNOWN, _class_title(k).casefold(), k))
+
+
+def classes(chars: Iterable[Character], s: Settings) -> list[str]:
+    """The classes the posts list ('WARRIOR', ...), in the posts' order."""
+    return _class_order(_class_key(c) for c in listed(chars, s))
+
+
+def class_icon(key: str) -> str | None:
+    """Wowhead's picture for a class ('WARRIOR' -> 'classicon_warrior'); None for one the game hasn't."""
+    return CLASS_ICON_PREFIX + key.lower() if key in CLASS_COLOURS else None
+
+
+def emoji_name(icon: str) -> str:
+    """The bot's emoji for a class picture: 'classicon_warrior' -> 'class_warrior'."""
+    return CLASS_EMOJI_PREFIX + icon.removeprefix(CLASS_ICON_PREFIX)
+
+
+def _counts_row(chars: list[Character], scanned: int | None) -> str:
+    """The icon row under the title, as Raid-Helper's: how many, how many at the top level, and
+    when the roster was read (Discord shows the time relative to the reader's clock)."""
+    if scanned is not None:
+        clock = f"{CLOCK} <t:{int(scanned)}:R>"
+    else:
+        clock = f"{CLOCK} waiting for an officer's roster"
     n = len(chars)
-    first = render.plural(n, "member")
-    if n == 1:
-        return f"{first} · level {chars[0].level}"
+    if not n:
+        return GAP.join((f"{PEOPLE} Nobody is listed yet", clock))
     top = chars[0].level  # listed() puts the highest first
     at_top = sum(1 for c in chars if c.level == top)
-    if at_top == n:
-        return f"{first} · all at level {top}"
-    average = int(sum(c.level for c in chars) / n + 0.5)
-    return f"{first} · {at_top} at level {top} · average level {average}"
+    people = f"{PEOPLE} **{n}** {'member' if n == 1 else 'members'}"
+    if n == 1:
+        star = f"{STAR} level **{top}**"
+    elif at_top == n:
+        star = f"{STAR} all at level **{top}**"
+    else:
+        star = f"{STAR} **{at_top}** at level {top}"
+    return GAP.join((people, star, clock))
 
 
 def _ranks_line(chars: list[Character]) -> str:
@@ -112,15 +202,6 @@ def _ranks_line(chars: list[Character]) -> str:
     return " · ".join(f"{render.md(name)} {n}" for name, n in shown)
 
 
-def _classes_line(chars: list[Character]) -> str:
-    """'Warrior 9 · Druid 7': the counters above the lists, as raid sign-up bots have them."""
-    counts: dict[str, int] = defaultdict(int)
-    for c in chars:
-        counts[_class_key(c)] += 1
-    shown = sorted(counts.items(), key=lambda p: (-p[1], p[0] == UNKNOWN, _class_title(p[0]).casefold()))
-    return " · ".join(f"{_class_title(k)} {n}" for k, n in shown)
-
-
 def _who_line(s: Settings) -> str:
     parts = []
     if s.min_level > 1:
@@ -131,50 +212,80 @@ def _who_line(s: Settings) -> str:
     return text[:1].upper() + text[1:]
 
 
-def _level_lines(chars: list[Character], limit: int) -> list[str]:
-    """'**60** Thorgar · Brannoch', one line per level; a level too long for one post goes on
-    several lines, split between names."""
-    by_level: dict[int, list[str]] = defaultdict(list)
-    for c in chars:  # already in order
-        by_level[c.level].append(render.md(c.name))
-    lines = []
-    for level in sorted(by_level, reverse=True):
-        head = f"**{level}** "
-        cur = ""
-        for name in by_level[level]:
-            candidate = f"{cur} · {name}" if cur else head + name
-            if cur and len(candidate) > limit:
-                lines.append(cur)
-                candidate = head + name
-            cur = candidate
-        lines.append(cur)
-    return lines
+def _pack(lines: list[str], limit: int) -> list[str]:
+    """Lines into as few field values as fit, never splitting a line."""
+    out: list[str] = []
+    cur = ""
+    for line in lines:
+        line = _cut(line, limit)
+        candidate = f"{cur}\n{line}" if cur else line
+        if cur and text_length(candidate) > limit:
+            out.append(cur)
+            candidate = line
+        cur = candidate
+    if cur:
+        out.append(cur)
+    return out
 
 
-def cards(chars: Iterable[Character], s: Settings, guild: str, scanned: int | None) -> list[tuple[str, render.Card]]:
-    """The roster channel's posts, in order, as (key, card): the header, then one card per class
-    (more when a class is too long for one post: 'WARRIOR#2'...). `chars` is the whole guild."""
+def _grid(shown: list[Character], icons: Mapping[str, str]) -> list[tuple[tuple[Field, ...], tuple[Field, ...]]]:
+    """The classes three to a row. A class too long for one field carries on in the field below it,
+    in a row of three (blank where a class has nothing more), so the columns stay in line. Each row
+    comes twice: as it goes under the row above, and as the first row of a further message (where a
+    continued class is named again)."""
+    groups: dict[str, list[Character]] = defaultdict(list)
+    for c in shown:  # already in order
+        groups[_class_key(c)].append(c)
+    width = max(len(str(c.level)) for c in shown)
+    order = _class_order(groups)
+    rows = []
+    for i in range(0, len(order), COLUMNS):
+        cells: list[tuple[str | None, int, list[str]]] = []  # (heading, count, values)
+        for key in order[i:i + COLUMNS]:
+            members = groups[key]
+            heading = render.with_emoji(icons.get(key), _cut(render.md(_class_title(key)), CLASS_TITLE_MAX))
+            lines = [f"`{str(c.level).rjust(width)}` **{render.md(c.name)}**" for c in members]
+            cells.append((heading, len(members), _pack(lines, FIELD_VALUE_LIMIT)))
+        height = max(len(values) for _, _, values in cells)
+        if height > 1:
+            cells += [(None, 0, [])] * (COLUMNS - len(cells))
+        for r in range(height):
+            under, fresh = [], []
+            for heading, count, values in cells:
+                value = values[r] if r < len(values) else BLANK
+                if heading is None:
+                    name = again = BLANK
+                elif r == 0:
+                    name = again = _cut(f"{heading} ({count})", FIELD_NAME_LIMIT)
+                else:
+                    name = BLANK
+                    again = _cut(f"{heading} (continued)", FIELD_NAME_LIMIT) if r < len(values) else BLANK
+                under.append((name, value, True))
+                fresh.append((again, value, True))
+            rows.append((tuple(under), tuple(fresh)))
+    return rows
+
+
+def boards(chars: Iterable[Character], s: Settings, guild: str, scanned: int | None,
+           icons: Mapping[str, str] | None = None) -> list[tuple[str, Board]]:
+    """The roster channel's messages, in order, as (key, board): 'roster', then 'roster#2'... only
+    when Discord's limits for one embed (25 fields, 6000 characters) force more. `chars` is the
+    whole guild; `icons` maps a class ('WARRIOR') to its emoji's markup, for the classes that have one."""
+    icons = icons or {}
     shown = listed(chars, s)
     who = _who_line(s)
+    lines = (_counts_row(shown, scanned), _ranks_line(shown) if shown else "", render.small(who))
+    out = [Board(title=_cut(f"{render.md(guild)} · Guild roster", TITLE_LIMIT),
+                 description=_cut("\n".join(p for p in lines if p), DESCRIPTION_LIMIT), colour=GOLD)]
     if shown:
-        body = "\n".join(p for p in (_totals(shown), _classes_line(shown), _ranks_line(shown), render.small(who)) if p)
-    else:
-        body = "\n".join(p for p in ("Nobody is listed yet.", render.small(who)) if p)
-    footer = f"Roster read <t:{int(scanned)}:R>" if scanned is not None else "Waiting for an officer's roster"
-    out = [("header", render.Card(title=f"{render.md(guild)} · Guild roster", colour=GOLD, body=body, footer=footer))]
-
-    classes: dict[str, list[Character]] = defaultdict(list)
-    for c in shown:
-        classes[_class_key(c)].append(c)
-    order = sorted(classes, key=lambda k: (k == UNKNOWN, _class_title(k).casefold(), k))
-    for key in order:
-        members = classes[key]
-        title = _class_title(key)
-        colour = CLASS_COLOURS.get(key, GOLD)
-        for i, part in enumerate(render.chunk(_level_lines(members, render.MESSAGE_LIMIT))):
-            out.append((key if i == 0 else f"{key}#{i + 1}", render.Card(
-                title=f"{title} ({len(members)})" if i == 0 else f"{title} (continued)", colour=colour, body=part)))
-    return out
+        for under, fresh in _grid(shown, icons):
+            cur = out[-1]
+            size = sum(text_length(n) + text_length(v) for n, v, _ in under)
+            if len(cur.fields) + len(under) > FIELDS_LIMIT or cur.size() + size > EMBED_LIMIT:
+                out.append(Board(fields=fresh, colour=GOLD))  # a row never splits between messages
+            else:
+                out[-1] = dataclasses.replace(cur, fields=cur.fields + under)
+    return [("roster" if i == 0 else f"roster#{i + 1}", b) for i, b in enumerate(out)]
 
 
 def settings_text(s: Settings, channel_mention: str | None, counts: tuple[int, int], milestones_ready: bool) -> str:

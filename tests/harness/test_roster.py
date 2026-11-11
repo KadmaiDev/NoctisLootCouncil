@@ -1,7 +1,7 @@
 """The guild roster channel end to end: an officer turns milestones and the roster on in Discord, the
-addon reads the guild roster, the real companion sends it with the milestones, and the bot keeps a post
-per class in the roster channel, edited in place as people level and leave, through a restart and a
-change of channel."""
+addon reads the guild roster, the real companion sends it with the milestones, and the bot keeps one
+embed in the roster channel (a field per class, three to a row, as Raid-Helper's sign-ups), edited in
+place as people level and leave, through a restart and a change of channel."""
 from __future__ import annotations
 
 import time
@@ -17,6 +17,12 @@ MEMBERS = [("Vespera Ashward", 20, "WARLOCK", "Raider"), ("Ilsa Marrow", 60, "WA
 
 def edited(message) -> str | None:
     return message.payload.get("edited_timestamp")
+
+
+def fields(message) -> dict[str, str]:
+    """The embed's fields, name to value."""
+    [embed] = message.embeds
+    return {f["name"]: f["value"] for f in embed.get("fields") or []}
 
 
 async def read_and_send(realm, members, api_url, token) -> None:
@@ -49,56 +55,57 @@ async def test_the_roster_channel_follows_the_guild(guild, running, realm, tmp_p
     realm.lm.milestones = True
     token = await token_for(guild, kadmai)
     await read_and_send(realm, MEMBERS, running.api_url, token)
-    posts = await guild.wait_until(lambda: len(channel.posts) == 5 and channel.posts, what="the roster's five posts")
-    texts = [p.text for p in posts]
-    assert "Noctis · Guild roster" in texts[0]
-    assert "Hunter (1)" in texts[1] and "Mage (1)" in texts[2] and "Warlock (2)" in texts[3] and "Warrior (1)" in texts[4]
-    assert "**60** Ilsa Marrow" in texts[3] and "**20** Vespera Ashward" in texts[3]
-    everything = "\n".join(texts)
-    assert "Pip Newly" not in everything and "Priest" not in everything  # a trial: hidden
-    assert "Tiny Alt" not in everything  # below level 10
+    [post] = await guild.wait_until(lambda: channel.posts, what="the roster's post")
+    await guild.quiet()
+    assert len(channel.posts) == 1 and not post.components  # a classic embed, not a layout
+    [embed] = post.embeds
+    assert embed["title"] == "Noctis · Guild roster"
+    assert "**5** members" in embed["description"] and "**2** at level 60" in embed["description"]
+    # Alphabetical, three to a row; no class emojis (lookups are off in the harness).
+    assert list(fields(post)) == ["Hunter (1)", "Mage (1)", "Warlock (2)", "Warrior (1)"]
+    assert all(f["inline"] for f in embed["fields"])
+    assert fields(post)["Warlock (2)"] == "`60` **Ilsa Marrow**\n`20` **Vespera Ashward**"
+    assert "Pip Newly" not in post.text and "Priest" not in post.text  # a trial: hidden
+    assert "Tiny Alt" not in post.text  # below level 10
     r = await guild.slash(kadmai, "roster settings")
     assert "Characters in the guild: 7; listed: 5." in r.text
 
-    # Bran levels: the mages' post is edited (and the header, which says when the roster was read);
-    # the other classes' posts aren't touched.
-    ids = [p.id for p in posts]
-    before = {p.id: edited(p) for p in posts}
+    # Bran levels: the one post is edited.
+    stamp = edited(post)
     realm.skip(600)
     await read_and_send(realm, [("Bran Holloway", 32, *m[2:]) if m[0] == "Bran Holloway" else m for m in MEMBERS],
                         running.api_url, token)
-    await guild.wait_until(lambda: "**32** Bran Holloway" in channel.posts[2].text, what="Bran's new level")
+    await guild.wait_until(lambda: "`32` **Bran Holloway**" in channel.posts[0].text, what="Bran's new level")
     await guild.quiet()
-    assert [p.id for p in channel.posts] == ids
-    assert [edited(p) == before[p.id] for p in channel.posts] == [False, True, False, True, True]
+    assert [p.id for p in channel.posts] == [post.id] and edited(channel.posts[0]) != stamp
 
-    # Vespera leaves the guild: gone from the warlocks' post, still the same posts.
+    # Vespera leaves the guild: gone from the warlocks, still the same post.
     realm.skip(600)
     await read_and_send(realm, [m for m in MEMBERS if m[0] != "Vespera Ashward" and m[0] != "Bran Holloway"]
                         + [("Bran Holloway", 32, "MAGE", "Raider")], running.api_url, token)
-    await guild.wait_until(lambda: "Vespera" not in channel.posts[3].text, what="Vespera gone from the roster")
-    assert "Warlock (1)" in channel.posts[3].text and [p.id for p in channel.posts] == ids
+    await guild.wait_until(lambda: "Vespera" not in channel.posts[0].text, what="Vespera gone from the roster")
+    assert "Warlock (1)" in fields(channel.posts[0]) and [p.id for p in channel.posts] == [post.id]
 
     # A restart posts nothing and edits nothing.
     await guild.quiet()
-    stamps = [edited(p) for p in channel.posts]
+    stamp = edited(channel.posts[0])
     await stop_bot(running)
     again = await start_bot(guild.fake, tmp_path / "bot.db")
     try:
         await guild.quiet(1.0)
-        assert [p.id for p in channel.posts] == ids and [edited(p) for p in channel.posts] == stamps
+        assert [p.id for p in channel.posts] == [post.id] and edited(channel.posts[0]) == stamp
 
-        # Another channel: the posts move, in order.
+        # Another channel: the post moves.
         r = await guild.slash(kadmai, "roster settings", channel=moved_to)
         assert f"<#{moved_to.id}>" in r.text
-        moved = await guild.wait_until(lambda: len(moved_to.posts) == 5 and not channel.posts and moved_to.posts,
-                                       what="the roster in its new channel")
-        assert "Guild roster" in moved[0].text and "Warrior (1)" in moved[4].text
+        [moved] = await guild.wait_until(lambda: len(moved_to.posts) == 1 and not channel.posts and moved_to.posts,
+                                         what="the roster in its new channel")
+        assert moved.embeds[0]["title"] == "Noctis · Guild roster" and "Warrior (1)" in fields(moved)
 
-        # Off: the posts stay as they are, and the reply says so.
+        # Off: the post stays as it is, and the reply says so.
         r = await guild.slash(kadmai, "roster settings", show=False)
         assert "Guild roster: **Off**" in r.text and "stay as they are" in r.text
-        assert len(moved_to.posts) == 5
+        assert len(moved_to.posts) == 1
     finally:
         await stop_bot(again)
     assert guild.unknown_routes == [], guild.unknown_routes

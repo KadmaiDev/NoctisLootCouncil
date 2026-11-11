@@ -6,9 +6,9 @@ import re
 
 import pytest
 
-from bot import render
+from bot import roster
 from bot.milestones import CLASS_COLOURS, GOLD
-from bot.roster import Character, Settings, cards, listed, parse_ranks, settings_text
+from bot.roster import BLANK, Character, Settings, boards, listed, parse_ranks, settings_text
 
 ON = Settings(on=True, channel_id=5)
 GUILD = [
@@ -20,10 +20,6 @@ GUILD = [
     Character("Tiny", 5, "ROGUE", "Raider"),
     Character("Shade", 30, None, None),
 ]
-
-
-def bodies(result):
-    return {key: card.body for key, card in result}
 
 
 # ---- parse_ranks ---------------------------------------------------------------------------------
@@ -55,111 +51,202 @@ def test_listed_drops_low_levels_and_hidden_ranks():
 
 # ---- the posts -----------------------------------------------------------------------------------
 
+def u16(text: str) -> int:
+    """A length as Discord counts it (UTF-16 units), worked out here independently of roster.py."""
+    return sum(2 if ord(ch) > 0xFFFF else 1 for ch in text)
+
+
+def assert_within_discord_limits(result) -> None:
+    for _, b in result:
+        assert u16(b.title) <= 256 and u16(b.description) <= 4096
+        assert len(b.fields) <= 25
+        for name, value, inline in b.fields:
+            assert name and value and inline  # Discord refuses an empty name or value
+            assert u16(name) <= 256 and u16(value) <= 1024
+        total = u16(b.title) + u16(b.description) + sum(u16(n) + u16(v) for n, v, _ in b.fields)
+        assert total <= 6000 and total == b.size()
+
+
+def rows(board) -> list[tuple]:
+    return [board.fields[i:i + 3] for i in range(0, len(board.fields), 3)]
+
+
+def columns(result) -> dict[str, list[str]]:
+    """Each class's lines, read column by column as a reader sees the grid: a field with no name
+    carries on the class headed above it in the same column (or named '(continued)' at the top
+    of a further message)."""
+    out: dict[str, list[str]] = {}
+    for _, b in result:
+        above = [None, None, None]
+        for row in rows(b):
+            for col, (name, value, _) in enumerate(row):
+                if name != BLANK:
+                    above[col] = re.sub(r" \((\d+|continued)\)$", "", re.sub(r"^<:\w+:\d+> ", "", name))
+                if value != BLANK:
+                    assert above[col], f"a value with no class above it: {value[:40]}"
+                    out.setdefault(above[col], []).extend(value.split("\n"))
+    return out
+
+
+def names_in(lines: list[str]) -> list[str]:
+    return [re.fullmatch(r"` *\d+` \*\*(.+)\*\*", line)[1] for line in lines]
+
+
 def test_output_does_not_depend_on_input_order():
-    first = cards(GUILD, ON, "Noctis", 1_700_000_000)
+    first = boards(GUILD, ON, "Noctis", 1_700_000_000)
     for seed in range(10):
         shuffled = GUILD[:]
         random.Random(seed).shuffle(shuffled)
-        again = cards(shuffled, ON, "Noctis", 1_700_000_000)
-        assert [(k, c.digest()) for k, c in again] == [(k, c.digest()) for k, c in first]
+        again = boards(shuffled, ON, "Noctis", 1_700_000_000)
+        assert [(k, b.digest()) for k, b in again] == [(k, b.digest()) for k, b in first]
 
 
-def test_header_totals_rank_order_and_who_is_listed():
+def test_the_title_and_the_counters():
     s = Settings(on=True, channel_id=5, hidden_ranks=("Trial",))
-    header = cards(GUILD, s, "Noctis", 1_700_000_000)[0]
-    assert header[0] == "header"
-    card = header[1]
-    assert card.title == "Noctis · Guild roster" and card.colour == GOLD
-    lines = card.body.splitlines()
-    # Thorgar, Brannoch, Kadmai at 60, Aelwyn 44, Shade 30: average 50.8
-    assert lines[0] == "5 members · 3 at level 60 · average level 51"
-    assert lines[1] == "Warrior 2 · Druid 1 · Hunter 1 · Unknown class 1"
-    assert lines[2] == "Raider 2 · Guild Master 1 · No rank 1 · Officer 1"
-    assert lines[3] == "-# Level 10 and up · not shown: Trial"
-    assert card.footer == "Roster read <t:1700000000:R>"
+    [(key, board)] = boards(GUILD, s, "Noctis", 1_700_000_000)
+    assert key == "roster"
+    assert board.title == "Noctis · Guild roster" and board.colour == GOLD
+    lines = board.description.splitlines()
+    # Thorgar, Brannoch, Kadmai at 60, Aelwyn 44, Shade 30.
+    assert lines[0] == "\N{BUSTS IN SILHOUETTE} **5** members  ·  \N{WHITE MEDIUM STAR} **3** at level 60  ·  " \
+                       "\N{CLOCK FACE TWO OCLOCK} <t:1700000000:R>"
+    assert lines[1] == "Raider 2 · Guild Master 1 · No rank 1 · Officer 1"
+    assert lines[2] == "-# Level 10 and up · not shown: Trial"
+    assert len(lines) == 3
 
 
-def test_header_wording_for_one_and_for_everyone_at_one_level():
-    one = cards([Character("Solo", 60, "MAGE", "Raider")], ON, "Noctis", None)[0][1]
-    assert one.body.splitlines()[0] == "1 member · level 60"
-    assert one.footer == "Waiting for an officer's roster"
-    same = cards([Character("A", 60, "MAGE"), Character("B", 60, "MAGE")], Settings(min_level=1), "Noctis", None)[0][1]
-    assert same.body.splitlines()[0] == "2 members · all at level 60"
-    assert "-#" not in same.body  # level 1 and every rank: nothing to say about who's listed
+def test_counter_wording_for_one_and_for_everyone_at_one_level():
+    [(_, one)] = boards([Character("Solo", 60, "MAGE", "Raider")], ON, "Noctis", None)
+    assert one.description.splitlines()[0] == ("\N{BUSTS IN SILHOUETTE} **1** member  ·  \N{WHITE MEDIUM STAR} "
+                                               "level **60**  ·  \N{CLOCK FACE TWO OCLOCK} waiting for an officer's roster")
+    [(_, same)] = boards([Character("A", 60, "MAGE"), Character("B", 60, "MAGE")], Settings(min_level=1), "Noctis", None)
+    assert "**2** members  ·  \N{WHITE MEDIUM STAR} all at level **60**  ·  " in same.description
+    assert "-#" not in same.description  # level 1 and every rank: nothing to say about who's listed
 
 
-def test_nobody_listed_is_just_the_header():
-    result = cards([Character("Tiny", 5, "ROGUE")], ON, "Noctis", None)
-    assert len(result) == 1
-    assert result[0][1].body.startswith("Nobody is listed yet.")
-    assert cards([], ON, "Noctis", None)[0][1].body.startswith("Nobody is listed yet.")
+def test_nobody_listed_is_just_the_title_and_description():
+    for chars in ([Character("Tiny", 5, "ROGUE")], []):
+        [(key, board)] = boards(chars, ON, "Noctis", None)
+        assert key == "roster" and board.fields == () and board.title == "Noctis · Guild roster"
+        assert board.description.startswith("\N{BUSTS IN SILHOUETTE} Nobody is listed yet  ·  ")
+        assert board.description.endswith("\n-# Level 10 and up")
 
 
-def test_one_card_per_class_alphabetical_with_unknown_last():
-    result = cards(GUILD, ON, "Noctis", 1)
-    assert [k for k, _ in result] == ["header", "DRUID", "HUNTER", "MAGE", "WARRIOR", "UNKNOWN"]
-    by_key = dict(result)
-    warrior = by_key["WARRIOR"]
-    assert warrior.title == "Warrior (2)" and warrior.colour == CLASS_COLOURS["WARRIOR"]
-    assert warrior.body == "**60** Brannoch Steel · Thorgar Ironvale"
-    unknown = by_key["UNKNOWN"]
-    assert unknown.title == "Unknown class (1)" and unknown.body == "**30** Shade"
-    assert unknown.colour == GOLD
-    assert not any(c.buttons for _, c in result)
+def test_one_field_per_class_three_to_a_row_alphabetical_with_unknown_last():
+    [(_, board)] = boards(GUILD, ON, "Noctis", 1)
+    assert [n for n, _, _ in board.fields] == ["Druid (1)", "Hunter (1)", "Mage (1)", "Warrior (2)", "Unknown class (1)"]
+    assert all(inline for _, _, inline in board.fields)
+    fields = dict((n, v) for n, v, _ in board.fields)
+    assert fields["Warrior (2)"] == "`60` **Brannoch Steel**\n`60` **Thorgar Ironvale**"
+    assert fields["Unknown class (1)"] == "`30` **Shade**"
+    assert fields["Mage (1)"] == "`12` **Pip**"
 
 
-def test_class_names_and_levels_in_order():
-    chars = [Character("zed", 40, "deathknight"), Character("Amy", 58, "DEATHKNIGHT"), Character("bob", 40, "DEATHKNIGHT")]
-    (_, card), = cards(chars, ON, "Noctis", 1)[1:]
-    assert card.title == "Death Knight (3)"
-    assert card.body == "**58** Amy\n**40** bob · zed"
+def test_class_names_levels_in_order_and_levels_lined_up():
+    chars = [Character("zed", 40, "deathknight"), Character("Amy", 58, "DEATHKNIGHT"), Character("bob", 40, "DEATHKNIGHT"),
+             Character("Kit", 9, "MAGE")]
+    [(_, board)] = boards(chars, Settings(min_level=1), "Noctis", 1)
+    (dk_name, dk, _), (mage_name, mage, _) = board.fields
+    assert dk_name == "Death Knight (3)" and dk == "`58` **Amy**\n`40` **bob**\n`40` **zed**"
+    # Right-aligned to the widest level in the roster, the space inside the code span.
+    assert mage_name == "Mage (1)" and mage == "` 9` **Kit**"
+
+
+def test_class_emojis_head_their_fields():
+    icons = {"WARRIOR": "<:class_warrior:111>", "ROGUE": "<:class_rogue:222>"}  # nobody listed is a rogue
+    [(_, board)] = boards(GUILD, ON, "Noctis", 1, icons)
+    assert [n for n, _, _ in board.fields] == ["Druid (1)", "Hunter (1)", "Mage (1)", "<:class_warrior:111> Warrior (2)",
+                                              "Unknown class (1)"]
+    assert board.digest() != boards(GUILD, ON, "Noctis", 1)[0][1].digest()
+
+
+def test_class_icons_only_for_the_games_classes():
+    assert roster.class_icon("WARRIOR") == "classicon_warrior"
+    assert roster.class_icon("DEATHKNIGHT") == "classicon_deathknight"
+    assert roster.class_icon("UNKNOWN") is None and roster.class_icon("BARD") is None
+    assert roster.emoji_name("classicon_deathknight") == "class_deathknight"
+    assert roster.classes(GUILD, ON) == ["DRUID", "HUNTER", "MAGE", "WARRIOR", "UNKNOWN"]
 
 
 def test_markdown_in_names_is_escaped():
     chars = [Character("*Star*_x", 60, "MAGE", "Rank|One")]
-    result = cards(chars, ON, "No_ctis", 1)
-    assert result[0][1].title == "No\\_ctis · Guild roster"
-    assert "Rank\\|One 1" in result[0][1].body
-    assert result[1][1].body == "**60** \\*Star\\*\\_x"
+    [(_, board)] = boards(chars, ON, "No_ctis", 1)
+    assert board.title == "No\\_ctis · Guild roster"
+    assert "Rank\\|One 1" in board.description
+    assert board.fields == (("Mage (1)", "`60` **\\*Star\\*\\_x**", True),)
 
 
-def test_a_big_class_splits_without_losing_anyone():
+def test_big_classes_carry_on_below_in_their_column_across_messages():
     rng = random.Random(1)
     chars = [Character(f"Warrior{i:03d} Longsurname{i:03d}", rng.randint(10, 60), "WARRIOR") for i in range(400)]
-    chars += [Character(f"Mage{i}", 60, "MAGE") for i in range(3)]
-    result = cards(chars, ON, "Noctis", 1)
-    keys = [k for k, _ in result]
-    warrior = [(k, c) for k, c in result if k.startswith("WARRIOR")]
-    assert len(warrior) > 1
-    assert [k for k, _ in warrior] == ["WARRIOR"] + [f"WARRIOR#{i}" for i in range(2, len(warrior) + 1)]
-    assert warrior[0][1].title == "Warrior (400)"
-    assert all(c.title == "Warrior (continued)" for _, c in warrior[1:])
-    assert keys.index("MAGE") < keys.index("WARRIOR")
-    for _, c in result:
-        assert len(c.body) <= render.MESSAGE_LIMIT
-    names = [n for _, c in warrior for line in c.body.splitlines() for n in re.sub(r"^\*\*\d+\*\* ", "", line).split(" · ")]
-    assert sorted(names) == sorted(c.name for c in chars if c.cls == "WARRIOR")
-
-
-def test_one_level_too_long_for_a_post_splits_between_names():
-    chars = [Character(f"Character{i:03d} Withaverylongsurname", 60, "PRIEST") for i in range(200)]
-    result = cards(chars, ON, "Noctis", 1)[1:]
+    chars += [Character(f"Character{i:03d} Withaverylongsurname", 60, "PRIEST") for i in range(200)]
+    chars += [Character(f"Druid{i}", 30 + i, "DRUID") for i in range(3)]
+    chars += [Character(f"Nobody{i}", 20, None) for i in range(2)]
+    result = boards(chars, ON, "Noctis", 1)
+    assert_within_discord_limits(result)
     assert len(result) > 1
-    for _, c in result:
-        assert len(c.body) <= render.MESSAGE_LIMIT
-        assert all(line.startswith("**60** ") for line in c.body.splitlines())
-    names = [n for _, c in result for line in c.body.splitlines() for n in line[len("**60** "):].split(" · ")]
-    assert names == sorted(c.name for c in chars)
+    assert [k for k, _ in result] == ["roster"] + [f"roster#{i}" for i in range(2, len(result) + 1)]
+    assert result[0][1].title and all(not b.title and not b.description for _, b in result[1:])
+    assert all(b.colour == GOLD for _, b in result)
+
+    # Druid, Priest, Warrior in the first row; their rows are padded to three, so the columns stay
+    # in line; Unknown class alone in a last, short row.
+    all_rows = [row for _, b in result for row in rows(b)]
+    assert [n for n, _, _ in all_rows[0]] == ["Druid (3)", "Priest (200)", "Warrior (400)"]
+    assert all(len(row) == 3 for row in all_rows[:-1])
+    assert [n for n, _, _ in all_rows[-1]] == ["Unknown class (2)"]
+    assert all(row[0][1] == BLANK for row in all_rows[1:-1])  # the druids fit in one field
+    # Priests run out before the warriors: blank cells under them.
+    assert any(row[1] == (BLANK, BLANK, True) and row[2][1] != BLANK for row in all_rows[1:-1])
+    # A further message starts by naming the classes it carries on.
+    for _, b in result[1:]:
+        first = [n for n, _, _ in b.fields[:3]]
+        assert first[0] == BLANK and first[2] == "Warrior (continued)"
+        assert first[1] in ("Priest (continued)", BLANK)
+
+    # Nobody lost, nobody twice, everyone in their class's column, in order.
+    by_class = columns(result)
+    assert sorted(by_class) == ["Druid", "Priest", "Unknown class", "Warrior"]
+    for title, cls in (("Druid", "DRUID"), ("Priest", "PRIEST"), ("Warrior", "WARRIOR"), ("Unknown class", None)):
+        expected = [c.name for c in listed(chars, ON) if c.cls == cls]
+        assert names_in(by_class[title]) == expected
+    # 200 at one level: one name per line, by name.
+    assert names_in(by_class["Priest"]) == sorted(c.name for c in chars if c.cls == "PRIEST")
+
+
+def test_many_classes_fill_messages_by_whole_rows():
+    # Every class at its limit of one field: 13 classes, 5 rows; a message holds 8 rows of fields at
+    # most (25 fields) and 6000 characters, so rows go on to the next message whole.
+    classes = sorted(CLASS_COLOURS)
+    chars = [Character(f"{cls.title()}{i:02d} Withaverylongsurname", 60, cls) for cls in classes for i in range(25)]
+    result = boards(chars, ON, "Noctis", 1)
+    assert_within_discord_limits(result)
+    for _, b in result[:-1]:
+        assert len(b.fields) % 3 == 0
+    by_class = columns(result)
+    assert sum(len(v) for v in by_class.values()) == len(chars)
+    assert len({n for v in by_class.values() for n in names_in(v)}) == len(chars)
+
+
+def test_at_most_25_fields_a_message():
+    # Short classes (whatever the game calls them): it's the 25 fields, not the characters, that
+    # start another message, after eight whole rows.
+    chars = [Character(f"P{i}{j}", 60, f"CLASS{i:02d}") for i in range(40) for j in range(2)]
+    result = boards(chars, ON, "Noctis", 1)
+    assert_within_discord_limits(result)
+    assert [len(b.fields) for _, b in result] == [24, 16]
+    assert [n for n, _, _ in result[1][1].fields[:2]] == ["Class24 (2)", "Class25 (2)"]
+    assert sum(len(v) for v in columns(result).values()) == 80
 
 
 def test_nothing_clock_derived_in_the_posts():
     for scanned in (None, 1_700_000_000):
-        result = cards(GUILD, ON, "Noctis", scanned)
-        assert all(not c.footer for _, c in result[1:])
-        footer = result[0][1].footer
-        assert footer == (f"Roster read <t:{scanned}:R>" if scanned else "Waiting for an officer's roster")
-        assert not re.search(r"\d", footer.replace(str(scanned), ""))
-        assert all(not re.search(r"<t:", c.body) for _, c in result)
+        [(_, board)] = boards(GUILD, ON, "Noctis", scanned)
+        first = board.description.splitlines()[0]
+        clock = first.split("  ·  ")[-1]
+        assert clock == ("\N{CLOCK FACE TWO OCLOCK} " + (f"<t:{scanned}:R>" if scanned else "waiting for an officer's roster"))
+        assert all("<t:" not in n + v for n, v, _ in board.fields)
+        assert board.description.count("<t:") == (1 if scanned else 0)
 
 
 # ---- settings ------------------------------------------------------------------------------------

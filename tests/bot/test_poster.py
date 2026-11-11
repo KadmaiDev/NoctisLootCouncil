@@ -52,7 +52,10 @@ class FakeChannel:
             async def edit(self, **kwargs):
                 if mid not in channel.messages:
                     raise discord.NotFound(SimpleNamespace(status=404, reason="Not Found"), "Unknown Message")
-                if channel.messages[mid].get("embed"):  # an old-style post Discord won't turn into a layout
+                old = channel.messages[mid]
+                # Discord won't turn an old-style (embed) post into a layout, or a layout back into one.
+                if ((old.get("embed") is not None and kwargs.get("view") is not None)
+                        or (old.get("view") is not None and kwargs.get("embed") is not None)):
                     raise discord.HTTPException(SimpleNamespace(status=400, reason="Bad Request"), "Invalid Form Body")
                 channel.edits += 1
                 channel.messages[mid].update(kwargs)
@@ -66,7 +69,12 @@ class FakeChannel:
 
 
 def text(msg: dict) -> str:
-    """What a sent layout message says (a picture by its alt text)."""
+    """What a sent layout message says (a picture by its alt text), or an embed: its title,
+    description, then each field's name and value."""
+    embed = msg.get("embed")
+    if isinstance(embed, discord.Embed):
+        parts = [embed.title or "", embed.description or ""] + [f"{f.name}\n{f.value}" for f in embed.fields]
+        return "\n".join(p for p in parts if p)
     parts = []
     for c in msg["view"].walk_children():
         if isinstance(c, discord.ui.TextDisplay):

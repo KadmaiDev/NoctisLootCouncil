@@ -8,6 +8,7 @@ import re
 import secrets
 import sqlite3
 import time
+from collections.abc import Iterable
 from typing import Callable
 from zoneinfo import ZoneInfo
 
@@ -588,11 +589,22 @@ class Store:
             "SELECT DISTINCT icon FROM item_info WHERE found = 1 AND icon IS NOT NULL "
             "AND icon NOT IN (SELECT icon FROM icon_emojis) ORDER BY icon")]
 
+    def icon_emojis(self, icons: Iterable[str]) -> dict[str, str]:
+        """The emojis made so far for these icons: {icon: emoji markup}."""
+        wanted = sorted(set(icons))
+        if not wanted:
+            return {}
+        return {r["icon"]: r["emoji"] for r in self.conn.execute(
+            f"SELECT icon, emoji FROM icon_emojis WHERE icon IN ({','.join('?' * len(wanted))})", wanted)}
+
     def save_icon_emoji(self, icon: str, emoji: str) -> None:
-        """A new emoji: every list line with that icon changes, so their posts are marked for editing."""
+        """A new emoji: every list line with that icon changes, so their posts are marked for editing
+        (a class's: the roster, whose headings have it)."""
         with self.conn:
             self.conn.execute("INSERT INTO icon_emojis(icon, emoji) VALUES(?, ?) "
                               "ON CONFLICT(icon) DO UPDATE SET emoji = excluded.emoji", (icon, emoji))
+            if icon.startswith(roster.CLASS_ICON_PREFIX):
+                self._bump_roster()
             self.conn.execute(
                 "UPDATE log_groups SET dirty = dirty + 1 WHERE EXISTS (SELECT 1 FROM awards a "
                 "JOIN item_info ii ON ii.item_id = a.item_id WHERE ii.icon = ? "

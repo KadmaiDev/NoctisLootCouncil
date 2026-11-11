@@ -5,15 +5,18 @@ from __future__ import annotations
 
 import sqlite3
 
+import discord
 import pytest
 
 from bot import roster
 from bot.db import connect
-from bot.milestones import parse_milestone_upload
+from bot.milestones import GOLD, parse_milestone_upload
+from bot.model import RosterPost
 from bot.upload import BadUpload
+from bot.views import board_embed
 
 from .conftest import RAID, Clock
-from .test_poster import FakeChannel, make_bot, text
+from .test_poster import FakeChannel, FakeWowhead, make_bot, text
 
 ROSTER_CHANNEL, OTHER_CHANNEL = 30, 31
 
@@ -217,66 +220,110 @@ def keys(bot) -> list[str]:
     return [p.key for p in bot.store.roster_posts()]
 
 
-async def test_the_roster_is_posted_in_order_and_edited_in_place(tmp_path):
+def big_guild(n: int) -> list[tuple]:
+    """Enough warriors with long names that the roster needs more than one message."""
+    return MEMBERS + [(f"Warrior{i:03d} Withaverylongsurname", 20 + i % 40, "WARRIOR", "Raider") for i in range(n)]
+
+
+async def test_the_roster_is_one_embed_edited_in_place(tmp_path):
     channels = {ROSTER_CHANNEL: FakeChannel(ROSTER_CHANNEL)}
     bot = roster_bot(tmp_path, channels)
     upload(bot)
     await sync(bot)
     ch = channels[ROSTER_CHANNEL]
-    assert keys(bot) == ["header", "DRUID", "MAGE", "WARRIOR"] and ch.sends == 4
-    posted = [text(m) for m in ch.messages.values()]
-    assert "Noctis" in posted[0] and "Druid" in posted[1] and "Mage" in posted[2] and "Warrior" in posted[3]
-    assert "Pip Newly" not in "\n".join(posted)  # a trial: hidden
+    assert keys(bot) == ["roster"] and ch.sends == 1
+    [msg] = ch.messages.values()
+    embed = msg["embed"]
+    assert isinstance(embed, discord.Embed) and "view" not in msg
+    assert embed.title == "Noctis · Guild roster" and embed.colour.value == GOLD
+    assert [(f.name, f.inline) for f in embed.fields] == [("Druid (1)", True), ("Mage (1)", True), ("Warrior (1)", True)]
+    assert "Pip Newly" not in text(msg)  # a trial: hidden
 
     # Nothing changed: nothing sent or edited, even after a restart.
     await sync(bot)
     bot2 = make_bot(tmp_path, channels)
     bot2.store.mark_all_dirty()
     await sync(bot2)
-    assert ch.sends == 4 and ch.edits == 0
+    assert ch.sends == 1 and ch.edits == 0
 
-    # A mage levels: only the mages' post (and nothing else) is edited.
-    mages = next(p.message_id for p in bot2.store.roster_posts() if p.key == "MAGE")
+    # A mage levels: the one post is edited, with the embed only.
     upload(bot2, [("Bran Holloway", 32, "MAGE", "Raider") if m[0] == "Bran Holloway" else m for m in MEMBERS],
            at=bot2.store.roster_scanned())
     await sync(bot2)
-    assert ch.sends == 4 and ch.edits == 1
-    assert "**32** Bran Holloway" in text(ch.messages[mages])
+    assert ch.sends == 1 and ch.edits == 1
+    assert "`32` **Bran Holloway**" in text(ch.messages[bot2.store.roster_posts()[0].message_id])
+    assert "view" not in msg and "attachments" not in msg
 
 
-async def test_a_class_more_or_less_reposts_everything_in_order(tmp_path):
+def test_a_board_becomes_an_embed():
+    chars = [roster.Character(f"Warrior{i:03d} Withaverylongsurname", 60, "WARRIOR") for i in range(200)]
+    result = roster.boards(chars, roster.Settings(on=True, channel_id=1), "Noctis", 1, {"WARRIOR": "<:class_warrior:9>"})
+    first, second = (board_embed(b) for _, b in result[:2])
+    assert first.title == "Noctis · Guild roster" and first.description.startswith("\N{BUSTS IN SILHOUETTE} **200**")
+    assert first.fields[0].name == "<:class_warrior:9> Warrior (200)" and first.fields[0].inline
+    assert second.title is None and second.description is None and second.colour == first.colour
+    assert [(f.name, f.value, f.inline) for f in second.fields] == list(result[1][1].fields)
+    assert second.fields[0].name == "<:class_warrior:9> Warrior (continued)"
+    for e, (_, b) in zip((first, second), result):
+        # discord.py's own count of an embed's characters (code points: ours, in UTF-16 units, is never less)
+        assert len(e) <= b.size() <= 6000
+
+
+async def test_a_roster_grown_into_more_messages_is_posted_again_in_order(tmp_path):
     channels = {ROSTER_CHANNEL: FakeChannel(ROSTER_CHANNEL)}
     bot = roster_bot(tmp_path, channels)
     upload(bot)
     await sync(bot)
     ch = channels[ROSTER_CHANNEL]
     first = set(ch.messages)
-    # Vespera, the only druid, leaves; a paladin joins: the posts are deleted and posted again.
+    # A hundred and fifty warriors join: too many for one message; the post is deleted and they're posted in order.
     bot.store._clock.t += 600
-    upload(bot, [m for m in MEMBERS if m[2] != "DRUID"] + [("Lia Dawn", 25, "PALADIN", "Raider")])
+    upload(bot, big_guild(150))
     await sync(bot)
-    assert keys(bot) == ["header", "MAGE", "PALADIN", "WARRIOR"]
-    assert not first & set(ch.messages) and len(ch.messages) == 4
+    assert keys(bot)[:2] == ["roster", "roster#2"] and len(keys(bot)) == len(ch.messages)
+    assert not first & set(ch.messages)
     assert [p.message_id for p in bot.store.roster_posts()] == sorted(ch.messages)
+    assert ch.messages[min(ch.messages)]["embed"].title == "Noctis · Guild roster"
+    # Level 60 and up only: back to one message.
+    bot.store.set_roster_settings(min_level=60)
+    await sync(bot)
+    assert keys(bot) == ["roster"] and len(ch.messages) == 1
+    assert [f.name for f in next(iter(ch.messages.values()))["embed"].fields] == ["Warrior (1)"]
+
+
+async def test_cards_from_before_are_replaced_by_the_embed(tmp_path):
+    """A database from the card version holds posts keyed header, DRUID...: they're deleted and the
+    embed is posted (a layout post can't be edited into an embed)."""
+    channels = {ROSTER_CHANNEL: FakeChannel(ROSTER_CHANNEL)}
+    bot = roster_bot(tmp_path, channels)
+    ch = channels[ROSTER_CHANNEL]
+    for position, key in enumerate(("header", "DRUID", "MAGE", "WARRIOR")):
+        msg = await ch.send(view=object())
+        bot.store.save_roster_post(RosterPost(key, position, ROSTER_CHANNEL, msg.id, "old"))
+    upload(bot)
+    await sync(bot)
+    assert keys(bot) == ["roster"] and len(ch.messages) == 1 and ch.edits == 0
+    assert isinstance(next(iter(ch.messages.values()))["embed"], discord.Embed)
 
 
 async def test_a_deleted_post_or_a_new_channel_moves_the_posts(tmp_path):
     channels = {ROSTER_CHANNEL: FakeChannel(ROSTER_CHANNEL), OTHER_CHANNEL: FakeChannel(OTHER_CHANNEL)}
     bot = roster_bot(tmp_path, channels)
-    upload(bot)
+    upload(bot, big_guild(150))
     await sync(bot)
     ch, other = channels[ROSTER_CHANNEL], channels[OTHER_CHANNEL]
-    # Someone deletes the mages' post; the next change to it finds it gone and reposts all four.
-    mages = next(p.message_id for p in bot.store.roster_posts() if p.key == "MAGE")
-    ch.messages.pop(mages)
-    upload(bot, [("Bran Holloway", 33, "MAGE", "Raider") if m[0] == "Bran Holloway" else m for m in MEMBERS],
+    count = len(keys(bot))
+    assert count > 1 and ch.sends == count
+    # Someone deletes the first post; the next change to it finds it gone and reposts them all.
+    ch.messages.pop(bot.store.roster_posts()[0].message_id)
+    upload(bot, [("Bran Holloway", 33, "MAGE", "Raider") if m[0] == "Bran Holloway" else m for m in big_guild(150)],
            at=bot.store.roster_scanned())
     await sync(bot)
-    assert len(ch.messages) == 4 and ch.sends == 8
+    assert len(ch.messages) == count and ch.sends == 2 * count
     # The channel changes: gone from the old one, posted in the new one.
     bot.store.set_roster_settings(channel_id=OTHER_CHANNEL)
     await sync(bot)
-    assert ch.messages == {} and len(other.messages) == 4
+    assert ch.messages == {} and len(other.messages) == count
     assert {p.channel_id for p in bot.store.roster_posts()} == {OTHER_CHANNEL}
 
 
@@ -290,15 +337,16 @@ async def test_off_leaves_the_posts_as_they_are(tmp_path):
     bot.store._clock.t += 600
     upload(bot, MEMBERS[:2])  # the mage and the trial have left
     await sync(bot)
-    assert ch.sends == 4 and ch.edits == 0 and len(ch.messages) == 4
+    assert ch.sends == 1 and ch.edits == 0 and "Bran Holloway" in text(next(iter(ch.messages.values())))
     # Milestones off stops it too (the roster comes with their upload).
     bot.store.set_roster_settings(on=True)
     bot.store.set_milestone_settings(on=False)
     await sync(bot)
-    assert ch.sends == 4 and len(ch.messages) == 4
+    assert ch.sends == 1 and ch.edits == 0
     bot.store.set_milestone_settings(on=True)
     await sync(bot)
-    assert len(ch.messages) == len(keys(bot)) == 3  # the header, the druid and the warrior
+    [msg] = ch.messages.values()
+    assert ch.edits == 1 and [f.name for f in msg["embed"].fields] == ["Druid (1)", "Warrior (1)"]
 
 
 async def test_on_again_brings_back_posts_deleted_while_off(tmp_path):
@@ -309,10 +357,10 @@ async def test_on_again_brings_back_posts_deleted_while_off(tmp_path):
     ch = channels[ROSTER_CHANNEL]
     bot.store.set_roster_settings(on=False)
     await sync(bot)
-    ch.messages.pop(next(p.message_id for p in bot.store.roster_posts() if p.key == "DRUID"))
+    ch.messages.clear()
     bot.store.set_roster_settings(on=True)
     await sync(bot)
-    assert len(ch.messages) == 4 and ch.sends == 8
+    assert len(ch.messages) == 1 and ch.sends == 2
     assert [p.message_id for p in bot.store.roster_posts()] == sorted(ch.messages)
 
 
@@ -324,4 +372,79 @@ async def test_no_channel_waits_and_retries(tmp_path):
     assert bot.store.roster_dirty() > 0 and keys(bot) == []
     channels[ROSTER_CHANNEL] = FakeChannel(ROSTER_CHANNEL)
     await sync(bot)
-    assert bot.store.roster_dirty() == 0 and len(keys(bot)) == 4
+    assert bot.store.roster_dirty() == 0 and keys(bot) == ["roster"]
+
+
+# ---- class emojis --------------------------------------------------------------------------------
+
+async def test_class_emojis_are_made_once_and_the_roster_edited_when_they_arrive(tmp_path):
+    channels = {ROSTER_CHANNEL: FakeChannel(ROSTER_CHANNEL)}
+    bot = roster_bot(tmp_path, channels)
+    wowhead = FakeWowhead({})
+    wowhead.install(bot)
+    asked: list[str] = []
+
+    async def fetch_icon(session, icon):
+        asked.append(icon)
+        return b"jpeg"
+    bot.fetch_icon = fetch_icon
+    upload(bot, MEMBERS + [("Odd One", 30, "BARD", "Raider")])  # not a class the game has: no icon asked for
+    await sync(bot)
+    ch = channels[ROSTER_CHANNEL]
+    # The trial's priest is hidden, so no priest icon either.
+    assert sorted(asked) == ["classicon_druid", "classicon_mage", "classicon_warrior"]
+    assert sorted(wowhead.emojis) == ["class_druid", "class_mage", "class_warrior"]
+    [msg] = ch.messages.values()
+    names = [f.name for f in msg["embed"].fields]
+    assert names[0] == "Bard (1)" and names[1].startswith("<:class_druid:") and names[1].endswith("> Druid (1)")
+    assert ch.sends == 1
+
+    # Nothing more to make: nothing asked, nothing edited.
+    bot.store.mark_all_dirty()
+    await sync(bot)
+    assert len(asked) == 3 and len(wowhead.emojis) == 3 and ch.edits == 0
+
+    # A priest joins: one more icon, and the roster is edited with it.
+    upload(bot, MEMBERS + [("Odd One", 30, "BARD", "Raider"), ("Lia Dawn", 25, "PRIEST", "Raider")],
+           at=bot.store.roster_scanned())
+    await sync(bot)
+    assert asked[-1] == "classicon_priest" and wowhead.emojis[-1] == "class_priest"
+    assert any(f.name.endswith("> Priest (1)") for f in msg["embed"].fields)
+    assert ch.sends == 1
+
+
+async def test_a_class_emoji_that_arrives_later_edits_the_roster(tmp_path):
+    channels = {ROSTER_CHANNEL: FakeChannel(ROSTER_CHANNEL)}
+    bot = roster_bot(tmp_path, channels)
+    wowhead = FakeWowhead({})
+    wowhead.install(bot)
+    up = False
+
+    async def fetch_icon(session, icon):
+        return b"jpeg" if up else None  # Wowhead's pictures are down at first
+    bot.fetch_icon = fetch_icon
+    upload(bot)
+    await sync(bot)
+    ch = channels[ROSTER_CHANNEL]
+    [msg] = ch.messages.values()
+    assert [f.name for f in msg["embed"].fields] == ["Druid (1)", "Mage (1)", "Warrior (1)"]  # posted without
+    assert wowhead.emojis == [] and bot.store.roster_dirty() == 0
+    # Back up, and the pause over: the emojis are made and the roster edited once.
+    up = True
+    bot._lookup_paused_until = 0
+    bot.notify()
+    await sync(bot)
+    assert len(wowhead.emojis) == 3 and ch.sends == 1 and ch.edits == 1
+    assert all(f.name.startswith("<:class_") for f in msg["embed"].fields)
+
+
+async def test_without_lookups_no_icons_are_asked_for(tmp_path):
+    channels = {ROSTER_CHANNEL: FakeChannel(ROSTER_CHANNEL)}
+    bot = roster_bot(tmp_path, channels)  # wowhead=False, as in the tests and the harness
+
+    async def fetch_icon(session, icon):
+        raise AssertionError("asked for an icon with lookups off")
+    bot.fetch_icon = fetch_icon
+    upload(bot)
+    await sync(bot)
+    assert keys(bot) == ["roster"]

@@ -1,5 +1,5 @@
-"""/roster settings: the guild roster channel (roster.py), a few posts the bot keeps edited, listing the
-guild's characters by class. Officers only. The roster comes with the level milestones upload, so it
+"""/roster settings: the guild roster channel (roster.py), one embed the bot keeps edited (more only when
+Discord's limits force it), listing the guild's characters by class. Officers only. The roster comes with the level milestones upload, so it
 needs milestones on with a guild too. The bot sets no permissions: it posts in whichever channel is set."""
 from __future__ import annotations
 

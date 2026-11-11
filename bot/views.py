@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from . import render, titleimage
+from . import render, roster, titleimage
 from .checks import is_officer
 from .rules import COUNCIL
 
@@ -168,3 +168,11 @@ def card_layout(card: render.Card, item_id: int | None = None) -> discord.ui.Lay
     if card.buttons and item_id is not None:
         view.add_item(discord.ui.ActionRow(*(card_button(b, item_id) for b in card.buttons)))
     return view
+
+
+def board_embed(board: roster.Board) -> discord.Embed:
+    """A roster board as a classic embed (not a layout: inline fields give Raid-Helper's columns)."""
+    embed = discord.Embed(title=board.title or None, description=board.description or None, colour=board.colour)
+    for name, value, inline in board.fields:
+        embed.add_field(name=name, value=value, inline=inline)
+    return embed
