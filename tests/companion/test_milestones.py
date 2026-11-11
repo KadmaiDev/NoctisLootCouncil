@@ -156,6 +156,22 @@ def test_only_the_bots_guild_is_sent(tmp_path):
     assert comp.upload_milestones() == 1 and len(bot.sent) == 2
 
 
+def test_the_roster_says_when_it_was_read_and_when_each_member_was_last_in_it(tmp_path):
+    wow = make_wow(tmp_path)
+    path = write_milestones(wow, 1_800_000_000)
+    [body] = savedfile.build_milestone_uploads(savedfile.read_saved_file(path), "Noctis")
+    assert body["scanned"] == 1_800_000_000
+    assert [(m["name"], m["seen"]) for m in body["members"]] == [("Thorn Gale", 1_800_000_000),
+                                                               ("Vespera Ashward", 1_800_000_000)]
+    # A guild never read (no `scanned`) sends none; neither does a member without `seen`.
+    [other] = savedfile.build_milestone_uploads(savedfile.read_saved_file(path), "Other Guild")
+    assert "scanned" not in other
+    db = savedfile.read_saved_file(path)
+    del db["milestones"]["guilds"]["Noctis|Forever"]["members"]["thorn gale"]["seen"]
+    [body] = savedfile.build_milestone_uploads(db, "Noctis")
+    assert "seen" not in body["members"][0] and body["members"][1]["seen"] == 1_800_000_000
+
+
 def test_nothing_is_sent_while_the_bot_has_milestones_off(tmp_path):
     wow = make_wow(tmp_path)
     write_milestones(wow, 1_800_000_000)
@@ -225,3 +241,6 @@ async def test_round_trip_with_the_real_api(tmp_path, aiohttp_server):
     [m] = store.pending_milestones()
     assert (m.name, m.level, m.rank) == ("Vespera Ashward", 20, "Raider")
     assert store.milestone_counts() == (2, 0, 1)  # Noctis's two; the alt's guild never reached the bot
+    # The roster channel's side: both in the guild now, as of the file's roster read (clamped to the bot's clock).
+    assert sorted(c.name for c in store.roster_characters()) == ["Thorn Gale", "Vespera Ashward"]
+    assert store.roster_scanned() is not None

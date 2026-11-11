@@ -71,6 +71,7 @@ class Member:
     level: int
     cls: str | None = None
     rank: str | None = None
+    seen: int | None = None  # the last roster read that had them (older companions don't send it)
 
 
 @dataclass(frozen=True)
@@ -89,6 +90,7 @@ class MilestoneUpload:
     uploader: str | None
     members: list[Member]
     levels: list[LevelUp]
+    scanned: int | None = None  # the uploader's last roster read: a member seen before it has left
 
 
 def _text(v: Any, what: str, required: bool = False) -> str | None:
@@ -103,6 +105,10 @@ def _int(v: Any, what: str) -> int:
     if not isinstance(v, int) or isinstance(v, bool) or v < 0:
         raise BadUpload(f"{what} should be a whole number")
     return v
+
+
+def _optional_int(v: Any, what: str) -> int | None:
+    return None if v is None else _int(v, what)
 
 
 def _level(v: Any, what: str) -> int:
@@ -125,7 +131,8 @@ def parse_milestone_upload(body: Any) -> MilestoneUpload:
         if not isinstance(m, dict):
             raise BadUpload(f"members[{i}] should be an object")
         members.append(Member(_text(m.get("name"), f"members[{i}].name", True), _level(m.get("level"), f"members[{i}].level"),
-                              _text(m.get("class"), f"members[{i}].class"), _text(m.get("rank"), f"members[{i}].rank")))
+                              _text(m.get("class"), f"members[{i}].class"), _text(m.get("rank"), f"members[{i}].rank"),
+                              _optional_int(m.get("seen"), f"members[{i}].seen")))
     for i, e in enumerate(levels_in):
         if not isinstance(e, dict):
             raise BadUpload(f"levels[{i}] should be an object")
@@ -135,7 +142,8 @@ def parse_milestone_upload(body: Any) -> MilestoneUpload:
         levels.append(LevelUp(_text(e.get("name"), f"levels[{i}].name", True), frm, to, _int(e.get("at"), f"levels[{i}].at"),
                               _text(e.get("class"), f"levels[{i}].class")))
     return MilestoneUpload(guild=_text(body.get("guild"), "guild", True), realm=_text(body.get("realm") or None, "realm"),
-                           uploader=_text(body.get("uploader"), "uploader"), members=members, levels=levels)
+                           uploader=_text(body.get("uploader"), "uploader"), members=members, levels=levels,
+                           scanned=_optional_int(body.get("scanned"), "scanned"))
 
 
 # ---- which milestone -----------------------------------------------------------------------------

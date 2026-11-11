@@ -96,6 +96,16 @@ class Post:
 
 
 @dataclass(frozen=True)
+class RosterPost:
+    """One of the guild roster channel's posts, `position` its place in the channel."""
+    key: str
+    position: int
+    channel_id: int
+    message_id: int
+    digest: str
+
+
+@dataclass(frozen=True)
 class UploadResult:
     new_items: int
     new_awards: int

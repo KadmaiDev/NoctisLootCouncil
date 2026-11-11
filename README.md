@@ -11,7 +11,7 @@ The Noctis guild's loot system for WoW: Forever: loot rolls and a loot council i
 - The **addon** runs the rolls and the council in game and keeps the list of raid drops; its README is the player's guide.
 - The **loot bot**, always on, keeps the official item list, runs the officers' votes in Discord and posts the loot log. It also serves a small HTTP API.
 - The **companion app**, a small window and a tray icon, uploads what the addon saw in the raid and writes the latest decisions where the game can load them.
-- **Level milestones**, an officers' part of the addon (off until turned on), notes guild members' level-ups from the guild roster; the companion sends them and the bot congratulates them in Discord ([Level milestones](#level-milestones)).
+- **Level milestones**, an officers' part of the addon (off until turned on), notes guild members' level-ups from the guild roster; the companion sends them and the bot congratulates them in Discord ([Level milestones](#level-milestones)). The same roster can keep a channel listing the guild's characters by class ([Guild roster channel](#guild-roster-channel)).
 
 ### How it hangs together
 
@@ -194,6 +194,7 @@ Everything is in the one SQLite file. A consistent copy while the bot runs: `sql
 | `/loot status [item]` | everyone | Just for you: what's decided, or one item. |
 | `/loot token` | officers | Just for you: a token for the companion app. Running it again replaces the old one. |
 | `/milestones settings [guild] [channel] [levels] [announce]` | officers | Just for you: shows or changes the [level milestones](#level-milestones). |
+| `/roster settings [channel] [min_level] [hide_ranks] [show]` | officers | Just for you: shows or changes the [guild roster channel](#guild-roster-channel). |
 | `/loot wcl <link>` | officers | Links a Warcraft Logs report to its night's #loot-log post: "Warcraft Logs" under the heading, and each boss heading to that boss's kill (the last one before its loot went out). The post that takes it is the one on the report's night whose loot falls in the report's time; a report linked before the upload is used once the loot comes. Linking another report that holds that night's loot replaces it. The report must be public or unlisted. Needs `WCL_CLIENT_ID` and `WCL_CLIENT_SECRET`. |
 
 The posts are edited in place as votes, priorities, suggestions and uploads change things; restarting the bot never reposts. If a post is deleted, the bot posts it again on the next change.
@@ -231,6 +232,19 @@ In game, the addon can also tell you, off until you turn it on (`/nlc milestones
 - `/nlc milestones sound on`: a sound when someone reaches a milestone, your cue to `/reload`, since the companion can only send it to Discord after the game saves. Turning it on plays it once so you know what to listen for. It uses your sound effects volume.
 - `/nlc milestones levels 10, 20, 30` changes the levels told about in game (`/nlc milestones levels default` puts back 10 to 60). The bot's levels are set in Discord.
 
+### Guild roster channel
+
+The bot can keep a few posts in a channel listing the guild's characters: a header with the totals, then one post per class, by level. They're edited in place as people level, join or leave. The roster comes with the level milestones upload, so milestones must be on with a guild (above), and only companions from 0.2.4 send what it needs.
+
+```
+/roster settings channel:#roster hide_ranks:Trial show:True     (in Discord, once)
+```
+
+- **channel** is any channel you pick; the bot sets no permissions there, so it's for officers unless the channel is open to others. Give the bot View Channel and Send Messages. Changing it moves the posts: the old ones are deleted.
+- **min_level** lists characters at that level and above (default 10). **hide_ranks** leaves out these ranks, e.g. `Trial` (`none` shows every rank).
+- **show:False** stops updating; the posts stay as they are.
+- Someone has left once a later roster read by any officer doesn't have them. When the posts need reordering (a new class, say), the bot deletes its roster posts and posts them again.
+
 ---
 
 ## For officers: the companion app
@@ -258,7 +272,7 @@ It keeps its settings and token in `companion.ini`, and its log in `companion.lo
 What it does each pass:
 
 - For every `WTF\Account\*\SavedVariables\NoctisLootCouncil.lua` that changed since it last uploaded: reads it and sends it to the bot. (The game writes it at `/reload` and logout.)
-- If you turned milestones on in game: from each of those files, sends your guild's roster and level-ups (only while the bot has milestones on).
+- If you turned milestones on in game: from each of those files, sends your guild's roster and level-ups (only while the bot has milestones on), for the milestones and the guild roster channel.
 - Fetches the decisions, and if they changed, writes `Interface\AddOns\NoctisLootDecisions\` (two `.toc` files and `Decisions.lua`). The game loads it at the next `/reload` or login. It shows in the AddOns list as "Noctis Loot Decisions", beside the main addon with its icon; leave it enabled.
 
 ### What it reads, writes and sends
@@ -286,7 +300,7 @@ It **talks to** the bot address in `companion.ini`, and nowhere else:
 
 - `POST /api/upload`, with what the saved file holds about raid loot: the items (name, link, quality, where and when they dropped, the decision and note), the drops it saw and the awards (who won what, their class, how, the roll, the note and bid tags) and those taken back with `/nlc undo`, and the name of the character that uploaded. The account folder's name stays on your PC.
 - `GET /api/decisions`: the council and roll decisions, and the newest companion version (for the update notice).
-- With milestones on in game only: `GET /api/milestones` (whether the bot is taking level-ups, and for which guild; asked at most every 10 minutes), then, while it is, `POST /api/milestones` with that guild's roster as your addon saw it (each member's name, class, level and rank), the level-ups it noticed (who, from which level to which, when) and the name of the character that uploaded. The rosters of any other guild your characters are in stay on your PC.
+- With milestones on in game only: `GET /api/milestones` (whether the bot is taking level-ups, and for which guild; asked at most every 10 minutes), then, while it is, `POST /api/milestones` with that guild's roster as your addon saw it (each member's name, class, level, rank and when your addon last saw them in the roster, and when it last read the roster, so the bot can tell who has left), the level-ups it noticed (who, from which level to which, when) and the name of the character that uploaded. The rosters of any other guild your characters are in stay on your PC.
 
 All of these carry your token. It tells the bot the upload is yours, and does nothing else: the bot accepts it for these requests only, and it gives no access to your Discord or Battle.net account. `/loot token` replaces it.
 

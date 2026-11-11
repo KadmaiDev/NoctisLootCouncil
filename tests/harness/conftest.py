@@ -62,7 +62,8 @@ async def stop_bot(running: RunningBot) -> None:
 @pytest.fixture
 async def guild():
     fake = FakeDiscord()
-    for name in ("loot-officers", "loot-items", "loot-priorities", "loot-log", "general", "milestones"):
+    for name in ("loot-officers", "loot-items", "loot-priorities", "loot-log", "general", "milestones", "guild-roster",
+                 "officers-roster"):
         fake.add_channel(name)
     officers = [fake.add_member(n, roles=[fake.officer_role]) for n in ("Seren", "Doran", "Kadmai")]
     raiders = [fake.add_member(n) for n in ("Ilsa", "Vespera")]

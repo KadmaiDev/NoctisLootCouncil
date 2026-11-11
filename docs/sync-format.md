@@ -10,7 +10,7 @@ addon ──saved file──▶ companion app ──POST /api/upload──▶ bo
 addon ◀─NoctisLootDecisions addon── companion app ◀──GET /api/decisions── bot
 ```
 
-Officers who turn level milestones on in the addon send guild members' level-ups the same way (section 5).
+Officers who turn level milestones on in the addon send guild members' level-ups (and the guild roster) the same way (section 5).
 
 ## 1. The addon's saved file (read by the companion app)
 
@@ -190,7 +190,7 @@ only on characters the game says are guild officers (`C_GuildInfo.IsGuildOfficer
 unless a saved file has them on.
 
 ```
-addon ──NoctisLootCouncil.lua, milestones──▶ companion ──GET, then POST /api/milestones──▶ bot ──▶ #milestones
+addon ──NoctisLootCouncil.lua, milestones──▶ companion ──GET, then POST /api/milestones──▶ bot ──▶ #milestones, the roster channel
 ```
 
 **The saved file** is the addon's own (section 1): `NoctisLootCouncilDB.milestones`, absent until
@@ -201,9 +201,9 @@ addon ──NoctisLootCouncil.lua, milestones──▶ companion ──GET, then
 | `on` | `true` / nil | turned on in game; the companion sends nothing from a file without it |
 | `guilds` | table | by `"<guild>\|<realm>"`: each guild a character on the account is in, kept apart |
 | `guilds[k].name`, `.realm` | string | the guild's name and realm (`GetGuildInfo`, else `GetRealmName`) |
-| `guilds[k].scanned` | number / nil | the last roster read |
+| `guilds[k].scanned` | number / nil | the last roster read (that found anyone) |
 | `tell`, `sound`, `levels` | | the addon's own in-game settings (`/nlc milestones tell`, `sound`, `levels`); the companion ignores them |
-| `guilds[k].members` | table | by lower-cased name: `{ name, class, level, rank, seen }` (`class` is the file name, e.g. `DRUID`) |
+| `guilds[k].members` | table | by lower-cased name: `{ name, class, level, rank, seen }` (`class` is the file name, e.g. `DRUID`; `seen` the last roster read that had them). Members who left are kept: their `seen` stays older than `scanned` |
 | `guilds[k].levels` | list | level-ups, oldest first: `{ name, class, from, to, at, since }`: last seen at `from` (at `since`), at `to` when read at `at`. Kept 30 days |
 
 The first read of a guild, and the first sighting of a member, only note the level: nothing
@@ -217,14 +217,27 @@ The companion asks at most every 10 minutes, and only when a saved file with mil
 whose name is the bot's guild (case doesn't matter); other guilds' rosters are never sent:
 
 ```json
-{ "uploader": "Kadmai Moonwhisper", "guild": "Noctis", "realm": "Forever",
-  "members": [ { "name": "Vespera Ashward", "class": "DRUID", "level": 20, "rank": "Raider" } ],
+{ "uploader": "Kadmai Moonwhisper", "guild": "Noctis", "realm": "Forever", "scanned": 1793070000,
+  "members": [ { "name": "Vespera Ashward", "class": "DRUID", "level": 20, "rank": "Raider", "seen": 1793070000 } ],
   "levels": [ { "name": "Vespera Ashward", "class": "DRUID", "from": 19, "to": 20, "at": 1793070000 } ] }
 ```
 
+`scanned` (the guild's) and each member's `seen` are unix times, whole numbers, both optional:
+companions before 0.2.4 send neither, and a guild never read has no `scanned`.
+
 The bot ignores it (`200 {"ok": true, "ignored": "...", "new_milestones": 0}`) while milestones
 are off or the guild isn't its own. Otherwise it keeps each character at the highest level any
-roster showed, and for each level-up picks the highest milestone level in (`from`, `to`]: 18 to
+roster showed, with the name, class and rank of the newest roster that had them (the largest
+`seen`; from an upload without `seen` only while no upload has given one for them). It also keeps
+each character's newest `seen` and the newest `scanned` of any upload (neither later than the
+bot's own clock). **The guild roster channel** (`/roster settings`) lists the characters in the
+guild now: those whose newest `seen` is no more than 300 seconds before the newest `scanned` (a
+roster read stamps every member it finds with the same time, so a later read by any officer that
+lacks someone means they left). Characters only ever reported without `seen` aren't listed. An
+upload whose roster read found fewer than half the characters now listed (the client hadn't
+loaded it all) is taken without its times: nobody drops off because of it.
+
+For each level-up it picks the highest milestone level in (`from`, `to`]: 18 to
 31 earns 30, not 20 and 30. It posts that milestone unless the character already has it or a
 higher one (another officer's roster saw it first), it was noticed more than 7 days ago, or
 before milestones were last turned on. The top milestone (60 by default) records how many

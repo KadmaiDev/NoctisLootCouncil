@@ -92,7 +92,7 @@ def read_saved_file(path: Path, variable: str = DB_VARIABLE) -> dict:
 # saved file. Without it, or while it's off, the companion does nothing about milestones (it doesn't even
 # ask the bot).
 
-MEMBER_FIELDS = ("name", "class", "level", "rank")
+MEMBER_FIELDS = ("name", "class", "level", "rank", "seen")  # seen: the last roster read that had them
 LEVEL_FIELDS = ("name", "class", "from", "to", "at")
 
 
@@ -117,6 +117,10 @@ def build_milestone_uploads(db: dict, guild: str) -> list[dict]:
         members = [_pick(m, MEMBER_FIELDS) for _, m in sorted(_pairs(g.get("members")), key=lambda kv: str(kv[0]))
                    if isinstance(m, dict)]
         levels = [_pick(e, LEVEL_FIELDS) for e in _entries(g.get("levels")) if isinstance(e, dict)]
-        bodies.append({"uploader": me, "guild": g["name"], "realm": g.get("realm") if isinstance(g.get("realm"), str) else None,
-                       "members": members, "levels": levels})
+        body = {"uploader": me, "guild": g["name"], "realm": g.get("realm") if isinstance(g.get("realm"), str) else None,
+                "members": members, "levels": levels}
+        # The last roster read: members whose `seen` is older have left the guild (the addon keeps them).
+        if isinstance(g.get("scanned"), int) and not isinstance(g.get("scanned"), bool):
+            body["scanned"] = g["scanned"]
+        bodies.append(body)
     return bodies

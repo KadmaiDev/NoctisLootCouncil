@@ -22,12 +22,12 @@ from aiohttp import web
 from discord import app_commands
 from discord.ext import commands
 
-from . import importer, iteminfo, milestones, releases, render, titleimage, warcraftlogs
+from . import importer, iteminfo, milestones, releases, render, roster, titleimage, warcraftlogs
 from .api import create_app
 from .checks import NotOfficer
 from .config import Config
 from .db import connect
-from .model import Post
+from .model import Post, RosterPost
 from .store import Store
 from .views import DYNAMIC_ITEMS, card_layout
 
@@ -88,6 +88,7 @@ class LootBot(commands.Bot):
     async def setup_hook(self) -> None:
         await self.load_extension("bot.cogs.loot")
         await self.load_extension("bot.cogs.milestones")
+        await self.load_extension("bot.cogs.roster")
         if self.config.ch_in_game_chat:
             await self.load_extension("bot.cogs.chatcleanup")
         self.add_dynamic_items(*DYNAMIC_ITEMS)
@@ -164,6 +165,75 @@ class LootBot(commands.Bot):
             if await self.sync_log_group(inst, night):
                 self.store.clear_log_dirty(inst, night, generation)
         await self.post_milestones()
+        generation = self.store.roster_dirty()
+        if generation and await self.sync_roster():
+            self.store.clear_roster_dirty(generation)
+
+    def roster_ready(self) -> bool:
+        """The roster channel is posted to while it's on with a channel and milestones (whose upload
+        carries the roster) are on with a guild."""
+        ms = self.store.milestone_settings()
+        return self.store.roster_settings().ready and ms.on and bool(ms.guild)
+
+    async def sync_roster(self) -> bool:
+        """Make the roster channel's posts match the roster: the same posts in the same order are
+        edited where they changed; otherwise (a class more or less, a long one split, the channel
+        changed, a post deleted) the bot's roster posts are deleted and all sent again in order, as
+        Discord can't reorder messages. While it's off the posts are left as they are. Returns False
+        if something has to be retried."""
+        async with self._locks["roster"]:
+            if not self.roster_ready():
+                return True
+            s, ms = self.store.roster_settings(), self.store.milestone_settings()
+            cards = roster.cards(self.store.roster_characters(), s, ms.guild or "", self.store.roster_scanned())
+            posts = self.store.roster_posts()
+            channel = self._text_channel(s.channel_id)
+            if channel is None:
+                return False
+            if [p.key for p in posts] == [k for k, _ in cards] and all(p.channel_id == channel.id for p in posts):
+                rebuild = False
+                for post, (_, card) in zip(posts, cards):
+                    digest = card.digest()
+                    if post.digest == digest:
+                        continue
+                    try:
+                        await channel.get_partial_message(post.message_id).edit(
+                            content=None, embed=None, view=card_layout(card), allowed_mentions=NO_MENTIONS)
+                    except discord.NotFound:
+                        log.info("A roster post (%s) was deleted; posting the roster again", post.key)
+                        rebuild = True
+                        break
+                    except discord.HTTPException as exc:
+                        log.warning("Could not edit the roster post %s: %s", post.key, exc)
+                        return False
+                    self.store.save_roster_post(dataclasses.replace(post, digest=digest))
+                if not rebuild:
+                    return True
+            for post in posts:
+                if not await self._delete_roster_post(post):
+                    return False
+            for position, (key, card) in enumerate(cards):
+                try:
+                    msg = await channel.send(view=card_layout(card), allowed_mentions=NO_MENTIONS)
+                except discord.HTTPException as exc:
+                    log.warning("Could not post the roster (%s): %s", key, exc)
+                    return False
+                self.store.save_roster_post(RosterPost(key, position, channel.id, msg.id, card.digest()))
+            return True
+
+    async def _delete_roster_post(self, post: RosterPost) -> bool:
+        channel = self._text_channel(post.channel_id)
+        if channel is not None:
+            try:
+                await channel.get_partial_message(post.message_id).delete()
+            except discord.NotFound:
+                pass  # deleted already
+            except discord.HTTPException as exc:
+                log.warning("Could not delete the roster post %s: %s", post.key, exc)
+                return False
+        # A channel that's gone (or the bot can no longer see) takes its posts with it.
+        self.store.forget_roster_post(post.key)
+        return True
 
     async def post_milestones(self) -> None:
         """Congratulate each milestone waiting, oldest first, while milestones are on. One that waited

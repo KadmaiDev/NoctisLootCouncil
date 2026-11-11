@@ -193,14 +193,27 @@ CREATE TABLE IF NOT EXISTS tokens (
 );
 
 -- Level milestones (milestones.py). The settings are in `meta` (ms_on, ms_guild, ms_channel, ms_levels,
--- ms_since). Characters of the guild as officers' rosters showed them, each at the highest level seen.
+-- ms_since). Characters of the guild as officers' rosters showed them, each at the highest level seen;
+-- name, class and rank as the newest roster that had them showed them.
 CREATE TABLE IF NOT EXISTS ms_characters (
-    key     TEXT PRIMARY KEY,                    -- the name, lower-cased
-    name    TEXT NOT NULL,
-    class   TEXT,
-    rank    TEXT,
-    level   INTEGER NOT NULL,
-    seen_at INTEGER NOT NULL
+    key         TEXT PRIMARY KEY,                -- the name, lower-cased
+    name        TEXT NOT NULL,
+    class       TEXT,
+    rank        TEXT,
+    level       INTEGER NOT NULL,
+    seen_at     INTEGER NOT NULL,
+    roster_seen INTEGER                          -- the newest roster read that had them (NULL: only older companions' uploads)
+);
+
+-- The guild roster channel's posts (roster.py), in channel order. The settings are in `meta` (rs_on,
+-- rs_channel, rs_min_level, rs_hide), with rs_scanned (the newest roster read) and rs_dirty (a change
+-- counter, as items.dirty).
+CREATE TABLE IF NOT EXISTS roster_posts (
+    key        TEXT PRIMARY KEY,                 -- header, DRUID, WARRIOR#2, ...
+    position   INTEGER NOT NULL,
+    channel_id INTEGER NOT NULL,
+    message_id INTEGER NOT NULL,
+    digest     TEXT NOT NULL
 );
 
 -- At most one post per character and milestone, whichever officer's upload noticed it first.
@@ -235,7 +248,8 @@ CREATE TABLE IF NOT EXISTS uploads (
 # Columns added after the first release: CREATE TABLE IF NOT EXISTS leaves an older table as it was.
 ADDED_COLUMNS = {("suggestions", "user_name"): "TEXT", ("item_info", "env"): "TEXT", ("item_info", "name"): "TEXT",
                  ("item_info", "quality"): "INTEGER", ("items", "origin"): "TEXT",
-                 ("drops", "last_at"): "INTEGER"}  # a drop's reports span at..last_at (NULL: just at)
+                 ("drops", "last_at"): "INTEGER",  # a drop's reports span at..last_at (NULL: just at)
+                 ("ms_characters", "roster_seen"): "INTEGER"}  # 2026-11-11, the guild roster channel
 
 
 def connect(path: pathlib.Path | str) -> sqlite3.Connection:

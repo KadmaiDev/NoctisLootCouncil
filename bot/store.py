@@ -11,8 +11,8 @@ import time
 from typing import Callable
 from zoneinfo import ZoneInfo
 
-from . import iteminfo, milestones, rules, warcraftlogs
-from .model import AwardInfo, ItemState, LogGroup, Post, UploadResult
+from . import iteminfo, milestones, roster, rules, warcraftlogs
+from .model import AwardInfo, ItemState, LogGroup, Post, RosterPost, UploadResult
 from .rules import COUNCIL, DISENCHANT, HANDLINGS, Vote
 from .upload import Upload, UploadDrop, UploadItem, UploadUndone, name_from_link
 
@@ -22,6 +22,9 @@ TOKEN_PREFIX = "nlc_"
 REPORT_SLACK_BEFORE, REPORT_SLACK_AFTER = 3600, 7200
 # The game's clock and the log's can disagree a little: a kill this soon after the loot still counts as before it.
 FIGHT_SLACK = 120
+# A character is still in the guild if the newest roster that had them is at most this much older than
+# the newest roster read (officers' clocks differ a little).
+ROSTER_SLACK = 300
 
 
 def _boss_key(name: str) -> str:
@@ -617,6 +620,7 @@ class Store:
         with self.conn:
             self.conn.execute("UPDATE items SET dirty = dirty + 1")
             self.conn.execute("UPDATE log_groups SET dirty = dirty + 1")
+            self._bump_roster()
 
     # ---- posts -------------------------------------------------------------
 
@@ -701,6 +705,7 @@ class Store:
                 self._set_meta("ms_on", "1" if on else "0")
                 if on and not before.on:
                     self._set_meta("ms_since", str(self.now()))
+            self._bump_roster()  # the roster channel needs milestones on, and shows the guild's name
         return self.milestone_settings()
 
     def apply_milestones(self, up: milestones.MilestoneUpload, owner_name: str) -> tuple[int, str | None]:
@@ -712,16 +717,35 @@ class Store:
         if not milestones.same_guild(up.guild, s.guild):
             return 0, "another guild"
         now, top, queued = self.now(), max(s.levels), 0
-        upsert = ("INSERT INTO ms_characters(key, name, class, rank, level, seen_at) VALUES(?, ?, ?, ?, ?, ?) "
-                  "ON CONFLICT(key) DO UPDATE SET name = excluded.name, class = COALESCE(excluded.class, class), "
-                  "rank = COALESCE(excluded.rank, rank), level = MAX(level, excluded.level), "
-                  "seen_at = MAX(seen_at, excluded.seen_at)")
+        # The level is the highest any roster showed. Name, class and rank follow the newest roster read
+        # that had the character (`roster_seen`); an older companion's upload (no `seen`) sets them only
+        # for characters no newer companion has reported.
+        newer = ("((excluded.roster_seen IS NOT NULL AND (roster_seen IS NULL OR excluded.roster_seen >= roster_seen)) "
+                 "OR (excluded.roster_seen IS NULL AND roster_seen IS NULL))")
+        upsert = ("INSERT INTO ms_characters(key, name, class, rank, level, seen_at, roster_seen) "
+                  "VALUES(?, ?, ?, ?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET "
+                  f"name = CASE WHEN {newer} THEN excluded.name ELSE name END, "
+                  f"class = CASE WHEN {newer} THEN COALESCE(excluded.class, class) ELSE class END, "
+                  f"rank = CASE WHEN {newer} THEN COALESCE(excluded.rank, rank) ELSE rank END, "
+                  "level = MAX(level, excluded.level), seen_at = MAX(seen_at, excluded.seen_at), "
+                  "roster_seen = MAX(COALESCE(roster_seen, excluded.roster_seen), "
+                  "COALESCE(excluded.roster_seen, roster_seen))")
+        roster_before = self._roster_digest()
+        # A roster read that has fewer than half the guild (the client hadn't loaded it all, or hides
+        # offline members) says nothing about who left: its times are left out, so nobody drops off.
+        partial = False
+        if up.scanned is not None:
+            present = sum(1 for m in up.members if m.seen is not None and m.seen >= up.scanned - ROSTER_SLACK)
+            partial = present * 2 < len(self.roster_characters())
         with self.conn:
             for m in up.members:
-                self.conn.execute(upsert, (milestones.name_key(m.name), m.name, m.cls, m.rank, m.level, now))
+                seen = min(m.seen, now) if m.seen is not None and not partial else None
+                self.conn.execute(upsert, (milestones.name_key(m.name), m.name, m.cls, m.rank, m.level, now, seen))
+            if up.scanned is not None and not partial and up.scanned > int(self._meta("rs_scanned", "0") or 0):
+                self._set_meta("rs_scanned", str(min(up.scanned, now)))
             for e in sorted(up.levels, key=lambda e: e.at):
                 key = milestones.name_key(e.name)
-                self.conn.execute(upsert, (key, e.name, e.cls, None, e.to, e.at))
+                self.conn.execute(upsert, (key, e.name, e.cls, None, e.to, e.at, None))
                 level = milestones.milestone_for(e.frm, e.to, s.levels)
                 if level is None or e.at < s.since or e.at < now - milestones.STALE_SECONDS:
                     continue
@@ -739,6 +763,8 @@ class Store:
                     (key, level, e.name, e.cls or row["class"], row["rank"], e.at, nth, int(level == top), s.guild,
                      up.uploader or owner_name, now))
                 queued += 1
+            if self._roster_digest() != roster_before:
+                self._bump_roster()
         return queued, None
 
     def pending_milestones(self) -> list[milestones.Milestone]:
@@ -758,6 +784,93 @@ class Store:
         posted = self.conn.execute("SELECT COUNT(*) FROM ms_posts WHERE message_id > 0").fetchone()[0]
         waiting = self.conn.execute("SELECT COUNT(*) FROM ms_posts WHERE message_id IS NULL").fetchone()[0]
         return chars, posted, waiting
+
+    # ---- the guild roster channel (roster.py) --------------------------------------------------
+    # It rides on the milestones upload. A roster read stamps every member it saw with the same time,
+    # so a character is in the guild now if the newest roster that had them is no older than the
+    # newest roster read any officer uploaded (less a little slack): another officer's later read
+    # without them means they left. Uploads from companions before 0.2.4 carry no times and never
+    # put anyone on the roster.
+
+    def roster_settings(self) -> roster.Settings:
+        channel, level, hide = self._meta("rs_channel"), self._meta("rs_min_level"), self._meta("rs_hide")
+        try:
+            hidden = tuple(str(r) for r in json.loads(hide)) if hide else ()
+        except (ValueError, TypeError):
+            hidden = ()
+        return roster.Settings(
+            on=self._meta("rs_on") == "1",
+            channel_id=int(channel) if channel and channel.isdigit() else None,
+            min_level=int(level) if level and level.isdigit() else roster.DEFAULT_MIN_LEVEL,
+            hidden_ranks=hidden,
+        )
+
+    def set_roster_settings(self, *, on: bool | None = None, channel_id: int | None = None,
+                            min_level: int | None = None, hidden_ranks: tuple[str, ...] | None = None) -> roster.Settings:
+        """Change what's given (hidden_ranks=() shows every rank). Turning it back on rechecks every
+        post, so any deleted while it was off are put back."""
+        before = self.roster_settings()
+        with self.conn:
+            if channel_id is not None:
+                self._set_meta("rs_channel", str(channel_id))
+            if min_level is not None:
+                self._set_meta("rs_min_level", str(min_level))
+            if hidden_ranks is not None:
+                self._set_meta("rs_hide", json.dumps(list(hidden_ranks)))
+            if on is not None:
+                self._set_meta("rs_on", "1" if on else "0")
+                if on and not before.on:
+                    self.conn.execute("UPDATE roster_posts SET digest = ''")
+            self._bump_roster()
+        return self.roster_settings()
+
+    def roster_scanned(self) -> int | None:
+        """The newest roster read any upload reported."""
+        value = self._meta("rs_scanned")
+        return int(value) if value and value.isdigit() else None
+
+    def roster_characters(self) -> list[roster.Character]:
+        """The guild's characters now, in no particular order (roster.py sorts them)."""
+        newest = max(self.roster_scanned() or 0, self.conn.execute(
+            "SELECT COALESCE(MAX(roster_seen), 0) FROM ms_characters").fetchone()[0])
+        rows = self.conn.execute("SELECT name, level, class, rank FROM ms_characters WHERE roster_seen IS NOT NULL "
+                                 "AND roster_seen >= ? ORDER BY key", (newest - ROSTER_SLACK,))
+        return [roster.Character(name=r["name"], level=r["level"], cls=r["class"], rank=r["rank"]) for r in rows]
+
+    def roster_counts(self) -> tuple[int, int]:
+        """(characters in the guild now, of those listed)."""
+        chars = self.roster_characters()
+        return len(chars), len(roster.listed(chars, self.roster_settings()))
+
+    def _roster_digest(self) -> str:
+        data = [dataclasses.astuple(c) for c in self.roster_characters()]
+        return hashlib.sha256(json.dumps([data, self.roster_scanned()]).encode()).hexdigest()
+
+    def _bump_roster(self) -> None:
+        self._set_meta("rs_dirty", str(self.roster_dirty() + 1))
+
+    def roster_dirty(self) -> int:
+        return int(self._meta("rs_dirty", "0") or 0)
+
+    def clear_roster_dirty(self, generation: int) -> None:
+        with self.conn:
+            self.conn.execute("UPDATE meta SET value = '0' WHERE key = 'rs_dirty' AND value = ?", (str(generation),))
+
+    def roster_posts(self) -> list[RosterPost]:
+        return [RosterPost(r["key"], r["position"], r["channel_id"], r["message_id"], r["digest"])
+                for r in self.conn.execute("SELECT * FROM roster_posts ORDER BY position, key")]
+
+    def save_roster_post(self, post: RosterPost) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO roster_posts(key, position, channel_id, message_id, digest) VALUES(?, ?, ?, ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET position = excluded.position, channel_id = excluded.channel_id, "
+                "message_id = excluded.message_id, digest = excluded.digest",
+                (post.key, post.position, post.channel_id, post.message_id, post.digest))
+
+    def forget_roster_post(self, key: str) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM roster_posts WHERE key = ?", (key,))
 
     def token_owner(self, token: str) -> tuple[str, str] | None:
         if not token:
