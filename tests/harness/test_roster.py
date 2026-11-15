@@ -33,6 +33,40 @@ async def read_and_send(realm, members, api_url, token) -> None:
     await companion_pass(realm.lm, api_url, token)
 
 
+async def test_the_road_to_60_is_forecast_from_the_level_ups_the_addon_saw(guild, running, realm):
+    kadmai = guild.officers[2]
+    channel = guild.channel("road-to-60")
+    r = await guild.slash(guild.raiders[0], "roster forecast", show=True)
+    assert "That's for officers." in r.text
+    r = await guild.slash(kadmai, "roster forecast", show=True)
+    assert "Set the channel first" in r.text
+    r = await guild.slash(kadmai, "roster forecast", channel=channel, show=True)
+    assert "Road to max level: **On**, but not posting until level milestones are on" in r.text
+    await guild.slash(kadmai, "milestones settings", guild="Noctis", channel=guild.channel("milestones"), announce=True)
+
+    # Three roster reads over two days: Ilsa goes from 57 to 59, Bran doesn't level.
+    realm.clock = int(time.time()) - 3 * 86400
+    realm.lm.milestones = True
+    token = await token_for(guild, kadmai)
+    members = [("Ilsa Marrow", 57, "WARLOCK", "Raider"), ("Bran Holloway", 31, "MAGE", "Raider"),
+               ("Thorn Gale", 60, "WARRIOR", "Officer")]
+    await read_and_send(realm, members, running.api_url, token)
+    [post] = await guild.wait_until(lambda: channel.posts, what="the forecast's post")
+    assert post.embeds[0]["title"] == "Noctis · Road to 60"
+    assert "**1** at level 60" in post.text and "**0** on the way" in post.text
+    for level in (58, 59):
+        realm.skip(86400)
+        await read_and_send(realm, [("Ilsa Marrow", level, "WARLOCK", "Raider")] + members[1:], running.api_url, token)
+    await guild.wait_until(lambda: "`59` **Ilsa Marrow** · " in channel.posts[0].text, what="Ilsa's forecast")
+    await guild.quiet()
+    assert [p.id for p in channel.posts] == [post.id]  # edited in place
+    assert "**1** on the way" in channel.posts[0].text and "Bran Holloway 31" in fields(channel.posts[0])["\N{SQUARED NEW} No history yet (1)"]
+    assert not guild.channel("guild-roster").posts  # the roster channel is its own switch
+    r = await guild.slash(kadmai, "roster forecast")
+    assert "Characters with level-ups on record: 1." in r.text
+    assert guild.unknown_routes == [], guild.unknown_routes
+
+
 async def test_the_roster_channel_follows_the_guild(guild, running, realm, tmp_path):
     kadmai = guild.officers[2]
     channel, moved_to = guild.channel("guild-roster"), guild.channel("officers-roster")

@@ -195,6 +195,7 @@ Everything is in the one SQLite file. A consistent copy while the bot runs: `sql
 | `/loot token` | officers | Just for you: a token for the companion app. Running it again replaces the old one. |
 | `/milestones settings [guild] [channel] [levels] [announce]` | officers | Just for you: shows or changes the [level milestones](#level-milestones). |
 | `/roster settings [channel] [min_level] [hide_ranks] [alt_ranks] [show]` | officers | Just for you: shows or changes the [guild roster channel](#guild-roster-channel). |
+| `/roster forecast [channel] [show]` | officers | Just for you: shows or changes the [road to max level](#road-to-max-level) channel. |
 | `/loot wcl <link>` | officers | Links a Warcraft Logs report to its night's #loot-log post: "Warcraft Logs" under the heading, and each boss heading to that boss's kill (the last one before its loot went out). The post that takes it is the one on the report's night whose loot falls in the report's time; a report linked before the upload is used once the loot comes. Linking another report that holds that night's loot replaces it. The report must be public or unlisted. Needs `WCL_CLIENT_ID` and `WCL_CLIENT_SECRET`. |
 
 The posts are edited in place as votes, priorities, suggestions and uploads change things; restarting the bot never reposts. If a post is deleted, the bot posts it again on the next change.
@@ -246,6 +247,21 @@ The bot can keep one post in a channel listing the guild's characters, laid out 
 - **show:False** stops updating; the posts stay as they are.
 - Someone has left once a later roster read by any officer doesn't have them. When the roster grows into a second post or shrinks back to one, or a post was deleted, the bot deletes its roster posts and posts them again.
 - The class icons are Wowhead's, uploaded once as the bot's own emojis (`class_warrior`, ...); until they're there (or while Wowhead isn't answering) the columns are headed without them, and the post is edited when they arrive.
+
+### Road to max level
+
+The bot can also keep a rough forecast of when each character reaches the top level (the highest milestone level, 60 by default), in a channel of its own:
+
+```
+/roster forecast channel:#road-to-60 show:True     (in Discord, once)
+```
+
+- One gold embed, "Noctis · Road to 60", edited in place: how many are there already, how many are on the way, then who is expected within a week, within a month and later, soonest first, each with a range of dates (`58` **Thorgar Ironvale** · 24 Nov – 2 Dec).
+- It lists who the roster lists (`/roster settings`: minimum level, hidden ranks) except the roster's `alt_ranks`: the forecast is for mains. It works whether or not the roster channel itself is on. The bot sets no permissions: pick a channel only officers can see if it's for officers.
+- **How it's worked out:** the game shows another player's level, not their experience, so the bot measures pace between the level-ups officers' addons noticed in the last two weeks, weighed by what each level costs (Classic's experience table), and carries it forward. A character that goes quiet slips later with every roster read.
+- **How good each estimate is** shows before the name: a green circle for good data (four or more level-ups over three days or more, each noticed soon after it happened), yellow for less to go on, orange for thin (a single level-up, less than a day of play, or level-ups noticed long after). Characters without an estimate are listed under **Quiet** (no level-up in two weeks, or over a year away at their pace) or **No history yet** (joined lately, or not seen levelling: the bot needs level-ups noticed at two different times).
+- **How rough it is:** a level-up is only known to within the gap between two roster reads: a minute while an officer with milestones on is online, hours when none was. The more officers have it on, the better. The range is never narrower than a quarter earlier to half as long again, because people's play isn't steady. Companions from 0.2.5 also send when the character was last seen at the old level, which tells the bot how wide each gap was.
+- The addon keeps level-ups for 30 days; the bot keeps every one it's sent, so the forecast starts from whatever the officers' files still hold.
 ---
 
 ## For officers: the companion app
@@ -301,7 +317,7 @@ It **talks to** the bot address in `companion.ini`, and nowhere else:
 
 - `POST /api/upload`, with what the saved file holds about raid loot: the items (name, link, quality, where and when they dropped, the decision and note), the drops it saw and the awards (who won what, their class, how, the roll, the note and bid tags) and those taken back with `/nlc undo`, and the name of the character that uploaded. The account folder's name stays on your PC.
 - `GET /api/decisions`: the council and roll decisions, and the newest companion version (for the update notice).
-- With milestones on in game only: `GET /api/milestones` (whether the bot is taking level-ups, and for which guild; asked at most every 10 minutes), then, while it is, `POST /api/milestones` with that guild's roster as your addon saw it (each member's name, class, level, rank and when your addon last saw them in the roster, and when it last read the roster, so the bot can tell who has left), the level-ups it noticed (who, from which level to which, when) and the name of the character that uploaded. The rosters of any other guild your characters are in stay on your PC.
+- With milestones on in game only: `GET /api/milestones` (whether the bot is taking level-ups, and for which guild; asked at most every 10 minutes), then, while it is, `POST /api/milestones` with that guild's roster as your addon saw it (each member's name, class, level, rank and when your addon last saw them in the roster, and when it last read the roster, so the bot can tell who has left), the level-ups it noticed (who, from which level to which, when, and when it last saw them at the old level) and the name of the character that uploaded. The rosters of any other guild your characters are in stay on your PC.
 
 All of these carry your token. It tells the bot the upload is yours, and does nothing else: the bot accepts it for these requests only, and it gives no access to your Discord or Battle.net account. `/loot token` replaces it.
 

@@ -7,7 +7,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from .. import milestones, roster
+from .. import forecast, milestones, roster
 from ..checks import officer_only
 from ..client import LootBot, UserError, reply
 
@@ -49,6 +49,26 @@ class RosterCog(commands.Cog):
         text = roster.settings_text(s, mention, store.roster_counts(), ms.on and bool(ms.guild))
         if not s.on and store.roster_posts():
             text += "\nThe roster posts already in the channel stay as they are; delete them if you don't want them."
+        await reply(interaction, text, ephemeral=True)
+
+    @group.command(name="forecast", description="Show or change the road to max level channel (officers)")
+    @app_commands.describe(
+        channel="Where the forecast is posted (the bot's posts there are edited as people level)",
+        show="On: keep the forecast posted. Off: leave the posts as they are")
+    @officer_only()
+    async def forecast(self, interaction: discord.Interaction, channel: discord.TextChannel | None = None,
+                       show: bool | None = None) -> None:
+        store = self.bot.store
+        before = store.forecast_settings()
+        if show and not (channel or before.channel_id):
+            raise UserError("Set the channel first, e.g. `/roster forecast channel:#road-to-60 show:True`.")
+        s = store.set_forecast_settings(on=show, channel_id=channel.id if channel else None)
+        self.bot.notify()
+        ms = store.milestone_settings()
+        mention = self.bot.channel_mention(s.channel_id) if s.channel_id else None
+        text = forecast.settings_text(s, mention, len(store.level_history()), ms.on and bool(ms.guild))
+        if not s.on and store.roster_posts("road"):
+            text += "\nThe forecast posts already in the channel stay as they are; delete them if you don't want them."
         await reply(interaction, text, ephemeral=True)
 
 

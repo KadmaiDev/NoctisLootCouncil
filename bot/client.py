@@ -22,7 +22,7 @@ from aiohttp import web
 from discord import app_commands
 from discord.ext import commands
 
-from . import importer, iteminfo, milestones, releases, render, roster, titleimage, warcraftlogs
+from . import forecast, importer, iteminfo, milestones, releases, render, roster, titleimage, warcraftlogs
 from .api import create_app
 from .checks import NotOfficer
 from .config import Config
@@ -166,8 +166,10 @@ class LootBot(commands.Bot):
                 self.store.clear_log_dirty(inst, night, generation)
         await self.post_milestones()
         generation = self.store.roster_dirty()
-        if generation and await self.sync_roster():
-            self.store.clear_roster_dirty(generation)
+        if generation:
+            done = await self.sync_roster()
+            if await self.sync_forecast() and done:
+                self.store.clear_roster_dirty(generation)
 
     def roster_ready(self) -> bool:
         """The roster channel is posted to while it's on with a channel and milestones (whose upload
@@ -187,40 +189,54 @@ class LootBot(commands.Bot):
             s, ms = self.store.roster_settings(), self.store.milestone_settings()
             chars = self.store.roster_characters()
             boards = roster.boards(chars, s, ms.guild or "", self.store.roster_scanned(), self.class_emojis(chars, s))
-            posts = self.store.roster_posts()
-            channel = self._text_channel(s.channel_id)
-            if channel is None:
-                return False
-            if [p.key for p in posts] == [k for k, _ in boards] and all(p.channel_id == channel.id for p in posts):
-                rebuild = False
-                for post, (_, board) in zip(posts, boards):
-                    digest = board.digest()
-                    if post.digest == digest:
-                        continue
-                    try:
-                        await channel.get_partial_message(post.message_id).edit(
-                            embed=board_embed(board), allowed_mentions=NO_MENTIONS)
-                    except discord.NotFound:
-                        log.info("A roster post (%s) was deleted; posting the roster again", post.key)
-                        rebuild = True
-                        break
-                    except discord.HTTPException as exc:
-                        log.warning("Could not edit the roster post %s: %s", post.key, exc)
-                        return False
-                    self.store.save_roster_post(dataclasses.replace(post, digest=digest))
-                if not rebuild:
-                    return True
-            for post in posts:
-                if not await self._delete_roster_post(post):
-                    return False
-            for position, (key, board) in enumerate(boards):
+            return await self._sync_boards("roster", s.channel_id, boards)
+
+    async def sync_forecast(self) -> bool:
+        """The same for the road to max level's channel (forecast.py), while it's on with a channel
+        and milestones are on with a guild."""
+        async with self._locks["roster"]:
+            s, ms = self.store.forecast_settings(), self.store.milestone_settings()
+            if not (s.ready and ms.on and ms.guild):
+                return True
+            boards = forecast.boards(self.store.roster_characters(), self.store.roster_settings(), ms.guild,
+                                     self.store.roster_scanned(), self.store.level_history(), max(ms.levels), self.tz)
+            return await self._sync_boards("road", s.channel_id, boards)
+
+    async def _sync_boards(self, kind: str, channel_id: int, boards: list[tuple[str, roster.Board]]) -> bool:
+        posts = self.store.roster_posts(kind)
+        channel = self._text_channel(channel_id)
+        if channel is None:
+            return False
+        if [p.key for p in posts] == [k for k, _ in boards] and all(p.channel_id == channel.id for p in posts):
+            rebuild = False
+            for post, (_, board) in zip(posts, boards):
+                digest = board.digest()
+                if post.digest == digest:
+                    continue
                 try:
-                    msg = await channel.send(embed=board_embed(board), allowed_mentions=NO_MENTIONS)
+                    await channel.get_partial_message(post.message_id).edit(
+                        embed=board_embed(board), allowed_mentions=NO_MENTIONS)
+                except discord.NotFound:
+                    log.info("A %s post (%s) was deleted; posting them again", kind, post.key)
+                    rebuild = True
+                    break
                 except discord.HTTPException as exc:
-                    log.warning("Could not post the roster (%s): %s", key, exc)
+                    log.warning("Could not edit the %s post %s: %s", kind, post.key, exc)
                     return False
-                self.store.save_roster_post(RosterPost(key, position, channel.id, msg.id, board.digest()))
-            return True
+                self.store.save_roster_post(dataclasses.replace(post, digest=digest))
+            if not rebuild:
+                return True
+        for post in posts:
+            if not await self._delete_roster_post(post):
+                return False
+        for position, (key, board) in enumerate(boards):
+            try:
+                msg = await channel.send(embed=board_embed(board), allowed_mentions=NO_MENTIONS)
+            except discord.HTTPException as exc:
+                log.warning("Could not post the %s (%s): %s", kind, key, exc)
+                return False
+            self.store.save_roster_post(RosterPost(key, position, channel.id, msg.id, board.digest()))
+        return True
 
     def class_emojis(self, chars: list[roster.Character], s: roster.Settings) -> dict[str, str]:
         """The class emojis the bot has for the classes listed ({'WARRIOR': '<:class_warrior:...>'})."""

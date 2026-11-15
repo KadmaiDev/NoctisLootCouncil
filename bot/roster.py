@@ -287,26 +287,26 @@ def boards(chars: Iterable[Character], s: Settings, guild: str, scanned: int | N
     lines = (_counts_row(mains, scanned), _ranks_line(mains) if mains else "", render.small(who))
     out = _section("roster", Board(title=_cut(title + (" · Mains" if alts else ""), TITLE_LIMIT),
                                    description=_cut("\n".join(p for p in lines if p), DESCRIPTION_LIMIT), colour=GOLD),
-                   mains, icons)
+                   _grid(mains, icons) if mains else [])
     if alts:
         lines = (_counts_row(alts, scanned, "alt"), _ranks_line(alts))
         out += _section("alts", Board(title=_cut(title + " · Alts", TITLE_LIMIT),
                                       description=_cut("\n".join(lines), DESCRIPTION_LIMIT), colour=ALTS_COLOUR),
-                        alts, icons)
+                        _grid(alts, icons))
     return out
 
 
-def _section(key: str, first: Board, shown: list[Character], icons: Mapping[str, str]) -> list[tuple[str, Board]]:
-    """A titled board and its grid, in as many messages as Discord's limits need."""
+def _section(key: str, first: Board, rows: Iterable[tuple[tuple[Field, ...], tuple[Field, ...]]]) -> list[tuple[str, Board]]:
+    """A titled board and its rows of fields (each as it goes under the row above, and as the first
+    row of a further message), in as many messages as Discord's limits need."""
     out = [first]
-    if shown:
-        for under, fresh in _grid(shown, icons):
-            cur = out[-1]
-            size = sum(text_length(n) + text_length(v) for n, v, _ in under)
-            if len(cur.fields) + len(under) > FIELDS_LIMIT or cur.size() + size > EMBED_LIMIT:
-                out.append(Board(fields=fresh, colour=first.colour))  # a row never splits between messages
-            else:
-                out[-1] = dataclasses.replace(cur, fields=cur.fields + under)
+    for under, fresh in rows:
+        cur = out[-1]
+        size = sum(text_length(n) + text_length(v) for n, v, _ in under)
+        if len(cur.fields) + len(under) > FIELDS_LIMIT or cur.size() + size > EMBED_LIMIT:
+            out.append(Board(fields=fresh, colour=first.colour))  # a row never splits between messages
+        else:
+            out[-1] = dataclasses.replace(cur, fields=cur.fields + under)
     return [(key if i == 0 else f"{key}#{i + 1}", b) for i, b in enumerate(out)]
 
 

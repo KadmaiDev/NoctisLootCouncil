@@ -12,7 +12,7 @@ from collections.abc import Iterable
 from typing import Callable
 from zoneinfo import ZoneInfo
 
-from . import iteminfo, milestones, roster, rules, warcraftlogs
+from . import forecast, iteminfo, milestones, roster, rules, warcraftlogs
 from .model import AwardInfo, ItemState, LogGroup, Post, RosterPost, UploadResult
 from .rules import COUNCIL, DISENCHANT, HANDLINGS, Vote
 from .upload import Upload, UploadDrop, UploadItem, UploadUndone, name_from_link
@@ -743,6 +743,12 @@ class Store:
                   "roster_seen = MAX(COALESCE(roster_seen, excluded.roster_seen), "
                   "COALESCE(excluded.roster_seen, roster_seen))")
         roster_before = self._roster_digest()
+        history_before = self._history_digest()
+        # When each level was reached, for the forecast: between `since` and `at`, narrowed by every upload.
+        reached = ("INSERT INTO ms_levels(key, level, lo, hi) VALUES(?, ?, ?, ?) ON CONFLICT(key, level) DO UPDATE SET "
+                   "hi = MIN(hi, excluded.hi), "
+                   "lo = MIN(MAX(COALESCE(lo, excluded.lo), COALESCE(excluded.lo, lo)), MIN(hi, excluded.hi)) "
+                   "WHERE excluded.hi < hi OR (excluded.lo IS NOT NULL AND (lo IS NULL OR excluded.lo > lo))")
         # A roster read that has fewer than half the guild (the client hadn't loaded it all, or hides
         # offline members) says nothing about who left: its times are left out, so nobody drops off.
         partial = False
@@ -758,6 +764,10 @@ class Store:
             for e in sorted(up.levels, key=lambda e: e.at):
                 key = milestones.name_key(e.name)
                 self.conn.execute(upsert, (key, e.name, e.cls, None, e.to, e.at, None))
+                hi = min(e.at, now)
+                lo = min(e.since, hi) if e.since is not None else None
+                for lv in range(e.frm + 1, e.to + 1):
+                    self.conn.execute(reached, (key, lv, lo, hi))
                 level = milestones.milestone_for(e.frm, e.to, s.levels)
                 if level is None or e.at < s.since or e.at < now - milestones.STALE_SECONDS:
                     continue
@@ -775,7 +785,7 @@ class Store:
                     (key, level, e.name, e.cls or row["class"], row["rank"], e.at, nth, int(level == top), s.guild,
                      up.uploader or owner_name, now))
                 queued += 1
-            if self._roster_digest() != roster_before:
+            if self._roster_digest() != roster_before or self._history_digest() != history_before:
                 self._bump_roster()
         return queued, None
 
@@ -874,9 +884,44 @@ class Store:
         with self.conn:
             self.conn.execute("UPDATE meta SET value = '0' WHERE key = 'rs_dirty' AND value = ?", (str(generation),))
 
-    def roster_posts(self) -> list[RosterPost]:
+    def roster_posts(self, kind: str = "roster") -> list[RosterPost]:
+        """The roster channel's posts, or with kind "road" the forecast channel's (keys starting "road")."""
         return [RosterPost(r["key"], r["position"], r["channel_id"], r["message_id"], r["digest"])
-                for r in self.conn.execute("SELECT * FROM roster_posts ORDER BY position, key")]
+                for r in self.conn.execute("SELECT * FROM roster_posts ORDER BY position, key")
+                if r["key"].startswith("road") == (kind == "road")]
+
+    # ---- the road to max level (forecast.py) ---------------------------------------------------
+    # Its posts change with the roster's (who is listed, the newest read) and the level-ups, so it
+    # shares the roster's dirty counter.
+
+    def forecast_settings(self) -> forecast.Settings:
+        channel = self._meta("rd_channel")
+        return forecast.Settings(on=self._meta("rd_on") == "1",
+                                 channel_id=int(channel) if channel and channel.isdigit() else None)
+
+    def set_forecast_settings(self, *, on: bool | None = None, channel_id: int | None = None) -> forecast.Settings:
+        """Change what's given. Turning it back on rechecks every post."""
+        before = self.forecast_settings()
+        with self.conn:
+            if channel_id is not None:
+                self._set_meta("rd_channel", str(channel_id))
+            if on is not None:
+                self._set_meta("rd_on", "1" if on else "0")
+                if on and not before.on:
+                    self.conn.execute("UPDATE roster_posts SET digest = '' WHERE key LIKE 'road%'")
+            self._bump_roster()
+        return self.forecast_settings()
+
+    def level_history(self) -> dict[str, list[forecast.Reached]]:
+        """By character (the name's key): the levels they were seen to reach, lowest first."""
+        out: dict[str, list[forecast.Reached]] = {}
+        for r in self.conn.execute("SELECT key, level, lo, hi FROM ms_levels ORDER BY key, level"):
+            out.setdefault(r["key"], []).append(forecast.Reached(r["level"], r["lo"], r["hi"]))
+        return out
+
+    def _history_digest(self) -> tuple:
+        return tuple(self.conn.execute("SELECT COUNT(*), COALESCE(SUM(hi), 0), COALESCE(SUM(lo), 0), COUNT(lo) "
+                                       "FROM ms_levels").fetchone())
 
     def save_roster_post(self, post: RosterPost) -> None:
         with self.conn:

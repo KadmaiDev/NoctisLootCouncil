@@ -146,7 +146,8 @@ def test_only_the_bots_guild_is_sent(tmp_path):
     [body] = bot.sent
     assert body["guild"] == "Noctis" and body["realm"] == "Forever" and body["uploader"] == "Kadmai Moonwhisper"
     assert [m["name"] for m in body["members"]] == ["Thorn Gale", "Vespera Ashward"]
-    assert body["levels"] == [{"name": "Vespera Ashward", "class": "DRUID", "from": 19, "to": 20, "at": 1_800_000_000}]
+    assert body["levels"] == [{"name": "Vespera Ashward", "class": "DRUID", "from": 19, "to": 20, "at": 1_800_000_000,
+                               "since": 1_800_000_000 - 600}]
     assert "Secret Alt" not in repr(body) and "Other Guild" not in repr(body)
     assert comp.status.new_milestones == 1
     # Unchanged: not again. Changed: again.

@@ -219,11 +219,13 @@ whose name is the bot's guild (case doesn't matter); other guilds' rosters are n
 ```json
 { "uploader": "Kadmai Moonwhisper", "guild": "Noctis", "realm": "Forever", "scanned": 1793070000,
   "members": [ { "name": "Vespera Ashward", "class": "DRUID", "level": 20, "rank": "Raider", "seen": 1793070000 } ],
-  "levels": [ { "name": "Vespera Ashward", "class": "DRUID", "from": 19, "to": 20, "at": 1793070000 } ] }
+  "levels": [ { "name": "Vespera Ashward", "class": "DRUID", "from": 19, "to": 20, "at": 1793070000, "since": 1793069940 } ] }
 ```
 
 `scanned` (the guild's) and each member's `seen` are unix times, whole numbers, both optional:
-companions before 0.2.4 send neither, and a guild never read has no `scanned`.
+companions before 0.2.4 send neither, and a guild never read has no `scanned`. A level-up's
+`since` (the last roster read that still had them at `from`) is optional too: companions before
+0.2.5 don't send it.
 
 The bot ignores it (`200 {"ok": true, "ignored": "...", "new_milestones": 0}`) while milestones
 are off or the guild isn't its own. Otherwise it keeps each character at the highest level any
@@ -241,5 +243,12 @@ For each level-up it picks the highest milestone level in (`from`, `to`]: 18 to
 31 earns 30, not 20 and 30. It posts that milestone unless the character already has it or a
 higher one (another officer's roster saw it first), it was noticed more than 7 days ago, or
 before milestones were last turned on. The top milestone (60 by default) records how many
-characters in the guild had reached it. Answer `200 {"ok": true, "new_milestones": n}`; `401`
+characters in the guild had reached it.
+
+**The road to max level** (`/roster forecast`) keeps every level-up: each level in (`from`, `to`]
+was reached after `since` (when sent) and no later than `at` (neither later than the bot's
+clock). Uploads of the same level-up narrow it: the latest `since`, the earliest `at`. From those
+the bot estimates each listed character's pace and when they reach the top milestone.
+
+Answer `200 {"ok": true, "new_milestones": n}`; `401`
 bad token; `400` bad body.

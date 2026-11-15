@@ -81,6 +81,7 @@ class LevelUp:
     to: int
     at: int
     cls: str | None = None
+    since: int | None = None  # the last roster read that had them at `frm` (companions before 0.2.5 don't send it)
 
 
 @dataclass(frozen=True)
@@ -140,7 +141,8 @@ def parse_milestone_upload(body: Any) -> MilestoneUpload:
         if to <= frm:
             raise BadUpload(f"levels[{i}] should go up")
         levels.append(LevelUp(_text(e.get("name"), f"levels[{i}].name", True), frm, to, _int(e.get("at"), f"levels[{i}].at"),
-                              _text(e.get("class"), f"levels[{i}].class")))
+                              _text(e.get("class"), f"levels[{i}].class"),
+                              _optional_int(e.get("since"), f"levels[{i}].since")))
     return MilestoneUpload(guild=_text(body.get("guild"), "guild", True), realm=_text(body.get("realm") or None, "realm"),
                            uploader=_text(body.get("uploader"), "uploader"), members=members, levels=levels,
                            scanned=_optional_int(body.get("scanned"), "scanned"))

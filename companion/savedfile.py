@@ -93,7 +93,7 @@ def read_saved_file(path: Path, variable: str = DB_VARIABLE) -> dict:
 # ask the bot).
 
 MEMBER_FIELDS = ("name", "class", "level", "rank", "seen")  # seen: the last roster read that had them
-LEVEL_FIELDS = ("name", "class", "from", "to", "at")
+LEVEL_FIELDS = ("name", "class", "from", "to", "at", "since")  # since: the last read that had them at `from`
 
 
 def milestones_on(db: dict) -> bool:

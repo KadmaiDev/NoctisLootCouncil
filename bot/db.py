@@ -205,7 +205,19 @@ CREATE TABLE IF NOT EXISTS ms_characters (
     roster_seen INTEGER                          -- the newest roster read that had them (NULL: only older companions' uploads)
 );
 
--- The guild roster channel's posts (roster.py), in channel order. The settings are in `meta` (rs_on,
+-- When each character reached each level (forecast.py): some time after `lo` (the last roster read that
+-- still had them a level below; NULL: not known) and no later than `hi` (the read that noticed). Officers'
+-- uploads narrow it: the latest `lo`, the earliest `hi`. Kept for every character, alts too.
+CREATE TABLE IF NOT EXISTS ms_levels (
+    key   TEXT NOT NULL,
+    level INTEGER NOT NULL,
+    lo    INTEGER,
+    hi    INTEGER NOT NULL,
+    PRIMARY KEY (key, level)
+);
+
+-- The guild roster channel's posts (roster.py), in channel order; the forecast channel's (forecast.py) are
+-- here too, their keys starting "road". The forecast's settings are in `meta` (rd_on, rd_channel). The settings are in `meta` (rs_on,
 -- rs_channel, rs_min_level, rs_hide, rs_alts), with rs_scanned (the newest roster read) and rs_dirty (a change
 -- counter, as items.dirty).
 CREATE TABLE IF NOT EXISTS roster_posts (
