@@ -86,9 +86,26 @@ def test_too_little_to_go_on_is_no_forecast():
     # Two levels noticed in one read after time away: nothing between them to measure.
     assert forecast.forecast(31, [Reached(30, NOW - DAY, NOW - 60), Reached(31, NOW - DAY, NOW - 60)], NOW, 60) is None
     # A level-up from the future (not yet "now") is left out.
-    assert forecast.forecast(31, [Reached(30, None, NOW - DAY), Reached(31, None, NOW + 60)], NOW, 60) is not None
+    assert forecast.forecast(31, [Reached(30, None, NOW - 3 * DAY), Reached(31, None, NOW + 60)], NOW, 60) is not None
     # Over a year away at this pace.
     assert forecast.forecast(12, [Reached(11, None, NOW - 13 * DAY), Reached(12, None, NOW - DAY)], NOW, 60) is None
+
+
+def test_a_first_session_is_no_forecast_until_two_days_have_been_watched():
+    # A character made this afternoon: four levels in two and a half hours. Carried forward as if
+    # they never stopped, that reaches 60 within the week.
+    first, hour = NOW - 9000, 3600
+    session = [Reached(6, first - 60, first), Reached(7, first + 2100, first + 2160),
+               Reached(8, first + 2 * hour, first + 2 * hour + 60), Reached(10, NOW - 600, NOW - 60)]
+    assert forecast.forecast(10, session, NOW, 60) is None
+    assert forecast.why_not(10, session, NOW) == forecast.UNSEEN
+    assert forecast.forecast(10, session, NOW + DAY, 60) is None
+    # Two days on, the days without a level-up are part of the pace: months, not days.
+    f = forecast.forecast(10, session, first + 2 * DAY + 60, 60)
+    assert f is not None and f.eta - NOW > 60 * DAY and f.quality == forecast.THIN
+    # Someone back after three weeks away who levels twice in an evening is measured from before the break.
+    back = [Reached(40, None, NOW - 21 * DAY), Reached(41, NOW - 7300, NOW - 7200), Reached(42, NOW - 120, NOW - 60)]
+    assert forecast.forecast(42, back, NOW, 60) is None and forecast.why_not(42, back, NOW) == forecast.UNSEEN
 
 
 def test_one_recent_level_up_is_measured_from_the_one_before():
@@ -169,8 +186,7 @@ def test_how_much_there_was_to_go_on():
     assert quality([Reached(p.level, None, p.hi) for p in steady(44, 50, 100_000)]) == forecast.FAIR
     assert quality(steady(47, 50, 100_000)) == forecast.FAIR                        # two level-ups measured
     assert quality(steady(44, 50, 100_000, read_gap=20 * 3600)) == forecast.FAIR    # noticed most of a day late
-    assert quality(steady(48, 50, 100_000)) == forecast.THIN                        # one level-up measured
-    assert quality(steady(20, 26, 400_000), 26) == forecast.THIN                    # six levels within a day
+    assert quality(steady(48, 50, 60_000)) == forecast.THIN                         # one level-up measured
     assert quality(steady(46, 50, 100_000, read_gap=40 * 3600)) == forecast.THIN    # noticed days late
     # Why there's no forecast: nothing seen, one sighting, or level-ups all noticed in one read are "new".
     assert forecast.why_not(30, [], NOW) == forecast.UNSEEN
@@ -304,7 +320,7 @@ async def test_the_forecast_has_its_own_channel_beside_the_roster(tmp_path):
     bot2.store._clock.t += 3 * DAY
     later = bot2.store.now()
     apply(bot2.store, [m if m[0] != "Vespera Ashward" else ("Vespera Ashward", 22, "DRUID", "Raider") for m in MEMBERS],
-          later, [("Vespera Ashward", 20, 21, later - DAY, later - DAY - 60), ("Vespera Ashward", 21, 22, later - 60, later - 120)])
+          later, [("Vespera Ashward", 20, 21, later - 2 * DAY - 600, later - 2 * DAY - 660), ("Vespera Ashward", 21, 22, later - 60, later - 120)])
     await bot2.sync_pending()
     assert road.sends == 1 and road.edits == 1
     assert "`22` **Vespera Ashward** · " in text(next(iter(road.messages.values())))

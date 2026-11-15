@@ -31,6 +31,7 @@ DAY = 86400
 WINDOW = 14 * DAY          # pace is measured over the level-ups of the last two weeks
 LOOKBACK = 2 * WINDOW      # with one level-up in that time, from the one before it, if no older than this
 MIN_SPAN = 3600            # two level-ups closer than this say nothing about pace
+WATCHED = 2 * DAY          # nor does a pace watched for less than this: it has no days off in it
 FAR = 365 * DAY            # a forecast further off than this is no forecast
 # People slow down and speed up: the range is never tighter than this around the estimate.
 EARLY, LATE = 0.75, 1.5
@@ -124,10 +125,35 @@ def _line(level: int, reached: Iterable[Reached], now: int) -> list[Reached]:
     return line
 
 
+def _measured(line: list[Reached], now: int) -> tuple[Reached, Reached] | None:
+    """The two level-ups pace is measured between: the first of the last two weeks (with only one
+    in that time, the one before it, if recent enough) and the last."""
+    recent = [i for i, p in enumerate(line) if _when(p) >= now - WINDOW]
+    if not recent:
+        return None
+    first = recent[0]
+    if first == len(line) - 1:
+        first -= 1
+        if first < 0 or _when(line[first]) < now - LOOKBACK:
+            return None
+    return line[first], line[-1]
+
+
+def _too_new(pair: tuple[Reached, Reached] | None, now: int) -> bool:
+    """Watched for under two days: an evening's levels say how fast someone plays, not how often.
+    Carried forward as if they never stopped, a new character's first session reaches the top
+    level within the week."""
+    return pair is not None and now - _when(pair[0]) < WATCHED
+
+
 def why_not(level: int, reached: Iterable[Reached], now: int) -> str:
     """For a character without a forecast: UNSEEN when the level-ups on record were noticed at
-    fewer than two different times (new to the guild, or never seen levelling), else QUIET."""
-    return QUIET if len({p.hi for p in _line(level, reached, now)}) >= 2 else UNSEEN
+    fewer than two different times (new to the guild, or never seen levelling) or the ones to
+    measure from began under two days ago, else QUIET."""
+    line = _line(level, reached, now)
+    if _too_new(_measured(line, now), now):
+        return UNSEEN
+    return QUIET if len({p.hi for p in line}) >= 2 else UNSEEN
 
 
 def _quality(a: Reached, b: Reached) -> str:
@@ -145,21 +171,16 @@ def _quality(a: Reached, b: Reached) -> str:
 
 def forecast(level: int, reached: Iterable[Reached], now: int, target: int) -> Forecast | None:
     """When a character at `level` gets to `target`, or None: already there, no level-up in the
-    last two weeks, too little to go on, or over a year away."""
+    last two weeks, too little to go on (under two days of it), or over a year away."""
     if level >= target:
         return None
     line = _line(level, reached, now)
     if not line:
         return None
-    recent = [i for i, p in enumerate(line) if _when(p) >= now - WINDOW]
-    if not recent:
+    pair = _measured(line, now)
+    if pair is None or _too_new(pair, now):
         return None
-    first = recent[0]
-    if first == len(line) - 1:  # one level-up in the window: measure from the one before it
-        first -= 1
-        if first < 0 or _when(line[first]) < now - LOOKBACK:
-            return None
-    a, b = line[first], line[-1]
+    a, b = pair
     eta = _eta(a.level, _when(a), b.level, _when(b), now, target)
     if eta is None or eta - now > FAR:
         return None
@@ -255,7 +276,7 @@ NOTE = ("Rough: from the level-ups officers' addons noticed in the last two week
         f"{MARKS[GOOD]} good data: four or more level-ups over three days, closely timed · {MARKS[FAIR]} less to go on · "
         f"{MARKS[THIN]} thin: one level-up, under a day, or noticed long after\n"
         "Quiet: no level-up in two weeks, or over a year away at this pace. "
-        "No history yet: joined lately, or not seen levelling.")
+        "No history yet: joined lately, under two days of level-ups, or not seen levelling.")
 
 
 def boards(chars: Iterable[Character], s: roster.Settings, guild: str, scanned: int | None,

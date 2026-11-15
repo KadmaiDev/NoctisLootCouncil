@@ -44,8 +44,8 @@ async def test_the_road_to_60_is_forecast_from_the_level_ups_the_addon_saw(guild
     assert "Road to max level: **On**, but not posting until level milestones are on" in r.text
     await guild.slash(kadmai, "milestones settings", guild="Noctis", channel=guild.channel("milestones"), announce=True)
 
-    # Three roster reads over two days: Ilsa goes from 57 to 59, Bran doesn't level.
-    realm.clock = int(time.time()) - 3 * 86400
+    # Three roster reads over four days: Ilsa goes from 57 to 59, Bran doesn't level.
+    realm.clock = int(time.time()) - 5 * 86400
     realm.lm.milestones = True
     token = await token_for(guild, kadmai)
     members = [("Ilsa Marrow", 57, "WARLOCK", "Raider"), ("Bran Holloway", 31, "MAGE", "Raider"),
@@ -55,7 +55,7 @@ async def test_the_road_to_60_is_forecast_from_the_level_ups_the_addon_saw(guild
     assert post.embeds[0]["title"] == "Noctis · Road to 60"
     assert "**1** at level 60" in post.text and "**0** on the way" in post.text
     for level in (58, 59):
-        realm.skip(86400)
+        realm.skip(2 * 86400)
         await read_and_send(realm, [("Ilsa Marrow", level, "WARLOCK", "Raider")] + members[1:], running.api_url, token)
     await guild.wait_until(lambda: "`59` **Ilsa Marrow** · " in channel.posts[0].text, what="Ilsa's forecast")
     await guild.quiet()
