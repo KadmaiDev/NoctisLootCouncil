@@ -4,7 +4,7 @@ place like the roster. This module is pure: the settings, the sums and the posts
 depends only on what's passed in: "now" is the newest roster read, never the clock.
 
 The game shows another player's level, not their experience, so pace is measured between level-ups
-and weighed by what each level costs. A level-up is only known to have happened between two roster
+and weighed by how long each level takes (work_to_next). A level-up is only known to have happened between two roster
 reads (`lo` to `hi`), which is a minute apart while an officer is online and hours when none was."""
 from __future__ import annotations
 
@@ -81,6 +81,19 @@ def xp_at(level: int) -> int:
     return sum(xp_to_next(lv) for lv in range(1, level))
 
 
+def work_to_next(level: int) -> float:
+    """What the level takes: its experience in kills of a monster of that level (45 + 5 x level
+    each in Classic; quests pay in step). Experience alone would make the forecast too late: a
+    level 50 earns about twice a level 25's experience in the same evening, so their pace in
+    experience goes up as they level, while in kills it holds. By this measure level 30 is 21% of
+    the way to 60, 40 is 40% and 50 is 66%, close to what players' time played shows."""
+    return xp_to_next(level) / (45 + 5 * level)
+
+
+def work_at(level: int) -> float:
+    return sum(work_to_next(lv) for lv in range(1, level))
+
+
 def _when(p: Reached) -> float:
     return (p.lo + p.hi) / 2 if p.lo is not None and p.lo < p.hi else p.hi
 
@@ -92,11 +105,11 @@ def _eta(l0: int, t0: float, l1: int, t1: float, now: int, target: int) -> float
     now, so a forecast slips as a character goes quiet."""
     if t1 - t0 < MIN_SPAN or now <= t0:
         return None
-    rate = min((xp_at(l1) - xp_at(l0)) / (t1 - t0), (xp_at(l1 + 1) - xp_at(l0)) / (now - t0))
+    rate = min((work_at(l1) - work_at(l0)) / (t1 - t0), (work_at(l1 + 1) - work_at(l0)) / (now - t0))
     if rate <= 0:
         return None
-    progress = min(xp_to_next(l1), rate * max(0, now - t1))
-    return now + (xp_at(target) - xp_at(l1) - progress) / rate
+    progress = min(work_to_next(l1), rate * max(0, now - t1))
+    return now + (work_at(target) - work_at(l1) - progress) / rate
 
 
 def _line(level: int, reached: Iterable[Reached], now: int) -> list[Reached]:
@@ -238,7 +251,7 @@ def _board(key: str, title: str, colour: int, chars: list[Character], history: M
     return roster._section(key, first, fields)
 
 
-NOTE = ("Rough: from the level-ups officers' addons noticed in the last two weeks, weighed by what each level costs.\n"
+NOTE = ("Rough: from the level-ups officers' addons noticed in the last two weeks, weighed by how long each level takes.\n"
         f"{MARKS[GOOD]} good data: four or more level-ups over three days, closely timed · {MARKS[FAIR]} less to go on · "
         f"{MARKS[THIN]} thin: one level-up, under a day, or noticed long after\n"
         "Quiet: no level-up in two weeks, or over a year away at this pace. "

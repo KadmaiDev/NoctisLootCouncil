@@ -13,16 +13,17 @@ from .test_poster import FakeChannel, make_bot, text
 
 TZ = ZoneInfo("Australia/Perth")
 NOW = 1_800_000_000
+AT_50 = 45 + 5 * 50  # a level 50 monster's experience
 ROAD_CHANNEL, ROSTER_CHANNEL = 40, 30
 
 
 def steady(start: int, end: int, per_day_xp: float, now: int = NOW, read_gap: int = 60) -> list[Reached]:
-    """Level-ups of someone earning `per_day_xp` a day, reaching `end` exactly at `now`, each seen
-    within `read_gap` seconds."""
+    """Level-ups of someone playing steadily (as much each day as earns `per_day_xp` at level 50),
+    reaching `end` exactly at `now`, each seen within `read_gap` seconds."""
     out, t = [], float(now)
     for level in range(end, start, -1):
         out.append(Reached(level, int(t) - read_gap, int(t)))
-        t -= forecast.xp_to_next(level - 1) / per_day_xp * DAY
+        t -= forecast.work_to_next(level - 1) / (per_day_xp / AT_50) * DAY
     return out[::-1]
 
 
@@ -34,11 +35,23 @@ def test_the_experience_table_is_classics():
     assert forecast.xp_to_next(59) == 209_800 and forecast.xp_to_next(75) == 209_800
 
 
+def test_levels_are_weighed_by_how_long_they_take_not_by_experience():
+    # A level 50 monster gives 295 experience, a level 25 one 170: the same play earns more later on.
+    assert forecast.work_to_next(50) == 147_500 / 295 and forecast.work_to_next(25) == 34_000 / 170
+    share = [round(100 * forecast.work_at(lv) / forecast.work_at(60)) for lv in (30, 40, 50)]
+    assert share == [21, 40, 66]  # by experience alone: 12, 28, 56
+    # Someone steady through the thirties is forecast sooner than their experience a day would say.
+    f = forecast.forecast(40, steady(30, 40, 60_000), NOW, 60)
+    history = steady(30, 40, 60_000)
+    xp_a_day = (forecast.xp_at(40) - forecast.xp_at(31)) / ((history[-1].hi - history[0].hi) / DAY)
+    assert (f.eta - NOW) / DAY < 0.8 * (forecast.xp_at(60) - forecast.xp_at(40)) / xp_a_day
+
+
 def test_a_steady_pace_is_carried_forward():
-    # 100,000 experience a day, at level 50 this minute: 50 to 60 costs 1,862,100.
+    # At level 50 this minute, after ten levels at a steady pace: the same pace for the ten to go.
     f = forecast.forecast(50, steady(40, 50, 100_000), NOW, 60)
     days = (f.eta - NOW) / DAY
-    assert abs(days - (forecast.xp_at(60) - forecast.xp_at(50)) / 100_000) < 0.05
+    assert abs(days - (forecast.work_at(60) - forecast.work_at(50)) / (100_000 / AT_50)) < 0.05
     # The range is never tighter than a quarter earlier to half as long again.
     assert (f.early - NOW) / DAY <= 0.75 * days + 0.01 and (f.late - NOW) / DAY >= 1.5 * days - 0.01
 
@@ -46,10 +59,10 @@ def test_a_steady_pace_is_carried_forward():
 def test_only_the_last_two_weeks_set_the_pace():
     # Slow a month ago, fast for the last ten days: the fast pace counts.
     old = steady(20, 30, 10_000, now=NOW - 10 * DAY)
-    fast = steady(30, 40, 60_000)[1:]
+    fast = steady(30, 40, 90_000)[1:]
     f = forecast.forecast(40, old + fast, NOW, 60)
     days = (f.eta - NOW) / DAY
-    assert abs(days - (forecast.xp_at(60) - forecast.xp_at(40)) / 60_000) / days < 0.2
+    assert abs(days - (forecast.work_at(60) - forecast.work_at(40)) / (90_000 / AT_50)) / days < 0.2
 
 
 def test_a_forecast_slips_as_a_character_goes_quiet():
@@ -119,7 +132,7 @@ def chars_and_history():
              roster.Character("Kadmai Bank", 44, "HUNTER", "Alt"),
              roster.Character("Pip Newly", 25, "PRIEST", "Trial"),
              roster.Character("Tiny Alt", 5, "ROGUE", "Alt")]
-    history = {"ilsa marrow": steady(50, 58, 150_000), "bran holloway": steady(25, 31, 30_000),
+    history = {"ilsa marrow": steady(50, 58, 150_000), "bran holloway": steady(25, 31, 45_000),
                "kadmai bank": steady(40, 44, 20_000), "pip newly": steady(20, 25, 50_000)}
     return chars, history
 
@@ -155,9 +168,9 @@ def test_how_much_there_was_to_go_on():
     # The same level-ups from an older companion: how closely they were timed isn't known.
     assert quality([Reached(p.level, None, p.hi) for p in steady(44, 50, 100_000)]) == forecast.FAIR
     assert quality(steady(47, 50, 100_000)) == forecast.FAIR                        # two level-ups measured
-    assert quality(steady(44, 50, 100_000, read_gap=12 * 3600)) == forecast.FAIR    # noticed half a day late
+    assert quality(steady(44, 50, 100_000, read_gap=20 * 3600)) == forecast.FAIR    # noticed most of a day late
     assert quality(steady(48, 50, 100_000)) == forecast.THIN                        # one level-up measured
-    assert quality(steady(20, 26, 200_000), 26) == forecast.THIN                    # six levels within a day
+    assert quality(steady(20, 26, 400_000), 26) == forecast.THIN                    # six levels within a day
     assert quality(steady(46, 50, 100_000, read_gap=40 * 3600)) == forecast.THIN    # noticed days late
     # Why there's no forecast: nothing seen, one sighting, or level-ups all noticed in one read are "new".
     assert forecast.why_not(30, [], NOW) == forecast.UNSEEN
