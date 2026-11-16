@@ -198,8 +198,9 @@ class LootBot(commands.Bot):
             s, ms = self.store.forecast_settings(), self.store.milestone_settings()
             if not (s.ready and ms.on and ms.guild):
                 return True
-            boards = forecast.boards(self.store.roster_characters(), self.store.roster_settings(), ms.guild,
-                                     self.store.roster_scanned(), self.store.level_history(), max(ms.levels), self.tz)
+            chars, rs = self.store.roster_characters(), self.store.roster_settings()
+            boards = forecast.boards(chars, rs, ms.guild, self.store.roster_scanned(), self.store.level_history(),
+                                     max(ms.levels), self.tz, self.class_emojis(chars, rs))
             return await self._sync_boards("road", s.channel_id, boards)
 
     async def _sync_boards(self, kind: str, channel_id: int, boards: list[tuple[str, roster.Board]]) -> bool:

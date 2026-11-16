@@ -207,16 +207,22 @@ def when_text(f: Forecast, now: int, tz: ZoneInfo) -> str:
     return early if early == late else f"{early} – {late}"
 
 
-def _lines(rows: list[tuple[Character, Forecast]], now: int, tz: ZoneInfo, width: int) -> list[str]:
-    return [f"{MARKS[f.quality]} `{str(c.level).rjust(width)}` **{render.md(c.name)}** · {when_text(f, now, tz)}"
+def _icon(c: Character, icons: Mapping[str, str]) -> str | None:
+    return icons.get(roster._class_key(c))
+
+
+def _lines(rows: list[tuple[Character, Forecast]], now: int, tz: ZoneInfo, width: int,
+           icons: Mapping[str, str]) -> list[str]:
+    return [f"{MARKS[f.quality]} `{str(c.level).rjust(width)}` "
+            f"{render.with_emoji(_icon(c, icons), f'**{render.md(c.name)}**')} · {when_text(f, now, tz)}"
             for c, f in rows]
 
 
-def _names(chars: list[Character], limit: int) -> str:
-    """'Name 34, Name 22 and 5 more', as many as fit."""
+def _names(chars: list[Character], limit: int, icons: Mapping[str, str]) -> str:
+    """'Name 34, Name 22 and 5 more', as many as fit, each after its class's emoji."""
     out = ""
     for i, c in enumerate(chars):
-        entry = f"{render.md(c.name)} {c.level}"
+        entry = render.with_emoji(_icon(c, icons), f"{render.md(c.name)} {c.level}")
         more = f" and {len(chars) - i} more"
         candidate = f"{out}, {entry}" if out else entry
         rest = len(chars) - i - 1
@@ -235,7 +241,7 @@ def _rows(name: str, lines: list[str]) -> list[tuple[tuple, tuple]]:
 
 
 def _board(key: str, title: str, colour: int, chars: list[Character], history: Mapping[str, list[Reached]],
-           now: int | None, target: int, tz: ZoneInfo, note: str) -> list[tuple[str, Board]]:
+           now: int | None, target: int, tz: ZoneInfo, note: str, icons: Mapping[str, str]) -> list[tuple[str, Board]]:
     there = [c for c in chars if c.level >= target]
     going = [c for c in chars if c.level < target]
     rows: list[tuple[Character, Forecast]] = []
@@ -264,11 +270,11 @@ def _board(key: str, title: str, colour: int, chars: list[Character], history: M
                             ("Within a month", [r for r in rows if SOON < r[1].eta - now <= MONTH]),
                             ("Later", [r for r in rows if r[1].eta - now > MONTH])):
             if group:
-                fields += _rows(f"{name} ({len(group)})", _lines(group, now, tz, width))
+                fields += _rows(f"{name} ({len(group)})", _lines(group, now, tz, width, icons))
     for name, group in ((f"{SLEEPING} Quiet", quiet), (f"{NEW} No history yet", unseen)):
         if group:
             group.sort(key=roster._order)
-            fields.append((((f"{name} ({len(group)})", _names(group, roster.FIELD_VALUE_LIMIT), False),),) * 2)
+            fields.append((((f"{name} ({len(group)})", _names(group, roster.FIELD_VALUE_LIMIT, icons), False),),) * 2)
     return roster._section(key, first, fields)
 
 
@@ -280,13 +286,15 @@ NOTE = ("Rough: from the level-ups officers' addons noticed in the last two week
 
 
 def boards(chars: Iterable[Character], s: roster.Settings, guild: str, scanned: int | None,
-           history: Mapping[str, list[Reached]], target: int, tz: ZoneInfo) -> list[tuple[str, Board]]:
+           history: Mapping[str, list[Reached]], target: int, tz: ZoneInfo,
+           icons: Mapping[str, str] | None = None) -> list[tuple[str, Board]]:
     """The forecast channel's messages, in order, as (key, board): 'road', then 'road#2'... only
     when Discord's limits force more. Who is listed follows the roster's settings (minimum level,
-    hidden ranks), without its alt ranks: the forecast is for mains (the owner's choice)."""
+    hidden ranks), without its alt ranks: the forecast is for mains (the owner's choice). `icons`
+    maps a class to its emoji's markup, as the roster's: it goes before each name."""
     alt_ranks = {roster._key(r) for r in s.alt_ranks}
     mains = [c for c in roster.listed(chars, s) if not (c.rank and roster._key(c.rank) in alt_ranks)]
-    return _board("road", f"{render.md(guild)} · Road to {target}", GOLD, mains, history, scanned, target, tz, NOTE)
+    return _board("road", f"{render.md(guild)} · Road to {target}", GOLD, mains, history, scanned, target, tz, NOTE, icons or {})
 
 
 def settings_text(s: Settings, channel_mention: str | None, known: int, milestones_ready: bool) -> str:

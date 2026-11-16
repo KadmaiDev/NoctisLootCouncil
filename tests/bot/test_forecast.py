@@ -178,6 +178,18 @@ def test_the_board_lists_the_soonest_first():
     assert later.fields[0][1] == "Ilsa Marrow 58, Kadmai Bank 44, Bran Holloway 31"
 
 
+def test_each_name_follows_its_class_icon():
+    chars, history = chars_and_history()
+    s = roster.Settings(on=True, channel_id=1, hidden_ranks=("Trial",))
+    icons = {"WARLOCK": "<:class_warlock:11>", "DRUID": "<:class_druid:12>"}
+    [(_, board)] = forecast.boards(chars, s, "Noctis", NOW, history, 60, TZ, icons)
+    assert board.fields[0][1].startswith("🟢 `58` <:class_warlock:11> **Ilsa Marrow** · ")
+    assert "`31` **Bran Holloway** · " in board.fields[1][1]  # no emoji for mages yet: the name alone
+    assert board.fields[2][1] == "<:class_druid:12> Vespera Ashward 20"
+    [(_, plain)] = forecast.boards(chars, s, "Noctis", NOW, history, 60, TZ)
+    assert plain.digest() != board.digest()  # an emoji made later edits the post
+
+
 def test_how_much_there_was_to_go_on():
     def quality(history, level=50):
         return forecast.forecast(level, history, NOW, 60).quality
