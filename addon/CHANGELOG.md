@@ -1,5 +1,9 @@
 # Changelog
 
+## Noctis Loot Council 0.1.5
+
+- **Milestones: level-ups are no longer lost when the game doesn't give a realm name.** In such a session the addon started a second record of the guild, where everyone counted as new, so a level reached since the last session was never noted or sent to Discord. It now carries on in the guild's own record, and takes in what a second record noted: the level-ups it hid are noted at the next read of the roster.
+
 ## Noctis Loot Council 0.1.4
 
 - **Guild chat congratulations are gone.** The game doesn't let an addon post in guild chat by itself, so they only ever gave an error. Level milestones are congratulated in Discord, and `/nlc milestones tell on` still puts a line in your own chat window.

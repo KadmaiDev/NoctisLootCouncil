@@ -71,11 +71,52 @@ function ns.GuildKey()
     return name, realm, name .. "|" .. realm
 end
 
+-- What was noted while the game gave no realm name (record `blank`, kept as "Guild|") goes into
+-- the guild's own record: its level-ups, and its members where they're new or its level-ups
+-- carry on from the level `g` has. A member it only ever saw at a higher level keeps the older
+-- level in `g`, so the next read notes the level-up the split hid.
+local function Fold(g, blank)
+    for _, e in ipairs(blank.levels) do
+        g.levels[#g.levels + 1] = e
+        local m = g.members[ns.NameKey(e.name)]
+        if m and m.level == e.from and e.to > e.from then m.level, m.seen = e.to, e.at end
+    end
+    table.sort(g.levels, function(a, b) return a.at < b.at end)
+    for key, m in pairs(blank.members) do
+        if not g.members[key] then g.members[key] = m end
+    end
+end
+
+-- The guild's record. The game has given an empty realm name for a session (Forever, 2026-11-21:
+-- a second record "Noctis|" was started, where everyone was new, so a level 60 reached overnight
+-- was never noted). Without a realm, the guild is the one record of that name, if there's just
+-- one; with it, whatever a record without a realm holds is taken into the real one.
 function ns.Guild(create)
     local ms = ns.MS()
     local name, realm, key = ns.GuildKey()
     if not ms or not key then return nil end
-    local g = ms.guilds[key]
+    local blankKey = name .. "|"
+    if realm == "" then
+        local only, several
+        for k, other in pairs(ms.guilds) do
+            if k ~= blankKey and other.name == name then
+                several = only ~= nil
+                only = k
+            end
+        end
+        if only and not several then key = only end
+    end
+    local g, blank = ms.guilds[key], ms.guilds[blankKey]
+    if blank and key ~= blankKey and create then
+        if g then
+            Fold(g, blank)
+        else
+            g = blank
+            g.realm = realm
+            ms.guilds[key] = g
+        end
+        ms.guilds[blankKey] = nil
+    end
     if not g and create then
         g = { name = name, realm = realm, members = {}, levels = {} }
         ms.guilds[key] = g

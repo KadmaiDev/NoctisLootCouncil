@@ -146,6 +146,74 @@ test("a guild on another realm is told apart by its realm", function()
     eq(ns.db.milestones.guilds["Noctis|Forever"], nil)
 end)
 
+test("a session where the game gives no realm name carries on in the guild's record", function()
+    local ns = start(nil, Roster())
+    arrives()
+    local saved = ns.db
+    wow.wait(3600)
+    local r = Roster()
+    r[1].level = 20
+    ns = start(saved, r)
+    wow.realm = ""
+    arrives()
+    eq(ns.db.milestones.guilds["Noctis|"], nil)
+    local g = Noctis(ns)
+    eq(#g.levels, 1)
+    eq(g.levels[1].to, 20)
+    eq(g.realm, "Forever")
+end)
+
+test("what a record without a realm noted is taken into the guild's, and the level-ups it hid are noted", function()
+    local ns = start(nil, Roster())
+    arrives()
+    local saved, first = ns.db, time() - 1
+    -- As 0.1.4 left it: a second record from a session without a realm name, where everyone was
+    -- new. Vespera was first seen there at 21; Kadmai levelled while it was in use.
+    local at = time() + 7200
+    saved.milestones.guilds["Noctis|"] = { name = "Noctis", realm = "", scanned = at, levels = {
+        { name = "Kadmai Moonwhisper", class = "HUNTER", from = 41, to = 42, at = at, since = at - 60 },
+    }, members = {
+        ["vespera ashward"] = { name = "Vespera Ashward", class = "DRUID", level = 21, rank = "Raider", seen = at },
+        ["kadmai moonwhisper"] = { name = "Kadmai Moonwhisper", class = "HUNTER", level = 42, rank = "Officer", seen = at },
+        ["pip newly"] = { name = "Pip Newly", class = "PRIEST", level = 5, rank = "Raider", seen = at },
+    } }
+    wow.wait(86400)
+    local r = Roster()
+    r[1].level, r[3].level = 21, 42
+    r[#r + 1] = { name = "Pip Newly", level = 5, class = "PRIEST", rank = "Raider" }
+    ns = start(saved, r)
+    arrives()
+    eq(ns.db.milestones.guilds["Noctis|"], nil)
+    local g = Noctis(ns)
+    eq(#g.levels, 2)
+    eq(g.levels[1].name, "Kadmai Moonwhisper") -- once: the one already noted
+    eq(g.levels[1].at, at)
+    local e = g.levels[2]
+    eq(e.name, "Vespera Ashward")
+    eq(e.from, 19)
+    eq(e.to, 21)
+    eq(e.since, first)
+    eq(g.members["pip newly"].level, 5)
+end)
+
+test("a guild first read without a realm name gets it once the game gives one", function()
+    local ns = start(nil, Roster())
+    wow.realm = ""
+    arrives()
+    assert(ns.db.milestones.guilds["Noctis|"])
+    local saved = ns.db
+    wow.wait(3600)
+    local r = Roster()
+    r[1].level = 20
+    ns = start(saved, r)
+    arrives()
+    eq(ns.db.milestones.guilds["Noctis|"], nil)
+    local g = Noctis(ns)
+    eq(g.realm, "Forever")
+    eq(#g.levels, 1)
+    eq(g.levels[1].from, 19)
+end)
+
 test("the roster is asked for at login and every minute after", function()
     start(nil, Roster())
     eq(wow.rosterRequests, 1)
